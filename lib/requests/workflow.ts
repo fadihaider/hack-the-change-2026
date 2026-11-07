@@ -1,3 +1,4 @@
+import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { approvalHash, responseState } from "../state.ts";
 import type { ApprovedContent, EvidenceKind, RequestState, ResponseChoice } from "../state.ts";
