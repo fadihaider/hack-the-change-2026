@@ -8,7 +8,6 @@ import {
   BookOpen,
   CalendarDays,
   Check,
-  ChevronRight,
   CircleHelp,
   Clock3,
   FileText,
@@ -46,6 +45,7 @@ import {
 } from "@/lib/demo/workflow";
 
 import First72Guide from "./First72Guide";
+import SupportSidebar from "./SupportSidebar";
 import dynamic from "next/dynamic";
 const LiveRequests = dynamic(() => import("./LiveRequests"));
 
@@ -59,6 +59,16 @@ const dateLabel = (n: number) =>
     timeZone: "Etc/GMT+6",
   }).format(n);
 const statusLabel = (s: string) => s.replaceAll("_", " ");
+const episodeDate = (value: string) => {
+  const date = new Date(`${value}T12:00:00Z`);
+  return Number.isNaN(date.getTime())
+    ? "Confirm dates"
+    : new Intl.DateTimeFormat("en-CA", {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      }).format(date);
+};
 
 function Modal({
   title,
@@ -309,104 +319,97 @@ export default function ReliefReady() {
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      <aside className="sidebar">
-        <a
-          href="#"
-          className="brand"
-          onClick={(e) => {
-            e.preventDefault();
-            nav("urgent");
-          }}
-        >
-          <span className="brand-mark">
-            <Sprout size={25} strokeWidth={1.8} />
-          </span>
-          reliefready<span className="brand-dot">.</span>
-        </a>
-        <div className="sidebar-label">A LITTLE SUPPORT, RIGHT HERE</div>
-        <nav aria-label="Main navigation">
-          <button
-            className={mode === "urgent" ? "nav-item active" : "nav-item"}
-            aria-current={mode === "urgent" ? "page" : undefined}
-            onClick={() => nav("urgent")}
+      <header className="app-header">
+        <div className="app-header-inner">
+          <a
+            href="#"
+            className="brand"
+            onClick={(e) => {
+              e.preventDefault();
+              nav("urgent");
+            }}
           >
-            <Sparkles size={19} />
-            <span>
-              Urgent
-              <span className="nav-caption">Make room for what matters</span>
+            <span className="brand-mark">
+              R
+              <span className="brand-dot" aria-hidden="true">
+                •
+              </span>
             </span>
-            {requestCount > 0 && (
-              <span className="nav-count">{requestCount}</span>
-            )}
-          </button>
-          <button
-            className={mode === "care" ? "nav-item active" : "nav-item"}
-            aria-current={mode === "care" ? "page" : undefined}
-            onClick={() => nav("care")}
-          >
-            <Heart size={19} />
-            <span>
-              Care
-              <span className="nav-caption">One day, one thing at a time</span>
+            ReliefReady
+          </a>
+          <div className="care-context">
+            <span className="context-dot" aria-hidden="true" />
+            <span>Caring for {name || "your person"}</span>
+            <span className="care-context-dates">
+              {episodeDate(start)} – {episodeDate(end)}
             </span>
-          </button>
-          <button
-            className={mode === "recover" ? "nav-item active" : "nav-item"}
-            aria-current={mode === "recover" ? "page" : undefined}
-            onClick={() => nav("recover")}
-          >
-            <Leaf size={19} />
-            <span>
-              Recover<span className="nav-caption">Find your way back</span>
-            </span>
-          </button>
-        </nav>
-        <div className="sidebar-rule" />
-        <button
-          className={mode === "guide" ? "nav-item active" : "nav-item"}
-          onClick={() => nav("guide")}
-        >
-          <BookOpen size={19} />
-          <span>Your first 72 hours</span>
-          <ChevronRight size={15} />
-        </button>
-        <div className="sidebar-bottom">
-          <div className="circle-graphic">
-            <Heart size={26} strokeWidth={1.3} />
-            <span className="orbit o1" />
-            <span className="orbit o2" />
           </div>
-          <p>
-            You don’t have to
-            <br />
-            carry it all alone.
-          </p>
-          <span>Small steps. Shared care.</span>
-        </div>
-        <div className="profile">
-          <span className="avatar">A</span>
-          <div>
-            Alex Parker<small>Demo persona (fictional)</small>
+          <div className="header-actions">
+            <span className="demo-pill">
+              <span />
+              Test mode · no live sends
+            </span>
+            <div
+              className="caregiver-avatar"
+              aria-label="Alex Parker, fictional demo persona"
+            >
+              AP
+            </div>
+            <span className="caregiver-name">
+              Alex<small>Demo persona (fictional)</small>
+            </span>
           </div>
-          <ShieldCheck size={17} />
         </div>
-      </aside>
+      </header>
 
       <div className="workspace">
-        <header className="topbar">
-          <div>
-            <MapPin size={15} /> Calgary, Alberta{" "}
-            <span className="topbar-divider" /> Your care, connected
-          </div>
-          <div className="mode-tools">
-            <button className="text-button" onClick={() => setShowLive(true)}>
-              Open live workspace
+        <div className="workspace-toolbar">
+          <nav className="workspace-nav" aria-label="Main navigation">
+            <button
+              className={mode === "urgent" ? "nav-item active" : "nav-item"}
+              aria-current={mode === "urgent" ? "page" : undefined}
+              onClick={() => nav("urgent")}
+            >
+              <Sparkles size={19} />
+              <span>Urgent</span>
+              {requestCount > 0 && (
+                <span className="nav-count">{requestCount}</span>
+              )}
             </button>
-            <span className="demo-pill">
-              <span /> TEST MODE · NO LIVE SENDS
+            <button
+              className={mode === "care" ? "nav-item active" : "nav-item"}
+              aria-current={mode === "care" ? "page" : undefined}
+              onClick={() => nav("care")}
+            >
+              <Heart size={19} />
+              <span>Care</span>
+            </button>
+            <button
+              className={mode === "recover" ? "nav-item active" : "nav-item"}
+              aria-current={mode === "recover" ? "page" : undefined}
+              onClick={() => nav("recover")}
+            >
+              <Leaf size={19} />
+              <span>Recover</span>
+            </button>
+            <button
+              className={mode === "guide" ? "nav-item active" : "nav-item"}
+              aria-current={mode === "guide" ? "page" : undefined}
+              onClick={() => nav("guide")}
+            >
+              <BookOpen size={19} />
+              <span>Support guide</span>
+            </button>
+          </nav>
+          <div className="workspace-tools">
+            <span className="workspace-location">
+              <MapPin size={14} /> Calgary, Alberta
             </span>
+            <button className="text-button" onClick={() => setShowLive(true)}>
+              Open live workspace <ArrowRight size={15} />
+            </button>
           </div>
-        </header>
+        </div>
         <main id="main" tabIndex={-1}>
           <div className="eyebrow">
             <span className="sun-dot" /> HERE FOR YOU, ALEX{" "}
@@ -419,13 +422,35 @@ export default function ReliefReady() {
           {mode === "urgent" && (
             <>
               <div className="page-heading">
-                <div>
-                  <h1>A little breathing room.</h1>
-                  <p>When life changes suddenly, let’s make space for care.</p>
+                <div className="hero-content">
+                  <span className="hero-privacy">
+                    <ShieldCheck size={15} /> Nothing goes out without your say.
+                  </span>
+                  <h1>
+                    {step === 2 && effectiveRequests.length > 0
+                      ? `A little room. ${requestCount} ${requestCount === 1 ? "message" : "messages"} to review.`
+                      : "A little breathing room."}
+                  </h1>
+                  <p>
+                    {step === 2
+                      ? "The words are ready. Take your time, make them yours, and approve each message when you’re comfortable."
+                      : "When life changes suddenly, you don’t have to carry it all. Let’s make a little space for care, one thing at a time."}
+                  </p>
+                  <span className="hero-label">
+                    <Heart size={14} /> Here for {name || "your person"}. Here
+                    for you.
+                  </span>
                 </div>
-                <span className="chapter">
-                  <Sparkles size={17} /> URGENT MODE
-                </span>
+                <div className="hero-illustration" aria-hidden="true">
+                  <span className="hero-orbit" />
+                  <span className="hero-orbit second" />
+                  <span className="hero-heart">
+                    <Heart size={48} strokeWidth={1.2} />
+                  </span>
+                  <span className="hero-leaf">
+                    <Sprout size={24} strokeWidth={1.5} />
+                  </span>
+                </div>
               </div>
               <div className="steps" aria-label="Urgent workflow">
                 {[
@@ -523,47 +548,7 @@ export default function ReliefReady() {
                       </button>
                     </div>
                   </section>
-                  <aside className="right-column">
-                    <section className="promise-card">
-                      <div className="promise-icon">
-                        <Sprout size={33} strokeWidth={1.5} />
-                      </div>
-                      <h2>
-                        You’re in the
-                        <br />
-                        driver’s seat.
-                      </h2>
-                      <p>
-                        We’ll help you spot what needs attention and prepare the
-                        words.
-                      </p>
-                      <ul>
-                        <li>
-                          <Check size={16} /> You approve every message.
-                        </li>
-                        <li>
-                          <Check size={16} /> Your calendar stays untouched.
-                        </li>
-                        <li>
-                          <Check size={16} /> You choose what to share.
-                        </li>
-                      </ul>
-                      <span className="small-note">
-                        Nothing goes out without your say.
-                      </span>
-                    </section>
-                    <button
-                      className="guide-teaser"
-                      onClick={() => nav("guide")}
-                    >
-                      <BookOpen size={22} />
-                      <div>
-                        <strong>New to caregiving?</strong>
-                        <span>Start with the first 72 hours.</span>
-                      </div>
-                      <ArrowRight size={18} />
-                    </button>
-                  </aside>
+                  <SupportSidebar onOpenGuide={() => nav("guide")} />
                 </div>
               )}
 
@@ -740,148 +725,176 @@ export default function ReliefReady() {
               )}
 
               {step === 2 && (
-                <>
-                  <div className="section-heading">
-                    <div>
-                      <h2>Your words. Your say.</h2>
-                      <p className="muted">
-                        Review the exact message and recipient before approving
-                        each item.
-                      </p>
+                <div className="approval-layout">
+                  <section aria-label="Messages for your approval">
+                    <div className="section-heading">
+                      <div>
+                        <h2>Your approval queue</h2>
+                        <p className="muted">
+                          Review the exact message and recipient before
+                          approving each item.
+                        </p>
+                      </div>
+                      <span className="badge">
+                        <ShieldCheck size={14} /> Approval first, always
+                      </span>
                     </div>
-                    <span className="badge">
-                      <ShieldCheck size={14} /> Approval first, always
-                    </span>
-                  </div>
-                  {!effectiveRequests.length && (
-                    <div className="empty-state">
-                      <Check size={28} />
-                      <h3>Nothing to send.</h3>
-                      <p>You chose to keep or defer your commitments.</p>
-                    </div>
-                  )}
-                  <div className="request-grid">
-                    {effectiveRequests.map((r) => (
-                      <article className="panel request-card" key={r.id}>
-                        <div className="request-top">
-                          <span className="group-label">{r.group} · EMAIL</span>
-                          <span className={`state state-${r.state}`}>
-                            {statusLabel(r.state)}
-                          </span>
-                        </div>
-                        <h3>{r.recipient}</h3>
-                        <span className="request-email">{r.email}</span>
-                        <div className="message-preview">
-                          <strong>{r.subject}</strong>
-                          <p>{r.body}</p>
-                        </div>
-                        <div className="request-meta">
-                          <span>
-                            <ShieldCheck size={13} /> {r.tier} disclosure
-                          </span>
-                          <span>
-                            <Clock3 size={13} /> Respond by{" "}
-                            {dateLabel(Date.parse(r.deadline))}
-                          </span>
-                        </div>
-                        {healthTerms(`${r.subject} ${r.body}`).length > 0 && (
-                          <p className="warning">
-                            Health terms found:{" "}
-                            {healthTerms(`${r.subject} ${r.body}`).join(", ")}.
-                            Review the disclosure before approval.
-                          </p>
-                        )}
-                        <div className="request-actions">
+                    {!effectiveRequests.length && (
+                      <div className="empty-state">
+                        <Check size={28} />
+                        <h3>Nothing to send.</h3>
+                        <p>You chose to keep or defer your commitments.</p>
+                      </div>
+                    )}
+                    <div className="request-grid approval-list">
+                      {effectiveRequests.map((r, index) => (
+                        <article className="panel request-card" key={r.id}>
+                          <div className="request-top">
+                            <span className="group-label">
+                              Message {String(index + 1).padStart(2, "0")} ·{" "}
+                              {r.group}
+                            </span>
+                            <span className={`state state-${r.state}`}>
+                              {statusLabel(r.state)}
+                            </span>
+                          </div>
+                          <div className="request-recipient">
+                            <span
+                              className="recipient-symbol"
+                              aria-hidden="true"
+                            >
+                              {r.group === "Work" ? (
+                                <Users size={23} />
+                              ) : r.group === "School" ? (
+                                <BookOpen size={23} />
+                              ) : (
+                                <Mail size={23} />
+                              )}
+                            </span>
+                            <div>
+                              <h3>{r.recipient}</h3>
+                              <span className="request-email">{r.email}</span>
+                            </div>
+                          </div>
+                          <div className="message-preview">
+                            <span className="message-label">
+                              Your message preview
+                            </span>
+                            <strong>{r.subject}</strong>
+                            <p>{r.body}</p>
+                          </div>
+                          <div className="request-meta">
+                            <span>
+                              <ShieldCheck size={13} /> {r.tier} disclosure
+                            </span>
+                            <span>
+                              <Clock3 size={13} /> Respond by{" "}
+                              {dateLabel(Date.parse(r.deadline))}
+                            </span>
+                          </div>
+                          {healthTerms(`${r.subject} ${r.body}`).length > 0 && (
+                            <p className="warning">
+                              Health terms found:{" "}
+                              {healthTerms(`${r.subject} ${r.body}`).join(", ")}
+                              . Review the disclosure before approval.
+                            </p>
+                          )}
+                          <div className="request-actions">
+                            {[
+                              "awaiting_approval",
+                              "approved",
+                              "needs_review",
+                            ].includes(r.state) && (
+                              <button
+                                className="secondary"
+                                onClick={() => setEditing(r.id)}
+                              >
+                                {r.state === "approved"
+                                  ? "Revise & reapprove"
+                                  : "Edit & review"}
+                              </button>
+                            )}
+                            {r.state === "awaiting_approval" && (
+                              <button
+                                className="primary"
+                                disabled={
+                                  r.tier !== "detailed" &&
+                                  healthTerms(`${r.subject} ${r.body}`).length >
+                                    0 &&
+                                  !r.override
+                                }
+                                onClick={() => {
+                                  const next = approveRequest(r);
+                                  update(r.id, () => next);
+                                  if (next.state !== "approved")
+                                    setToast(
+                                      "Check the recipient email, message content and disclosure before approval.",
+                                    );
+                                }}
+                              >
+                                <Check size={15} /> Approve exact message
+                              </button>
+                            )}
+                            {r.state === "approved" && (
+                              <button
+                                className="primary"
+                                onClick={() => {
+                                  update(r.id, simulateSend);
+                                  setToast(
+                                    "Demo delivery simulated. No email was sent.",
+                                  );
+                                }}
+                              >
+                                Simulate delivery <ArrowRight size={15} />
+                              </button>
+                            )}
+                            {r.state === "requested" && (
+                              <span className="small-note">
+                                Waiting for a simulated response in Recover.
+                              </span>
+                            )}
+                          </div>
                           {[
                             "awaiting_approval",
                             "approved",
                             "needs_review",
                           ].includes(r.state) && (
                             <button
-                              className="secondary"
-                              onClick={() => setEditing(r.id)}
-                            >
-                              {r.state === "approved"
-                                ? "Revise & reapprove"
-                                : "Edit & review"}
-                            </button>
-                          )}
-                          {r.state === "awaiting_approval" && (
-                            <button
-                              className="primary"
-                              disabled={
-                                r.tier !== "detailed" &&
-                                healthTerms(`${r.subject} ${r.body}`).length >
-                                  0 &&
-                                !r.override
+                              className="text-button cancel"
+                              onClick={() =>
+                                update(r.id, (q) => ({
+                                  ...q,
+                                  state: "cancelled",
+                                  history: [
+                                    ...q.history,
+                                    "Cancelled by demo user",
+                                  ],
+                                }))
                               }
-                              onClick={() => {
-                                const next = approveRequest(r);
-                                update(r.id, () => next);
-                                if (next.state !== "approved")
-                                  setToast(
-                                    "Check the recipient email, message content and disclosure before approval.",
-                                  );
-                              }}
                             >
-                              <Check size={15} /> Approve exact message
+                              Cancel request
                             </button>
                           )}
-                          {r.state === "approved" && (
-                            <button
-                              className="primary"
-                              onClick={() => {
-                                update(r.id, simulateSend);
-                                setToast(
-                                  "Demo delivery simulated. No email was sent.",
-                                );
-                              }}
-                            >
-                              Simulate delivery <ArrowRight size={15} />
-                            </button>
-                          )}
-                          {r.state === "requested" && (
-                            <span className="small-note">
-                              Waiting for a simulated response in Recover.
-                            </span>
-                          )}
-                        </div>
-                        {[
-                          "awaiting_approval",
-                          "approved",
-                          "needs_review",
-                        ].includes(r.state) && (
-                          <button
-                            className="text-button cancel"
-                            onClick={() =>
-                              update(r.id, (q) => ({
-                                ...q,
-                                state: "cancelled",
-                                history: [
-                                  ...q.history,
-                                  "Cancelled by demo user",
-                                ],
-                              }))
-                            }
-                          >
-                            Cancel request
-                          </button>
-                        )}
-                      </article>
-                    ))}
-                  </div>
-                  <div className="flow-footer">
-                    <button className="text-button" onClick={() => setStep(1)}>
-                      <ArrowLeft size={16} /> Back to commitments
-                    </button>
-                    <button
-                      className="secondary"
-                      onClick={() => nav("recover")}
-                    >
-                      See what’s handled <ArrowRight size={17} />
-                    </button>
-                  </div>
-                </>
+                        </article>
+                      ))}
+                    </div>
+                    <div className="flow-footer">
+                      <button
+                        className="text-button"
+                        onClick={() => setStep(1)}
+                      >
+                        <ArrowLeft size={16} /> Back to commitments
+                      </button>
+                      <button
+                        className="secondary"
+                        onClick={() => nav("recover")}
+                      >
+                        See what’s handled <ArrowRight size={17} />
+                      </button>
+                    </div>
+                  </section>
+                  <SupportSidebar onOpenGuide={() => nav("guide")} />
+                </div>
               )}
               <section className="bottom-strip">
                 <span className="strip-icon">
