@@ -56,6 +56,7 @@ care facts and medical source text are never included.
 ```ts
 type RequestView = {
   id: string;
+  revision: string; // opaque SHA-256 preview revision, 64 lowercase hex characters
   state: RequestState;
   action: "notify" | "reschedule" | "extension" | "coverage";
   recipient: { contactId: string; name: string; email: string };
@@ -85,7 +86,7 @@ type RequestView = {
 | `GET /api/requests` | No body | `{requests: RequestView[], appNow: string}` |
 | `GET /api/requests/[id]` | Owner's request id | `{request: RequestView, appNow: string}` |
 | `POST /api/requests/edit` | `{requestId, subject?, body?, contactId?, respondBy?}` | `{request: RequestView}` in `awaiting_approval`, with `healthOverride:false` |
-| `POST /api/requests/approve` | `{requestId, healthOverride?: boolean}` | `{request: RequestView}` in `approved`; or HTTP 422 with `{error:{code:"health_terms",terms:string[]}}` |
+| `POST /api/requests/approve` | `{requestId, healthOverride?: boolean}` plus `If-Match: "<revision>"` | `{request: RequestView}` in `approved`; or HTTP 422 with `{error:{code:"health_terms",terms:string[]}}` |
 | `POST /api/requests/cancel` | `{requestId}` | `{request: RequestView}` in `cancelled` |
 | `POST /api/requests/refresh` | Empty JSON | `{requests: RequestView[], appNow: string, expiredRequestIds:string[]}` after the owner-scoped expiry sweep |
 | `GET /api/clock` | No body | `{appNow:string, realNow:string, offsetMilliseconds:number}` |
@@ -100,10 +101,33 @@ Edit loads the contact and its group with owner-scoped SQL; the resulting tier
 comes from that group, never a client tier. Edit accepts only draft,
 awaiting_approval or needs_review, rechecks health terms, invalidates any prior
 approval, resets the override and writes the manual event atomically. Approve
-accepts only awaiting_approval and hashes the server-loaded recipient email,
-subject, body and tier under the same request lock. The optional override is an
+accepts only awaiting_approval and checks `requireApprovalRevision` from
+`lib/requests/approval-revision.ts` before any approval write. Every request read
+computes `revision` with `approvalRevision` from that same server-loaded
+`RequestRecord`. The browser sends the revision associated with the exact
+rendered preview as a strong quoted `If-Match` header, keeping the JSON body
+unchanged. Missing/empty headers return HTTP 428
+`{error:{code:"precondition_required"}}`; changed, malformed, weak, wildcard or
+multiple validators return HTTP 412 `{error:{code:"stale_request"}}`. Neither
+error writes an approval, audit event or state change. The browser must refresh,
+show the new preview and require another explicit approval; it must never retry
+approval automatically with a freshly fetched revision.
+
+`withCurrentApproval` provides the owner-scoped transaction wrapper for the base
+`WorkflowStore`. An extended durable approval transaction may call
+`requireApprovalRevision` directly after ownership checks, so its health-term
+check, override save/audit and approval transition share that same lock and
+transaction. Never check the revision before entering the transaction and then
+write approval in a separate one. The revision covers request
+identity/owner, state, exact recipient email, subject, body, tier, selected
+deadline and saved override; it is a preview precondition, not approval evidence
+or authorization. Canonical JSON fields avoid ambiguous newline boundaries.
+The approval evidence hash remains the existing newline-joined encoding from
+`lib/state.ts`. The optional override is an
 explicit user choice and is saved in that transaction. Neither approval nor send
-accepts client content or a client hash. Cancel accepts awaiting_approval or
+accepts client content or a client approval hash. The durable adapter must also
+serialize contact/group edits affecting email or tier with the request lock (or
+lock those source rows) so joined content cannot change during approval. Cancel accepts awaiting_approval or
 needs_review; sending/requested requests cannot be cancelled as unsent.
 
 Use HTTP 401 for missing session; 404 for missing/cross-owner requests or
@@ -155,3 +179,9 @@ Patched Nodemailer MIME generation, Calendar pagination and token encryption
 tamper/owner checks also pass. `npm run typecheck` passes. Live provider requests,
 database transaction rollback and HTTP/GET behavior still need checks after the
 production adapters and routes are available. This does not verify a real send.
+
+`node --conditions=react-server --test tests/approval-revision.test.ts` passes
+seven additional fixture checks for exact viewed content, missing/invalid
+preconditions, changed previews, a queued edit versus approval, competing
+approvals, owner denial and unambiguous revision fields. These test a serializing
+fixture; real SQL isolation and the eventual HTTP status mapping remain pending.
