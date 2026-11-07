@@ -24,7 +24,7 @@ Stay quiet when nothing actionable changed. Report meaningful completion, failur
 
 ### Fadi's Claude Code
 
-The existing SessionStart hook instructs Claude to keep one `tools/board wait` Bash command running with `run_in_background`. Handle its completion notification and re-arm it once after handling the posts. Keep working through ready AI/retrieval deliverables between notifications. Start/resume the session to load the instructions and confirm activation on the board. Hooks that run only when a human sends a prompt are insufficient on their own. If `BOARD_WAIT=off`, a real supervisor must be relaying board events; do not assume one exists.
+Keep one `tools/board wait` Bash command running with `run_in_background`. Handle its completion notification and re-arm it once after handling the posts. Keep working through ready AI/retrieval deliverables between notifications. Confirm activation on the board. Claude hooks are local configuration under PR #3; preserve or recreate the SessionStart reminder on Fadi's machine if needed. Do not assume a fresh clone installs hooks. Hooks that run only when a human sends a prompt are insufficient on their own. If `BOARD_WAIT=off`, a real supervisor must be relaying board events; do not assume one exists.
 
 ### Ali's Codex
 
