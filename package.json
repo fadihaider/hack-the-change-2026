@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test lib/demo/*.test.ts",
+    "test": "node --import tsx --test lib/demo/*.test.ts lib/frontend/*.test.ts",
     "test:ai": "node --import tsx --test lib/ai/**/*.test.ts"
   },
   "dependencies": {

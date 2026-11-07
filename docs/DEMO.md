@@ -18,6 +18,8 @@ The first deliverable is a clickable frontend. Google sign-in/calendar/sending, 
 
 ## Integration boundaries
 
+The **Open live workspace** control opens a separate server-records panel. Its browser client follows `docs/INTEGRATIONS.md` and validates every response; it never loads fixture records. The panel supports the planned edit/approve/cancel/send/Recover flows. Until protected HTTP routes and durable storage are connected, it shows unavailable and locks mutation controls. Returning to the fictional demo preserves the demo workspace. Missing Gmail evidence, authentication failures, unconfigured adapters and malformed responses never count as successful live delivery. Six browser-client contract tests cover these boundaries; the real email/Accept milestone remains open in #11.
+
 - UI and fixture-only workflow: `components/relief-ready/` and `lib/demo/` (Haris).
 - Live state/send/response logic: Ali's integration modules; do not use the browser fixture workflow to authorize real actions.
 - Model facts and proposals: Fadi's `lib/ai/contracts.ts` when merged.
