@@ -39,7 +39,7 @@ stays `sending` for reconciliation; do not automatically send again.
 | `POST /api/requests/send` | JSON `{requestId}` only | `{state:"requested",messageId}`; or `{state:"failed",errorCode}`; or `{state:"needs_review"}` | Auth.js owner session plus same Origin |
 | `GET /r/[token]` | Token in URL | Plain-text request preview and confirm button; no state mutation | Unexpired response token |
 | `POST /api/responses/[token]` | Empty JSON for Accept/Decline; `{proposal:{at,note?}}` for Propose | `{state,recorded}`; repeats return the first state and `recorded:false` | Unexpired token plus same Origin |
-| `POST /api/stt` | Audio file as multipart `file`, at most 10 MB | JSON `{transcript}` | Owner session plus same Origin |
+| `POST /api/stt` | Exactly one multipart `file`; total request at most 10 MiB including multipart overhead | JSON `{transcript}` | Owner session plus same Origin |
 | `POST /api/tts` | JSON `{text}` | Audio bytes, `Content-Type: audio/mpeg` | Owner session plus same Origin |
 
 Proposal `at` must be an ISO time with `Z` or an explicit numeric offset. Notes
@@ -263,7 +263,8 @@ Local setup is blocked on Google test-project/account configuration, ignored
 `.env.local` credentials, ElevenLabs API key/credits, the durable adapter and the
 eventual deployed APP_BASE_URL. Keep all credentials out of issues and logs.
 Speech ownership was handed to Ali on the board; Fadi confirmed no existing
-speech files. Speech routes above are proposed contracts, not completed work.
+speech files. Speech HTTP functions are available below; route registration and
+live acceptance remain pending.
 
 `elevenLabsClient` in `lib/elevenlabs.ts` is the server-only speech adapter. STT
 accepts nonempty supported audio up to 10 MB, uses Scribe v2 and deletes the
@@ -275,7 +276,69 @@ Flash v2.5 model, returns MP3 bytes, and accepts at most 4,000 Unicode character
 per call. Keys stay server-side, calls use no-store, and ambiguous provider
 failures are not retried. Callers must supply session authorization, same-Origin
 checks, per-user rate limits and metadata-only llm_call logging before wiring
-the HTTP routes. No permissive HTTP route is supplied.
+the HTTP routes.
+
+### Speech HTTP boundary (#35 / #16)
+
+`createSpeechHttpHandlers` in `lib/speech/http.ts` supplies `stt(Request)` and
+`tts(Request)` functions without registering endpoints. Compose them with a
+verified server-session resolver, canonical `APP_BASE_URL`, `elevenLabsClient`
+and the durable reservation below. There is no in-memory quota implementation
+or default successful reservation. Both functions require POST, a server-selected
+owner and matching Origin before reading the body; no client user ID, model or
+voice override is accepted.
+
+STT bounds the actual streamed request to 10 MiB **before** multipart parsing,
+including when Content-Length is missing or false. Multipart overhead counts
+toward that limit, so clients should keep audio below 10 MiB. It accepts exactly
+one nonempty `file` in a supported audio MIME type, discards the original filename
+and keeps the audio in memory only. The adapter performs transcript cleanup
+before `{transcript}` is returned. The HTTP function never saves a care source or
+calls a model; the caller chooses intake versus care-note processing.
+
+TTS accepts strict JSON `{text}` with nonblank text of at most 4,000 Unicode
+characters and a 64 KiB actual-body limit (enough for escaped Unicode JSON).
+It preserves the supplied text exactly and returns `audio/mpeg` bytes. Every
+success and error has no-store, no-referrer and nosniff headers with no CORS grant.
+
+Fadi's #7 quota handoff is adapted structurally as:
+
+```ts
+reserveCall({ userId, step, model }): Promise<{
+  allowed: boolean;
+  limit: { retryAfterSeconds: number };
+  // The durable implementation also returns callId and other limit metadata.
+}>
+```
+
+Bind this to `reserveCall(appStores().database, input)` from `lib/rateLimit.ts`
+when #7 lands. The database owns a fixed ten-minute **real-time** per-user voice
+counter, shared by STT/TTS, with a limit of 30. Model steps have their own bucket
+and daily fuse. Counting and inserting `llm_call(user_id,step,model)` with null
+token counts must commit atomically before `allowed:true`. The handler reserves
+after validating input and before the provider call. Attempts remain counted on
+provider failure, cleanup failure or an uncertain network outcome; no retry or
+refund is performed. Only user ID, step and fixed model ID reach this boundary;
+it receives no audio, text, filename, provider key or transcript ID. The complete
+reservation result and call ID are not exposed to the browser. The factory and
+quota exports were a board handoff, not locally verified production wiring.
+
+Wrong methods return 405 with `Allow: POST`; missing sessions 401; invalid Origin
+403; unsupported media 415; invalid input/audio 400; oversized actual bodies 413.
+Quota denial returns 429 `{error:{code:"rate_limited"}}` and the database's
+`Retry-After` seconds. Speech provider rate limits also return 429. Missing speech
+configuration/provider access returns 503; provider/cleanup/invalid-response
+failures return 502. Unexpected session/quota/storage errors return only 503
+`temporarily_unavailable`. Provider diagnostics, bodies and credentials are
+neither logged nor returned.
+
+`node --conditions=react-server --import tsx --test tests/speech-http.test.ts tests/speech.test.ts`
+uses fictional multipart audio, an intercepted provider transport and a quota
+fixture. It verifies auth/Origin checks, streamed bounds/cancellation, strict
+fields, metadata-only reservation before calls, quota failure, MP3/transcript
+results, cleanup and safe failures without retries. It does not establish real
+database quota isolation, deployed routes, live audio quality, credit availability
+or live deletion. Those remain acceptance work in #16.
 
 ## Checks so far
 
