@@ -45,6 +45,8 @@ import {
   type Tier,
 } from "@/lib/demo/workflow";
 
+import First72Guide from "./First72Guide";
+
 type Mode = "urgent" | "care" | "recover" | "guide";
 const dateLabel = (n: number) =>
   new Intl.DateTimeFormat("en-CA", {
@@ -937,7 +939,16 @@ export default function ReliefReady() {
                     onKeyDown={(event) => {
                       const order = ["review", "timeline", "ask"] as const;
                       const index = order.indexOf(v);
-                      const next = event.key === "ArrowRight" ? (index + 1) % 3 : event.key === "ArrowLeft" ? (index + 2) % 3 : event.key === "Home" ? 0 : event.key === "End" ? 2 : -1;
+                      const next =
+                        event.key === "ArrowRight"
+                          ? (index + 1) % 3
+                          : event.key === "ArrowLeft"
+                            ? (index + 2) % 3
+                            : event.key === "Home"
+                              ? 0
+                              : event.key === "End"
+                                ? 2
+                                : -1;
                       if (next < 0) return;
                       event.preventDefault();
                       setCareTab(order[next]);
@@ -1516,103 +1527,39 @@ export default function ReliefReady() {
           )}
 
           {mode === "guide" && (
-            <>
-              <div className="page-heading">
-                <div>
-                  <h1>You have a place to start.</h1>
-                  <p>
-                    The first 72 hours don’t have to come with all the answers.
-                  </p>
-                </div>
-                <span className="chapter">
-                  <BookOpen size={17} /> YOUR CALGARY GUIDE
-                </span>
-              </div>
-              <div className="guide-intro">
-                <Sprout size={36} strokeWidth={1.4} />
-                <div>
-                  <h2>One small next step is enough.</h2>
-                  <p>
-                    These are general source links, not personalized eligibility
-                    or location results. Live resource lookup is pending.
-                  </p>
-                </div>
-              </div>
-              <div className="guide-grid">
-                {[
+            <First72Guide
+              onPrepareNotice={() => {
+                const contact = circle.find((c) => c.group === "Work");
+                if (!contact) {
+                  setToast(
+                    "Add a work contact in Urgent before preparing an employer notice.",
+                  );
+                  return;
+                }
+                setRequests((previous) => [
+                  ...expireRequests(previous, now),
                   {
-                    n: "01",
-                    title: "Make space at work",
-                    body: "Read Alberta’s personal and family responsibility leave requirements before discussing leave with your employer.",
-                    source: "Government of Alberta",
-                    url: "https://www.alberta.ca/personal-family-responsibility-leave",
-                    icon: <Users />,
+                    id: `notice-${Date.now()}`,
+                    commitment: "Employer caregiving notice",
+                    recipient: contact.name,
+                    email: contact.email,
+                    group: "Work",
+                    tier: "minimal",
+                    state: "awaiting_approval",
+                    subject:
+                      "Request to discuss time away for family responsibilities",
+                    body: `Hi ${contact.name},\n\nI need to discuss time away from ${start} through ${end} for family responsibilities. Could we confirm the leave arrangements and any coverage needed?\n\nThank you,\nAlex`,
+                    deadline: new Date(now + 48 * 3600000).toISOString(),
+                    history: ["Employer notice prepared for review; not sent"],
                   },
-                  {
-                    n: "02",
-                    title: "Explore financial support",
-                    body: "Review the federal caregiving benefits page for eligibility, certification requirements and how to apply.",
-                    source: "Government of Canada",
-                    url: "https://www.canada.ca/en/services/benefits/ei/caregiving.html",
-                    icon: <ShieldCheck />,
-                  },
-                  {
-                    n: "03",
-                    title: "Find caregiver support",
-                    body: "Find Alberta Health Services information and ask about the Family Caregiver Centre. Confirm availability with the provider.",
-                    source: "Alberta Health Services",
-                    url: "https://www.albertahealthservices.ca/",
-                    icon: <Heart />,
-                  },
-                  {
-                    n: "04",
-                    title: "Connect with your community",
-                    body: "Explore community supports through InformAlberta. Location, hours and accessibility still need to be verified.",
-                    source: "InformAlberta",
-                    url: "https://informalberta.ca/",
-                    icon: <MapPin />,
-                  },
-                ].map((c) => (
-                  <article className="panel guide-card" key={c.n}>
-                    <div className="guide-number">
-                      {c.icon}
-                      <span>{c.n}</span>
-                    </div>
-                    <h2>{c.title}</h2>
-                    <p>{c.body}</p>
-                    <a href={c.url} target="_blank" rel="noreferrer">
-                      {c.source} <ArrowRight size={15} />
-                    </a>
-                    <span className="small-note">
-                      Source link · content not fetched in this demo
-                    </span>
-                  </article>
-                ))}
-              </div>
-              <div className="panel local-card">
-                <MapPin size={24} />
-                <div>
-                  <h3>Nearby help, when the location is verified.</h3>
-                  <p>
-                    Hospital, pharmacy and transit cards will appear after the
-                    Calgary address lookup is connected. Hours and accessibility
-                    are currently unknown.
-                  </p>
-                </div>
-                <span className="badge">Location service pending</span>
-              </div>
-              <p className="small-note">
-                Map data, when connected: ©{" "}
-                <a
-                  href="https://www.openstreetmap.org/copyright"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  OpenStreetMap contributors
-                </a>
-                .
-              </p>
-            </>
+                ]);
+                setMode("urgent");
+                setStep(2);
+                setToast(
+                  "Employer notice prepared. Review and approve the exact message before simulated delivery.",
+                );
+              }}
+            />
           )}
 
           <footer className="page-footer">
