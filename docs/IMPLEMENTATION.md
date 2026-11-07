@@ -16,7 +16,7 @@ By the Sat 18:00 setup gate (PRD section 14): rows 2, 3 and 5 pass and the Ampli
 | 4 | S3 bucket for `uploads/`. Add a lifecycle rule that expires `uploads/` after 14 days. Presigned URLs, if any, expire within 5 minutes. Block Public Access and SSE-S3 encryption are on by default; leave them on. | Data and infra | PutObject to `uploads/` works |
 | 5 | Google Cloud: OAuth app (External, Testing), enable Calendar and Gmail APIs, add test users, create the 6 demo events by hand (section 8) | Integrations and state | A teammate account signs in and lists events |
 | 6 | Amplify Hosting: connect the repo, attach the SSR compute role, create the app secret, set config env vars, add the `amplify.yml` `.env.production` step (section 10) | Data and infra | Deployed URL loads, and `/api/health` (admins only) calls Claude, Titan, the Data API and S3 once each under the compute role and returns 200 |
-| 7 | ElevenLabs: key in the app secret only | AI and retrieval | `/api/stt` returns a transcript |
+| 7 | ElevenLabs: key in the app secret only | Integrations and state | `/api/stt` returns a transcript |
 | 8 | Run ETL scripts (section 5) | Data and infra | `SELECT kind, count(*) FROM resource GROUP BY kind;` shows pharmacy, hospital and transit_stop each above 0. Expected as of 2026-11-07: about 6,200 transit stops, about 213 Community Services rows, and 450 to 500 OSM pharmacy, clinic, doctors and hospital rows (OSM varies by Overpass instance). `community` is not empty. |
 | 9 | Time zone check on every runtime: local Node, Amplify, the dispatcher Lambda (P1), Aurora and the demo browser | Data and infra | In Node and the browser, `new Date("2026-11-08T17:30:00Z").toLocaleString("en-CA", {timeZone: "America/Edmonton"})` shows 11:30. In Aurora, `SELECT timestamptz '2026-11-08 17:30:00+00' AT TIME ZONE 'America/Edmonton';` returns 11:30. If any check shows 10:30, use `Etc/GMT+6` (fixed UTC-6; the POSIX sign is inverted) instead of `America/Edmonton` everywhere. Node v26.0.0 (tz 2026a) fails this check. |
 | 10 | P1, only after the P0 list passes: Scheduler role, schedule group `reliefready` and the `rr-dispatcher` Lambda (section 9) | Data and infra | A test schedule calls the app webhook |
@@ -853,8 +853,8 @@ Guards:
 
 | Stream | Scope | First deliverable |
 |---|---|---|
-| AI and retrieval | `lib/llm.ts` A1 to A6, prompts, validators, geo queries, embed script, `lib/elevenlabs.ts`, `/api/stt`, `/api/tts` (section 0 task 7) | A1 and A4 working on fixture text |
-| Integrations and state | Google OAuth, Calendar read, `gmail.send`, response links, `state.ts` (states, app time, expiry), Scheduler tick (P1) | One real email sent with a working Accept link |
+| AI and retrieval | `lib/llm.ts` A1 to A6, prompts, validators, geo queries, embed script | A1 and A4 working on fixture text |
+| Integrations and state | Google OAuth, Calendar read, `gmail.send`, response links, `state.ts` (states, app time, expiry), `lib/elevenlabs.ts`, `/api/stt`, `/api/tts` (section 0 task 7), Scheduler tick (P1) | One real email sent with a working Accept link |
 | Data and infra | Section 0 tasks 1 to 4, 6, 8, 9 and 10 (P1), ETL scripts, seed script | Resource table loaded; deployed URL |
 | Frontend and demo | Screens for U1 to U6, U8, C2 (record and upload), C3 (fact review and conflict resolution), C4, C6, C9, R1 and R3; U7 if P1 is reached; accessibility pass; demo script; Devpost | Clickable flow on mocked API |
 
