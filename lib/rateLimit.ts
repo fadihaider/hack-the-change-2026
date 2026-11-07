@@ -105,3 +105,54 @@ export function tooManyRequests(result: LimitResult): Response {
 
 /** stale windows are harmless but grow the table; call from the expiry sweep or a daily job */
 export const PRUNE_RATE_LIMITS = `DELETE FROM rate_limit WHERE window_start < now() - interval '2 days'`;
+
+const VOICE_STEPS = new Set(["stt", "tts"]);
+
+const RECORD_CALL = `INSERT INTO llm_call (user_id, step, model) VALUES (CAST(:user_id AS uuid), :step, :model) RETURNING id::text AS id`;
+
+const RECORD_TOKENS = `UPDATE llm_call SET input_tokens = :input_tokens, output_tokens = :output_tokens
+  WHERE id = CAST(:id AS bigint) AND user_id = CAST(:user_id AS uuid)`;
+
+export interface Reservation {
+  allowed: boolean;
+  limit: LimitResult;
+  /** llm_call row id when allowed; pass to recordTokens after a model call (speech leaves tokens null) */
+  callId: string | null;
+}
+
+/**
+ * Atomically counts one paid call against the user's limit and records it in llm_call, in one transaction.
+ * Call before every model or speech request; failed provider calls still count. Voice steps (stt, tts) use the
+ * voice limit; model steps use the per-user model limit plus the app-wide daily fuse.
+ */
+export async function reserveCall(
+  database: { transaction<T>(work: (tx: SqlRunner) => Promise<T>): Promise<T> },
+  call: { userId: string; step: string; model: string },
+): Promise<Reservation> {
+  const checks = VOICE_STEPS.has(call.step) ? [{ rule: LIMITS.voicePerUser, subject: call.userId }] : modelLimits(call.userId);
+  return database.transaction(async (tx) => {
+    const limit = await hitAll(tx, checks);
+    if (!limit.allowed) {
+      return { allowed: false, limit, callId: null };
+    }
+    const rows = await tx.query<{ id: string }>(RECORD_CALL, [
+      p.uuid("user_id", call.userId),
+      p.text("step", call.step),
+      p.text("model", call.model),
+    ]);
+    return { allowed: true, limit, callId: rows[0]?.id ?? null };
+  });
+}
+
+/** fills in token counts for a reserved model call (from response.usage); never stores prompt or output text */
+export async function recordTokens(
+  sql: SqlRunner,
+  input: { callId: string; userId: string; inputTokens: number; outputTokens: number },
+): Promise<void> {
+  await sql.execute(RECORD_TOKENS, [
+    p.int("input_tokens", input.inputTokens),
+    p.int("output_tokens", input.outputTokens),
+    p.text("id", input.callId),
+    p.uuid("user_id", input.userId),
+  ]);
+}
