@@ -150,6 +150,69 @@ AES-256-GCM ciphertext to app_user.id using AAD and uses a fresh IV each time.
 production checker is supplied. Its approval hash and evidence names follow the
 existing spec exactly.
 
+### Google sign-in and account persistence
+
+`lib/auth/google.ts` exports `createGoogleAuthCallbacks`,
+`GOOGLE_AUTHORIZATION_PARAMS`, `SAFE_AUTH_LOGGER` and `googleAccountLoader` for
+the installed NextAuth **4.24.15**. This is a tested callback foundation; no root
+`auth.ts`, sign-in HTTP route or live Google session is supplied yet.
+
+Fadi's account-store contract, agreed on the board for #25/#7, is:
+
+```ts
+interface AccountStore {
+  findOrCreateUserByEmail(verifiedEmail: string): Promise<{ id: string }>;
+  loadEncryptedRefreshToken(userId: string): Promise<{
+    email: string;
+    ciphertext: Uint8Array | null;
+  }>;
+  saveEncryptedRefreshToken(userId: string, ciphertext: Uint8Array): Promise<void>;
+}
+```
+
+Email is lowercased after verifying the Google profile. The upsert must be atomic
+and unique on that email, returning a stable app_user UUID on repeat sign-in.
+Load/save operate only on that server-selected UUID. Unknown IDs must throw
+`WorkflowError("not_found")`; a save affecting no row must fail. No memory
+production implementation is included. The agreed storage column is `bytea`;
+Fadi owns the schema change from the original implementation guide's `text`.
+The callbacks convert `lib/crypto.ts`'s base64 encoding into bytes with the same
+`iv || authTag || ciphertext` layout and owner-ID AAD. The store never receives a
+plaintext token. `googleAccountLoader` converts those bytes back, decrypts only
+on the server and supplies `googleClient`'s existing `loadAccount` dependency.
+
+Sign-in accepts only a Google OAuth account whose subject matches the verified
+profile and whose granted scopes include the complete existing allowlist.
+Google's userinfo email/profile aliases are accepted. Missing verification,
+identity mismatch or partial grants deny sign-in before persistence. A new
+refresh token is encrypted and saved before issuing the app JWT; repeat sign-in
+without one preserves and validates the saved owner-bound ciphertext. No saved
+token, corrupt ciphertext or a different owner binding requires reauthentication.
+Store failures expose a fixed error code only.
+
+JWT callbacks return only `sub`, `appUserId`, `email` and `name`; NextAuth adds its
+own encoding metadata. Session callbacks return only `expires` and
+`user:{id,email,name}`. Neither callback spreads provider/default token fields or
+client session updates. Access, refresh and ID tokens are never copied into the
+JWT or browser session. Client updates cannot change the signed app identity.
+
+When the durable store lands, the root configuration must use the stock Google
+provider with `authorization.params: GOOGLE_AUTHORIZATION_PARAMS`,
+`session:{strategy:"jwt"}`, these callbacks, an explicit `secret` from the server
+secret loader, `logger:SAFE_AUTH_LOGGER` and `debug:false`. Preserve the stock
+Google provider's ID-token, PKCE and state checks. Root route/server-session
+wiring stays with Ali; database and deployment files stay with Fadi. For this
+installed v4 API, configure the canonical `NEXTAUTH_URL` to match `APP_BASE_URL`
+when deploying, and use `getServerSession` with the same options. Do not assume
+the implementation guide's Auth.js v5 `auth()`/`AUTH_TRUST_HOST` examples apply
+to the installed v4 package. This is a deployment handoff requirement, not a
+completed environment change.
+
+Reference: [NextAuth v4 Google](https://next-auth.js.org/providers/google),
+[callbacks](https://next-auth.js.org/configuration/callbacks),
+[options](https://next-auth.js.org/configuration/options) and
+[server session](https://next-auth.js.org/configuration/nextjs).
+
 Local setup is blocked on Google test-project/account configuration, ignored
 `.env.local` credentials, ElevenLabs API key/credits, the durable adapter and the
 eventual deployed APP_BASE_URL. Keep all credentials out of issues and logs.
@@ -185,3 +248,10 @@ seven additional fixture checks for exact viewed content, missing/invalid
 preconditions, changed previews, a queued edit versus approval, competing
 approvals, owner denial and unambiguous revision fields. These test a serializing
 fixture; real SQL isolation and the eventual HTTP status mapping remain pending.
+
+`node --conditions=react-server --import tsx --test tests/google-auth.test.ts`
+passes 13 auth fixture checks for account verification/grants, encrypted binary
+persistence, owner binding, repeat sign-in, identity-only JWT/session output,
+ignored client identity updates, fixed-code errors and metadata-free logging.
+These do not verify OAuth redirects/cookies, Google account consent, the real
+database or a real Calendar read/send.
