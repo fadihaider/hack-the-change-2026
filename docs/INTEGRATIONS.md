@@ -132,6 +132,18 @@ eventual deployed APP_BASE_URL. Keep all credentials out of issues and logs.
 Speech ownership was handed to Ali on the board; Fadi confirmed no existing
 speech files. Speech routes above are proposed contracts, not completed work.
 
+`elevenLabsClient` in `lib/elevenlabs.ts` is the server-only speech adapter. STT
+accepts nonempty supported audio up to 10 MB, uses Scribe v2 and deletes the
+provider transcript when a transcription_id is returned. Its internal result is
+`{transcript, cleanup:"deleted"|"id_not_returned"}`; a missing id does not become a
+false deletion claim. Cleanup failure is an error. Deleting a transcript is not
+zero retention for all provider logs. TTS uses the configured voice and explicit
+Flash v2.5 model, returns MP3 bytes, and accepts at most 4,000 Unicode characters
+per call. Keys stay server-side, calls use no-store, and ambiguous provider
+failures are not retried. Callers must supply session authorization, same-Origin
+checks, per-user rate limits and metadata-only llm_call logging before wiring
+the HTTP routes. No permissive HTTP route is supplied.
+
 ## Checks so far
 
 `node --conditions=react-server --test tests/requests.test.ts tests/integrations.test.ts`
