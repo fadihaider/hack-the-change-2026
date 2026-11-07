@@ -9,12 +9,14 @@
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test lib/demo/*.test.ts lib/frontend/*.test.ts",
-    "test:ai": "node --import tsx --test lib/ai/**/*.test.ts"
+    "test:ai": "node --import tsx --test lib/ai/**/*.test.ts",
+    "test:store": "node --conditions=react-server --import tsx --test tests/store.test.ts tests/rate-limit.test.ts tests/health-terms.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "1.1.1",
     "@anthropic-ai/sdk": "1.6.0",
     "@aws-sdk/client-bedrock-runtime": "3.1164.0",
+    "@aws-sdk/client-rds-data": "3.1164.0",
     "lucide-react": "1.70.0",
     "next": "15.5.29",
     "next-auth": "4.24.15",
