@@ -46,6 +46,7 @@ import {
 } from "@/lib/demo/workflow";
 
 import First72Guide from "./First72Guide";
+import LiveRequests from "./LiveRequests";
 
 type Mode = "urgent" | "care" | "recover" | "guide";
 const dateLabel = (n: number) =>
@@ -94,6 +95,7 @@ function Modal({
 }
 
 export default function ReliefReady() {
+  const [showLive, setShowLive] = useState(false);
   const [mode, setMode] = useState<Mode>("urgent");
   const [step, setStep] = useState(0);
   const [intro, setIntro] = useState(
@@ -299,6 +301,8 @@ export default function ReliefReady() {
     setValidation("");
   }
 
+  if (showLive) return <LiveRequests onBack={() => setShowLive(false)} />;
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main">
@@ -393,9 +397,14 @@ export default function ReliefReady() {
             <MapPin size={15} /> Calgary, Alberta{" "}
             <span className="topbar-divider" /> Your care, connected
           </div>
-          <span className="demo-pill">
-            <span /> TEST MODE · NO LIVE SENDS
-          </span>
+          <div className="mode-tools">
+            <button className="text-button" onClick={() => setShowLive(true)}>
+              Open live workspace
+            </button>
+            <span className="demo-pill">
+              <span /> TEST MODE · NO LIVE SENDS
+            </span>
+          </div>
         </header>
         <main id="main" tabIndex={-1}>
           <div className="eyebrow">
