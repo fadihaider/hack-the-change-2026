@@ -166,6 +166,7 @@ export async function confirmResponse(input: {
   return input.store.withResponseToken(hash, input.realNow, async (tx) => {
     if (tx.token.expiresAt <= input.realNow) throw new WorkflowError("not_found");
     if (tx.request.state !== "requested") return { state: tx.request.state, recorded: false };
+    if (tx.token.choice !== "propose" && input.proposal !== undefined) throw new WorkflowError("invalid_response");
     let proposal: { at: Date; note: string } | undefined;
     if (tx.token.choice === "propose") {
       // Require an explicit offset so browser/server time zones cannot disagree.

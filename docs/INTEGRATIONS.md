@@ -1,7 +1,8 @@
 # Integration handoff for issue #6
 
-Status: partial. The workflow services and transport code exist; HTTP routes,
-Auth.js sign-in, the durable store adapter and live-provider checks are pending.
+Status: partial. The workflow services, transport code and tested HTTP handler
+functions exist; Next.js route registration, Auth.js sign-in, the durable store
+adapter and live-provider checks are pending.
 No real email, Calendar read, speech request or deployed Accept flow has passed.
 
 ## Store boundary (Fadi)
@@ -46,6 +47,51 @@ are plain text, at most 300 characters, and never become model input. Invalid
 tokens and ownership failures return 404; invalid input 400; invalid Origin 403;
 state conflicts 409. Provider failures must not expose provider response bodies.
 Keep all existing mock UI results labelled test mode until the live path passes.
+
+### Send and response HTTP boundary
+
+`createRequestHttpHandlers` in `lib/requests/http.ts` supplies `send`, `preview`
+and `confirm` functions taking standard `Request` objects and returning
+`Response` objects. It does not register Next.js routes. Compose it with the
+durable `WorkflowStore`, the real Google transport, Fadi's health-term checker,
+an owner-scoped app-clock reader, and a verified server-session resolver returning
+`{userId}` or null. It supplies no memory store, permissive checker or mock send.
+Root auth and route composition remain with Ali after the #7 persistence handoff.
+
+Send accepts only POST JSON `{requestId}` (1 to 128 letters, digits, hyphens or
+underscores); it gets the owner from the session and all message content from the
+store. Recipient confirmation accepts only POST JSON `{}` or
+`{proposal:{at,note?}}`, with the choice fixed by the stored token. A proposal on
+an unanswered Accept/Decline token is rejected. Proposal dates must be valid ISO
+date-times with `Z` or an explicit offset; notes permit at most 300 Unicode
+characters. Both POSTs check Origin before reading the body or entering storage.
+Recipient confirmation uses the bearer token without requiring an owner login.
+
+The body reader enforces a 4 KiB limit on actual bytes, including streamed bodies
+with a missing or false Content-Length. Malformed JSON/UTF-8 and unknown fields
+return 400 `invalid_input`; oversized bodies return 413 `payload_too_large`;
+non-JSON media types return 415 `unsupported_media_type`; wrong methods return
+405 `method_not_allowed` with Allow. Missing owner identity returns 401
+`unauthenticated`. Workflow failures retain their fixed codes and 400/403/404/409
+statuses. Unexpected auth/storage/provider errors return only 503
+`temporarily_unavailable`; diagnostic messages and bodies are neither returned
+nor logged. A recorded Gmail failure or health-review result is still an HTTP
+200 outcome, exactly as in the table above. No handler retries a send.
+
+`preview(GET, token)` reads the unexpired token through `withResponseToken` and
+returns only `{request:{subject,body,state,choice,respondBy}}`. It never calls a
+transition, consumes tokens, or writes evidence. The eventual `/r/[token]` page
+must render those fields as plain text and require a separate explicit POST to
+confirm; a GET, including an email scanner's prefetch, cannot confirm a response.
+The JSON preview is an internal page-data boundary, not a new public endpoint.
+Every success/error response sets `Cache-Control:no-store`,
+`Referrer-Policy:no-referrer` and `X-Content-Type-Options:nosniff`, and grants no
+cross-origin access. Preserve equivalent headers on the eventual HTML page and
+exclude response-token URLs from access/analytics logs.
+
+The HTTP fixtures exercise the real workflow services with fictional in-memory
+storage and an intercepted Gmail transport. They establish no live send, real
+SQL transaction/locking, protected deployed route, or rendered landing-page result.
 
 ## Approval queue and clock contract (planned; not implemented)
 
