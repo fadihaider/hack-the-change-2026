@@ -2319,3 +2319,34 @@ summary {
     scroll-behavior: auto !important;
   }
 }
+
+.tenure-panel {
+  margin-bottom: 25px;
+}
+.tenure-panel h2 {
+  font-size: 24px;
+  max-width: 700px;
+}
+.tenure-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 20px 0 13px;
+}
+.tenure-choices button {
+  min-width: 85px;
+}
+.tenure-note {
+  color: #68745f;
+  font-size: 12px;
+  margin-top: 15px;
+  max-width: 700px;
+}
+.guide-card .card-source {
+  margin-top: 22px;
+}
+@media (max-width: 760px) {
+  .bottom-strip > div {
+    min-width: 180px;
+  }
+}

@@ -8,12 +8,13 @@ Run `npm ci && npm run dev`, then open http://localhost:3000. Use fictional info
 4. In Recover, simulate Accept for one request and Propose time for another. The accepted item is Handled; the proposal needs review and creates a New commitment. Jump seven days: the remaining unanswered request expires and needs follow-up. All clock changes are labelled simulated.
 5. In Care, choose the 8:30 breakfast source. The 8:00 source becomes superseded. Approve the tea preference. Only the approved timed instruction appears on the day timeline, with its full exact text one click away.
 6. Ask the profile about breakfast: exact approved facts and their source references appear. Ask about a spare key: the demo says the answer is absent and records an open question. This is keyword lookup, not a model response.
+7. Open the first-72-hours guide. The leave card stays hidden until tenure is Yes or Not sure, and hides for No. Dated Alberta, Canada and AHS cards link to their official sources. Prepare an employer notice: it enters Urgent as awaiting approval and sends nothing.
 
 ## Verification
 
 The initial scaffold was checked with eight passing Node workflow tests, TypeScript, a production build on Next.js 15.5.29, a clean dependency audit, and browser interaction checks for the steps above. The mobile intake view was inspected at 390 CSS pixels with no horizontal overflow. These checks do not verify live integrations.
 
-The first deliverable is a clickable frontend. Google sign-in/calendar/sending, response-link endpoints, AI extraction, transcription, uploads, persistent storage and resource retrieval need their live adapters. PDF selection is local only; it does not upload or extract facts. The guide provides general source links without eligibility, distance, hours or accessibility claims. The local demo clock is available to every demo visitor; the live admin clock must be protected server-side.
+The first deliverable is a clickable frontend. Google sign-in/calendar/sending, response-link endpoints, AI extraction, transcription, uploads, persistent storage and resource retrieval need their live adapters. PDF selection is local only; it does not upload or extract facts. The guide has sourced rule summaries and a tenure filter, without determining eligibility or claiming verified distance, hours or accessibility. The local demo clock is available to every demo visitor; the live admin clock must be protected server-side.
 
 ## Integration boundaries
 
