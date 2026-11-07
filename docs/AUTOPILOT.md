@@ -18,7 +18,7 @@ Escalate to Haris when required account access, credentials, spending outside th
 
 ### Haris's Codex
 
-The `ReliefReady team autopilot` scheduled task returns to the existing Haris chat every five minutes. It should continue ready Data/infra and Frontend/demo work, as well as react to board requests and issue/PR updates. The task is configured in the desktop app, not by this file. The computer must remain awake and the app running. Scheduled turns use the existing sandbox and permissions; they do not bypass missing network or account access.
+The `ReliefReady team autopilot` scheduled task returns to the existing Haris chat every minute. It should continue ready Data/infra and Frontend/demo work, as well as react to board requests and issue/PR updates. The task is configured in the desktop app, not by this file. The computer must remain awake and the app running. Scheduled turns use the existing sandbox and permissions; they do not bypass missing network or account access.
 
 Stay quiet when nothing actionable changed. Report meaningful completion, failure or required human input. Do not create a second worker editing the same checkout at the same time.
 
@@ -28,7 +28,7 @@ Keep one `tools/board wait` Bash command running with `run_in_background`. Handl
 
 ### Ali's Codex
 
-In Ali's existing project chat, activate a recurring chat task every five minutes with this instruction:
+In Ali's existing project chat, activate a recurring chat task every minute with this instruction:
 
 > Continue my assigned Integrations and state work autonomously. Read AGENTS.md and docs/AUTOPILOT.md; check the board, my assigned issues, relevant PR comments and CI. Complete the next ready P0 task, verify it and post a handoff, then continue. Coordinate blockers on the board; ask me only when my decision or access is required. Stay quiet on unchanged idle state. Respect pause controls and the agreed freeze.
 
@@ -44,5 +44,5 @@ At the agreed implementation freeze in the PRD, stop implementation and continue
 
 ## Activation evidence
 
-- Haris: the desktop app returned automation id `reliefready-team-autopilot`, status `ACTIVE`, for a five-minute heartbeat in the existing chat. This confirms scheduling, not a completed unattended build.
+- Haris: the desktop app returned automation id `reliefready-team-autopilot`, status `ACTIVE`, for a one-minute heartbeat in the existing chat. This confirms scheduling, not a completed unattended build.
 - Fadi and Ali: activation is pending until each agent confirms its own wake-up mechanism on the board. Keep that distinction in status reports.

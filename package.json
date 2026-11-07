@@ -1,0 +1,40 @@
+{
+  "name": "reliefready",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test lib/demo/*.test.ts",
+    "test:ai": "node --import tsx --test lib/ai/**/*.test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "1.1.1",
+    "@anthropic-ai/sdk": "1.6.0",
+    "@aws-sdk/client-bedrock-runtime": "3.1164.0",
+    "lucide-react": "1.70.0",
+    "next": "15.5.29",
+    "next-auth": "4.24.15",
+    "nodemailer": "10.4.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "0.0.1",
+    "unpdf": "2.1.0",
+    "zod": "4.6.7"
+  },
+  "overrides": {
+    "nodemailer": "$nodemailer",
+    "postcss": "^8.5.23"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/nodemailer": "8.0.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}
