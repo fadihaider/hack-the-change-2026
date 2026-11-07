@@ -1,1 +1,13 @@
 .board/
+
+# secrets and local config
+.env*
+!.env.example
+
+# build output
+node_modules/
+.next/
+
+# local-only notes
+private/
+.DS_Store
