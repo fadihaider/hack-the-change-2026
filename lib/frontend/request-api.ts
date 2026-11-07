@@ -19,6 +19,7 @@ const state = z.enum([
 const timestamp = z.string().datetime({ offset: true });
 export const requestViewSchema = z.object({
   id: z.string().min(1),
+  revision: z.string().regex(/^[a-f0-9]{64}$/),
   state,
   action: z.enum(["notify", "reschedule", "extension", "coverage"]),
   recipient: z.object({
@@ -97,6 +98,8 @@ export function apiErrorMessage(error: unknown): string {
     return "The live workspace is not available yet. The demo remains available.";
   if (error.status === 409)
     return "This request changed elsewhere. Refresh and review its recorded state.";
+  if (error.status === 412 || error.status === 428)
+    return "This approval preview is out of date. Review the refreshed message and approve it again.";
   if (error.code === "health_terms")
     return "Health terms need your review. Edit the message or explicitly allow the disclosure before approving.";
   if (error.code === "invalid_response")
@@ -109,6 +112,7 @@ export function createRequestApi(transport: typeof fetch = fetch) {
     path: string,
     schema: z.ZodType<T>,
     body?: object,
+    headers: Record<string, string> = {},
   ): Promise<T> {
     let response: Response;
     try {
@@ -120,7 +124,7 @@ export function createRequestApi(transport: typeof fetch = fetch) {
         ...(body === undefined
           ? {}
           : {
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", ...headers },
               body: JSON.stringify(body),
             }),
       });
@@ -167,11 +171,16 @@ export function createRequestApi(transport: typeof fetch = fetch) {
         respondBy?: string | null;
       },
     ) => call("/api/requests/edit", requestSchema, { requestId, ...changes }),
-    approve: (requestId: string, healthOverride = false) =>
-      call("/api/requests/approve", requestSchema, {
-        requestId,
-        healthOverride,
-      }),
+    approve: (requestId: string, revision: string, healthOverride = false) => {
+      if (!/^[a-f0-9]{64}$/.test(revision))
+        return Promise.reject(new RequestApiError("invalid_response", 502));
+      return call(
+        "/api/requests/approve",
+        requestSchema,
+        { requestId, healthOverride },
+        { "If-Match": `"${revision}"` },
+      );
+    },
     cancel: (requestId: string) =>
       call("/api/requests/cancel", requestSchema, { requestId }),
     send: (requestId: string) =>
