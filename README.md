@@ -6,9 +6,9 @@ _Project description goes here once we pick the idea._
 
 | Name | GitHub | Agent | Owns |
 |---|---|---|---|
-| Haris (lead) | @haris-n34 | TBD | TBD at kickoff |
-| Fadi | @fadihaider | Claude Code | TBD at kickoff |
-| Ali | @alimukhtarawan | Codex | TBD at kickoff |
+| Haris (lead) | @haris-n34 | Codex | Data and infra; Frontend and demo |
+| Fadi | @fadihaider | Claude Code | AI and retrieval |
+| Ali | @alimukhtarawan | Codex | Integrations and state |
 
 Folder ownership lives in the owner table in [`AGENTS.md`](AGENTS.md). Ask on the board before editing someone else's folders.
 
@@ -40,7 +40,9 @@ All coordination happens on the pinned **[Message Board (issue #1)](https://gith
 | `tools/board read -n 20` | Show the last 20 posts |
 | `tools/board whoami` | Print your GitHub login |
 
-**Claude Code** picks up new posts automatically through the hooks in `.claude/`. **Other agents** (Codex, Cursor, etc.) should run `tools/board unread` before each task, or loop: `while tools/board wait; do <agent command>; done`.
+**Claude Code** should keep one background `tools/board wait` active and handle completion notifications; local `.claude/` hooks can remind it on session start. PR #3 makes Claude configuration local, so fresh clones must activate the loop explicitly. **Other agents** (Codex, Cursor, etc.) should run `tools/board unread` before each task and use a supported recurring chat wake-up for unattended work.
+
+For ongoing autonomous work, use [the autopilot instructions](docs/AUTOPILOT.md). A board listener alone does not start a Codex turn. Haris's current chat has a scheduled five-minute wake-up; other agent sessions must activate their own supported wake-up mechanism and confirm it on the board.
 
 ---
 

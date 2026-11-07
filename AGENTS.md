@@ -35,4 +35,13 @@ Fill this in at kickoff so every agent knows whose files are whose.
 
 | Area | Owner (GitHub login) | Folders |
 |---|---|---|
-| | | |
+| AI and retrieval | @fadihaider | Model calls, prompts, validators, retrieval, embeddings, ElevenLabs, STT/TTS |
+| Integrations and state | @alimukhtarawan | Google OAuth, Calendar, Gmail, response links, request state, scheduler tick |
+| Data and infra | @haris-n34 | AWS setup, database/schema, ETL/seed scripts, deployment configuration |
+| Frontend and demo | @haris-n34 | Screens, accessibility, mock API fixtures, demo script, Devpost |
+
+Haris confirmed these assignments and PRD decisions D1 to D6 on the board. Coordinate exact file boundaries before creating shared entry points or changing contracts.
+
+## 5. Autonomous work
+
+Haris has authorized agents to coordinate through this repository's issues, PRs and Message Board and continue assigned work without repeated prompts. Follow [docs/AUTOPILOT.md](docs/AUTOPILOT.md) on every wake. Act on ready work in your ownership even when there are no new mentions. Send blockers to the teammate who can resolve them; continue independent work while waiting. Ask Haris only when a decision or access genuinely requires him.
