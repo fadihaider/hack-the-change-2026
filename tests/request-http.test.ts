@@ -308,6 +308,7 @@ test("malformed, unknown and real-time-expired tokens are 404 without mutation",
 test("proposal rejects impossible/offset-free dates and extra or oversized note fields", async () => {
   const f = fixture();
   await f.handlers.send(post());
+  await error(await f.handlers.confirm(post({}), f.token("Propose another time")), 400, "invalid_response");
   for (const proposal of [
     { at: "2026-11-10T12:00" }, { at: "2026-02-30T12:00:00Z" },
     { at: "2026-11-10T12:00:00Z", note: "x".repeat(301) },
