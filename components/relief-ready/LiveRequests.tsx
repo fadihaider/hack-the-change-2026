@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
-  Check,
   Clock3,
   Mail,
   RefreshCw,
@@ -94,6 +93,7 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
     id: string,
     work: () => Promise<unknown>,
     success: string,
+    recoverAfter = false,
   ) {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -102,7 +102,8 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
     try {
       const result = await work();
       setNotice(typeof result === "string" ? result : success);
-      await reload();
+      if (recoverAfter) setView("recover");
+      await reload(recoverAfter || view === "recover");
     } catch (e) {
       setError(apiErrorMessage(e));
     } finally {
@@ -146,7 +147,11 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
         </div>
         <span className="badge">
           <ShieldCheck size={14} />{" "}
-          {ready ? "Server records" : "Checking connection"}
+          {ready
+            ? "Server records"
+            : loading
+              ? "Checking connection"
+              : "Service unavailable"}
         </span>
       </div>
       {error && (
@@ -159,8 +164,8 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
         </div>
       )}
       {notice && (
-        <div className="inline-success" role="status">
-          <Check size={17} /> {notice}
+        <div className="live-notice" role="status">
+          {notice}
         </div>
       )}
       <div className="live-toolbar">
@@ -229,6 +234,7 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
       {!loading && (
         <div className="request-grid">
           {rows
+            .slice()
             .sort((a, b) =>
               (a.respondBy ?? "9999").localeCompare(b.respondBy ?? "9999"),
             )
@@ -426,6 +432,7 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
                               return "Nothing was sent. The request needs review before another approval.";
                           },
                           "Gmail delivery was recorded. This is still waiting for a recipient response.",
+                          true,
                         )
                       }
                     >

@@ -2436,3 +2436,23 @@ summary {
     padding: 10px;
   }
 }
+
+.live-notice {
+  background: #edf1e5;
+  color: #4f6541;
+  border: 1px solid #dfe6d3;
+  border-radius: 8px;
+  padding: 15px;
+  margin: 15px 0;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .topbar {
+    height: auto;
+    min-height: 60px;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}

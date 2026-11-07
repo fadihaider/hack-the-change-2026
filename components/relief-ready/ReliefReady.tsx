@@ -46,7 +46,8 @@ import {
 } from "@/lib/demo/workflow";
 
 import First72Guide from "./First72Guide";
-import LiveRequests from "./LiveRequests";
+import dynamic from "next/dynamic";
+const LiveRequests = dynamic(() => import("./LiveRequests"));
 
 type Mode = "urgent" | "care" | "recover" | "guide";
 const dateLabel = (n: number) =>
