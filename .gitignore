@@ -7,6 +7,8 @@
 # build output
 node_modules/
 .next/
+out/
+*.tsbuildinfo
 
 # local-only notes
 private/
