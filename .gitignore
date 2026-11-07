@@ -1,1 +1,17 @@
 .board/
+
+# secrets and local config
+.env*
+!.env.example
+
+# build output
+node_modules/
+.next/
+
+# local-only notes
+private/
+.DS_Store
+
+# local agent config (Claude Code); AGENTS.md stays tracked for the team's Codex agents
+CLAUDE.md
+.claude/
