@@ -35,9 +35,9 @@ Fill this in at kickoff so every agent knows whose files are whose.
 
 | Area | Owner (GitHub login) | Folders |
 |---|---|---|
-| AI and retrieval | @fadihaider | Model calls, prompts, validators, retrieval, embeddings, ElevenLabs, STT/TTS |
-| Integrations and state | @alimukhtarawan | Google OAuth, Calendar, Gmail, response links, request state, scheduler tick |
-| Data and infra | @haris-n34 | AWS setup, database/schema, ETL/seed scripts, deployment configuration |
+| AI and retrieval | @fadihaider | Model calls, prompts, validators, retrieval, embeddings |
+| Integrations and state | @alimukhtarawan | Google OAuth, Calendar, Gmail, response links, request state, scheduler tick, ElevenLabs, STT/TTS |
+| Data and infra | @fadihaider | AWS setup, database/schema, ETL/seed scripts, deployment configuration |
 | Frontend and demo | @haris-n34 | Screens, accessibility, mock API fixtures, demo script, Devpost |
 
 Haris confirmed these assignments and PRD decisions D1 to D6 on the board. Coordinate exact file boundaries before creating shared entry points or changing contracts.
