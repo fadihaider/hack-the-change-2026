@@ -80,6 +80,7 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
     try {
       const data = await (recover ? api.refresh() : api.list());
       setRequests(data.requests);
+      setOverrides({});
       setAppNow(data.appNow);
       setReady(true);
       setError("");
@@ -106,7 +107,21 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
       if (recoverAfter) setView("recover");
       await reload(recoverAfter || view === "recover");
     } catch (e) {
-      setError(apiErrorMessage(e));
+      if (
+        e instanceof RequestApiError &&
+        (e.status === 412 || e.status === 428)
+      ) {
+        setEditor((previous) => (previous?.id === id ? null : previous));
+        setOverrides({});
+        try {
+          await reload(false);
+          setNotice(
+            "The message changed since you reviewed it. Read the refreshed preview and explicitly approve again. Nothing was approved or sent.",
+          );
+        } catch {
+          /* reload retains the connection error and locks actions. */
+        }
+      } else setError(apiErrorMessage(e));
     } finally {
       inFlight.current = false;
       setPending(null);
@@ -403,6 +418,7 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
                           async () => {
                             const result = await api.approve(
                               r.id,
+                              r.revision,
                               overrides[r.id],
                             );
                             if (result.request.state !== "approved")
