@@ -281,7 +281,7 @@ const askSchema = z.object({
   healthNotice: maybe,
   openQuestionId: maybe,
   /** "demo_rules" is the offline keyword provider and must be labelled as such; "none" means no model call */
-  answeredBy: z.enum(["demo_rules", "anthropic", "bedrock", "none"]).default("none"),
+  answeredBy: z.enum(["demo_rules", "anthropic", "bedrock", "gemini", "none"]).default("none"),
   /** true when the question asks for medical judgment: the answer is a non-diagnostic 811/911 pointer */
   medicalRedirect: z.boolean().default(false),
   retrieval: z
