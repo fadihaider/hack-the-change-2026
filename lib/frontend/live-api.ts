@@ -336,6 +336,62 @@ export type CareContactView = z.infer<typeof careContactSchema>;
 const factEditSchema = z.object({ fact: careFactSchema, previous: careFactSchema.nullable() });
 const completionSchema = z.object({ eventId: text, date: isoDate, completedAt: maybe });
 
+// nearby resources with the inline map (PRD 10): real rows from the resource table, straight-line distance only
+export const NEARBY_TYPES = [
+  "pharmacy",
+  "clinic",
+  "hospital",
+  "public_health",
+  "social_support",
+  "community_centre",
+  "library",
+  "transit",
+] as const;
+export type NearbyType = (typeof NEARBY_TYPES)[number];
+const lonLat = z.tuple([z.number().finite(), z.number().finite()]);
+const nearbyResourceSchema = z.object({
+  id: text,
+  type: z.enum(NEARBY_TYPES),
+  typeLabel: text,
+  /** the raw resource.kind, e.g. "pharmacy", "doctors", "transit_stop" */
+  kind: text,
+  name: text,
+  address: maybe,
+  lat: z.number().finite(),
+  lon: z.number().finite(),
+  /** straight-line kilometres from the origin; never a drive or transit time */
+  distanceKm: z.number().finite(),
+  withinRadius: z.boolean(),
+  phone: maybe,
+  hours: z.object({ text: maybe, status: z.enum(["open", "closed", "unknown"]) }),
+  wheelchair: z.enum(["yes", "limited", "no", "unknown"]),
+  source: text,
+  sourceUrl: text,
+  license: maybe,
+  fetchedAt: isoDate,
+});
+export type NearbyResourceView = z.infer<typeof nearbyResourceSchema>;
+const nearbySchema = z.object({
+  origin: z.object({
+    lat: z.number().finite(),
+    lon: z.number().finite(),
+    /** e.g. "Rosa's home (approximate)"; rounded to 3 decimals server-side */
+    label: text,
+    community: maybe,
+    approximate: z.boolean(),
+  }),
+  radiusKm: z.number(),
+  method: z.literal("straight_line"),
+  resources: z.array(nearbyResourceSchema),
+  /** City community boundaries inside the map bounds, for the basemap */
+  outlines: z.array(z.object({ name: text, rings: z.array(z.array(lonLat)) })),
+  bounds: z.object({ west: z.number(), south: z.number(), east: z.number(), north: z.number() }),
+  counts: z.array(z.object({ type: z.enum(NEARBY_TYPES), label: text, shown: z.number().int(), withinRadius: z.number().int() })),
+  /** plain-language limits to show under the map */
+  limits: z.array(text),
+});
+export type NearbyView = z.infer<typeof nearbySchema>;
+
 const clockSchema = z.object({
   appNow: timestamp,
   realNow: timestamp,
@@ -407,6 +463,22 @@ export function createLiveApi(transport: typeof fetch = fetch) {
       ),
     ask: (question: string) =>
       call("/api/care/ask", askSchema, { body: { question }, ...model }),
+    nearby: (query: {
+      types: readonly NearbyType[];
+      radiusKm: 1 | 2 | 3 | 5;
+      accessible: "any" | "yes";
+      perType?: number;
+      address?: string;
+    }) => {
+      const params = new URLSearchParams({
+        types: query.types.join(","),
+        radiusKm: String(query.radiusKm),
+        accessible: query.accessible,
+      });
+      if (query.perType) params.set("perType", String(query.perType));
+      if (query.address?.trim()) params.set("address", query.address.trim());
+      return call(`/api/care-access/nearby?${params}`, nearbySchema);
+    },
     rejectFact: (factId: string) =>
       call(
         `/api/care/facts/${encodeURIComponent(factId)}/reject`,
