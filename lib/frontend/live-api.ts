@@ -43,6 +43,15 @@ export const sessionSchema = z.object({
   episode: z
     .object({ id: text, startsOn: isoDate, endsOn: isoDate, status: text })
     .nullable(),
+  // which optional providers actually handle requests right now; never secrets (PRD 14, AC13)
+  providers: z
+    .object({
+      /** "elevenlabs" only when /api/stt has a configured key and paid providers are allowed */
+      speech: z.enum(["elevenlabs", "off"]),
+      /** "vector" only when an embedding adapter is configured; otherwise keyword retrieval over approved facts */
+      retrieval: z.enum(["keyword", "vector"]),
+    })
+    .default({ speech: "off", retrieval: "keyword" }),
 });
 export type LiveSession = z.infer<typeof sessionSchema>;
 export type LiveMode = LiveSession["mode"];
@@ -199,6 +208,15 @@ const careFactSchema = z.object({
   conflictsWith: z.array(text),
   events: z.array(careEventSchema),
   createdAt: text,
+  /** 1 for an original fact; an edit creates a new approved version that supersedes the previous one */
+  version: z.number().int().default(1),
+  /** the previous version (status superseded) for an edited fact, or the conflict partner while conflicting */
+  supersedes: maybe.default(null),
+  /** who provided the source, e.g. "caregiver" */
+  sourceAuthor: maybe.default(null),
+  sourceCreatedAt: maybe.default(null),
+  /** optional short label; the UI falls back to textExact */
+  displayText: maybe.default(null),
 });
 export type CareFactView = z.infer<typeof careFactSchema>;
 const careProfileSchema = z.object({
@@ -234,6 +252,8 @@ const timelineItemSchema = z.object({
   fullText: maybe,
   category: maybe,
   highlight: z.boolean(),
+  /** set only when the caregiver tapped "Done" for this occurrence (user-recorded, not verified) */
+  completedAt: maybe.default(null),
 });
 export type TimelineItemView = z.infer<typeof timelineItemSchema>;
 const timelineSchema = z.object({
@@ -243,13 +263,34 @@ const timelineSchema = z.object({
   items: z.array(timelineItemSchema),
 });
 export type TimelineView = z.infer<typeof timelineSchema>;
+const citedFactSchema = z.object({
+  id: text,
+  category: text,
+  textExact: text,
+  sourceId: maybe.default(null),
+  sourceKind: maybe.default(null),
+  sourceCreatedAt: maybe.default(null),
+  version: z.number().int().default(1),
+});
+export type CitedFactView = z.infer<typeof citedFactSchema>;
 const askSchema = z.object({
   notFound: z.boolean(),
   answer: maybe,
-  citedFacts: z.array(z.object({ id: text, category: text, textExact: text })),
+  citedFacts: z.array(citedFactSchema),
   createOpenQuestion: z.boolean(),
   healthNotice: maybe,
   openQuestionId: maybe,
+  /** "demo_rules" is the offline keyword provider and must be labelled as such; "none" means no model call */
+  answeredBy: z.enum(["demo_rules", "anthropic", "bedrock", "none"]).default("none"),
+  /** true when the question asks for medical judgment: the answer is a non-diagnostic 811/911 pointer */
+  medicalRedirect: z.boolean().default(false),
+  retrieval: z
+    .object({
+      method: z.enum(["keyword", "keyword+vector", "none"]),
+      /** approved current facts that passed owner scoping and were sent as context */
+      considered: z.number().int(),
+    })
+    .default({ method: "none", considered: 0 }),
 });
 export type AskView = z.infer<typeof askSchema>;
 
@@ -272,6 +313,28 @@ const recoverSchema = z.object({
   expiredRequestIds: z.array(text),
 });
 export type RecoverView = z.infer<typeof recoverSchema>;
+
+const careSourceDetailSchema = z.object({
+  id: text,
+  kind: text,
+  author: text,
+  createdAt: text,
+  /** the retained source text; plain text only */
+  fullText: text,
+});
+export type CareSourceDetailView = z.infer<typeof careSourceDetailSchema>;
+const careContactSchema = z.object({
+  id: text,
+  name: text,
+  relationship: maybe,
+  phone: text,
+  /** emergency: call first in an emergency after 911; trusted: can help or take a shift */
+  kind: z.enum(["emergency", "trusted"]),
+  createdAt: text,
+});
+export type CareContactView = z.infer<typeof careContactSchema>;
+const factEditSchema = z.object({ fact: careFactSchema, previous: careFactSchema.nullable() });
+const completionSchema = z.object({ eventId: text, date: isoDate, completedAt: maybe });
 
 const clockSchema = z.object({
   appNow: timestamp,
@@ -344,6 +407,46 @@ export function createLiveApi(transport: typeof fetch = fetch) {
       ),
     ask: (question: string) =>
       call("/api/care/ask", askSchema, { body: { question }, ...model }),
+    rejectFact: (factId: string) =>
+      call(
+        `/api/care/facts/${encodeURIComponent(factId)}/reject`,
+        z.object({ fact: careFactSchema }),
+        { body: {} },
+      ),
+    /** approves the caregiver's corrected wording as a new version; the old fact is kept as superseded */
+    editFact: (factId: string, value: string) =>
+      call(`/api/care/facts/${encodeURIComponent(factId)}/edit`, factEditSchema, {
+        body: { text: value },
+      }),
+    careSource: (sourceId: string) =>
+      call(
+        `/api/care/sources/${encodeURIComponent(sourceId)}`,
+        careSourceDetailSchema,
+      ),
+    careContacts: () =>
+      call("/api/care/contacts", z.object({ contacts: z.array(careContactSchema) })),
+    addCareContact: (input: {
+      name: string;
+      relationship?: string | null;
+      phone: string;
+      kind: "emergency" | "trusted";
+    }) =>
+      call("/api/care/contacts", z.object({ contact: careContactSchema }), {
+        body: input,
+      }),
+    removeCareContact: (contactId: string) =>
+      call(
+        `/api/care/contacts/${encodeURIComponent(contactId)}/remove`,
+        z.object({ removed: z.boolean() }),
+        { body: {} },
+      ),
+    /** records (or clears) that the caregiver marked one occurrence done; never inferred from viewing */
+    completeEvent: (eventId: string, date: string, done: boolean) =>
+      call(
+        `/api/care/events/${encodeURIComponent(eventId)}/complete`,
+        completionSchema,
+        { body: { date, done } },
+      ),
     recover: () => call("/api/recover", recoverSchema),
     recoverRefresh: () => call("/api/recover", recoverSchema, { body: {} }),
     clock: () => call("/api/clock", clockSchema),

@@ -2,6 +2,8 @@
 import "server-only";
 import { albertaDate, loadActiveEpisode, loadRecipient } from "../_lib/context.ts";
 import { handle, isAdmin, json, readContext } from "../_lib/http.ts";
+import { embeddingMode } from "../../../lib/ai/embeddings.ts";
+import { speechMode } from "../../../lib/speech/status.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +29,7 @@ export async function GET(request: Request): Promise<Response> {
         community: recipient.community,
       },
       episode: episode && { id: episode.id, startsOn: episode.startsOn, endsOn: episode.endsOn, status: episode.status },
+      providers: { speech: speechMode(), retrieval: embeddingMode() === "off" ? "keyword" : "vector" },
     });
   });
 }
