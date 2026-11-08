@@ -20,6 +20,7 @@ import {
   checkedOn,
   distanceText,
   emptyText,
+  firstPageSize,
   hoursText,
   orderResources,
   RADIUS_CHOICES,
@@ -133,7 +134,7 @@ export function NearbyResourcesAndMap({
         if (speak.current) {
           announce(
             next.resources.length === 0
-              ? emptyText(typesKey.split(",") as NearbyType[], radiusKm, stepFree)
+              ? emptyText(typesKey.split(",") as NearbyType[], radiusKm, stepFree, next.counts)
               : summaryText(next, stepFree),
           );
         }
@@ -170,7 +171,9 @@ export function NearbyResourcesAndMap({
   }
 
   const ordered = useMemo(() => (data ? orderResources(data.resources, { openFirst }) : []), [data, openFirst]);
-  const visible = useMemo(() => ordered.slice(0, visibleCount), [ordered, visibleCount]);
+  // the first page always holds the closest of each kind, so a caveat about one (a far hospital) is never hidden
+  const shownCount = Math.max(visibleCount, firstPageSize(ordered, initialVisible));
+  const visible = useMemo(() => ordered.slice(0, shownCount), [ordered, shownCount]);
   const hidden = ordered.length - visible.length;
   const nextBatch = Math.min(hidden, initialVisible);
   const numberOf = new Map(visible.map((resource, index) => [resource.id, index + 1]));
@@ -206,8 +209,8 @@ export function NearbyResourcesAndMap({
   }
 
   function showMore() {
-    const firstNew = ordered[visibleCount];
-    setVisibleCount((n) => n + initialVisible);
+    const firstNew = ordered[shownCount];
+    setVisibleCount(shownCount + initialVisible);
     announce(`Showing ${nextBatch} more ${nextBatch === 1 ? "place" : "places"} in the list and on the map.`);
     if (firstNew) window.requestAnimationFrame(() => headings.current.get(firstNew.id)?.focus());
   }
@@ -239,7 +242,7 @@ export function NearbyResourcesAndMap({
     );
   } else if (ordered.length === 0) {
     body = (
-      <p className={stale ? `${s.empty} ${s.dim}` : s.empty}>{emptyText(types, radiusKm, stepFree)}</p>
+      <p className={stale ? `${s.empty} ${s.dim}` : s.empty}>{emptyText(types, radiusKm, stepFree, data.counts)}</p>
     );
   } else {
     body = (

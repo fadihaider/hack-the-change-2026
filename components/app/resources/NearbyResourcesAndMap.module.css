@@ -506,11 +506,16 @@
   dominant-baseline: middle;
 }
 
+/* the drawn markers are aria-hidden; the buttons above them take the clicks, focus and hover */
 .marker {
+  pointer-events: none;
+}
+
+.markerButton {
   cursor: pointer;
 }
 
-.marker:focus {
+.markerButton:focus {
   outline: none;
 }
 
@@ -519,6 +524,12 @@
 }
 
 .markerRing {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 3;
+}
+
+.markerFocus {
   fill: none;
   stroke: transparent;
   stroke-width: 3;
@@ -546,18 +557,41 @@
   stroke: var(--rr-ink);
 }
 
-.marker:focus-visible .markerRing {
+.markerButton:focus-visible .markerFocus {
   stroke: var(--rr-teal);
 }
 
-.markerSelected:focus-visible .markerRing {
+.markerButton[aria-pressed="true"]:focus-visible .markerFocus {
   stroke: var(--rr-teal-ink);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .marker:not(.markerSelected):hover .markerDot {
-    fill: var(--rr-teal-ink);
+  .markerButton:not([aria-pressed="true"]):hover .markerFocus {
+    stroke: var(--rr-teal-ink);
   }
+}
+
+/* a place beyond the map: an arrow on its edge marker points toward it */
+.edgeArrow {
+  fill: var(--rr-teal);
+  stroke: var(--rr-surface);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.markerSelected .edgeArrow {
+  fill: var(--rr-ink);
+}
+
+/* a marker moved so it doesn't cover another: a thin line back to its exact spot */
+.leaderLine {
+  stroke: var(--rr-ink);
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+
+.leaderDot {
+  fill: var(--rr-ink);
 }
 
 .mapCaption {

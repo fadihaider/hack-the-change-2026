@@ -416,7 +416,16 @@ const nearbySchema = z.object({
   /** City community boundaries inside the map bounds, for the basemap */
   outlines: z.array(z.object({ name: text, rings: z.array(z.array(lonLat)) })),
   bounds: z.object({ west: z.number(), south: z.number(), east: z.number(), north: z.number() }),
-  counts: z.array(z.object({ type: z.enum(NEARBY_TYPES), label: text, shown: z.number().int(), withinRadius: z.number().int() })),
+  counts: z.array(
+    z.object({
+      type: z.enum(NEARBY_TYPES),
+      label: text,
+      shown: z.number().int(),
+      withinRadius: z.number().int(),
+      /** the distance withinRadius was counted within; shorter than radiusKm for transit stops (800 m) */
+      withinKm: z.number().finite().positive().optional(),
+    }),
+  ),
   /** plain-language limits to show under the map */
   limits: z.array(text),
 });

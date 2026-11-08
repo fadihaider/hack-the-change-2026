@@ -166,11 +166,17 @@ test("GET /api/care-access/nearby returns the contract for the demo home", async
     assert.match(item.sourceUrl, /^https:\/\//);
     assert.ok(item.typeLabel);
   }
+  // the basemap covers the whole chosen distance, which the inline map always keeps in view
+  const cos = Math.cos((view.origin.lat * Math.PI) / 180);
+  assert.ok((view.bounds.north - view.origin.lat) * 111.2 >= 3 && (view.origin.lat - view.bounds.south) * 111.2 >= 3);
+  assert.ok((view.bounds.east - view.origin.lon) * 111.2 * cos >= 3 && (view.origin.lon - view.bounds.west) * 111.2 * cos >= 3);
   for (const item of view.resources.filter((resource) => resource.type === "transit")) assert.ok(item.distanceKm <= 0.8);
   assert.deepEqual(view.counts.map((count) => count.type), ["pharmacy", "clinic", "hospital", "library", "transit"]);
   for (const count of view.counts) {
     assert.equal(count.shown, view.resources.filter((item) => item.type === count.type).length);
     assert.ok(count.label);
+    // each count carries the distance it was really counted within: transit stops only within 800 m
+    assert.equal(count.withinKm, count.type === "transit" ? 0.8 : 3, count.type);
   }
   assert.ok(view.limits.some((line) => /straight lines/.test(line)));
   assert.ok(view.limits.some((line) => /Transit routes/.test(line)));
