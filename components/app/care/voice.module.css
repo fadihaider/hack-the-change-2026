@@ -1,0 +1,134 @@
+/* the care voice note panel. layout only around the shared ui kit; colours come from the --rr-* tokens */
+
+.panel {
+  display: grid;
+  gap: 16px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--rr-ink);
+}
+
+.title:focus {
+  outline: none;
+}
+
+.title:focus-visible {
+  outline: 2px solid var(--rr-teal);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.lead {
+  margin-top: -8px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 16px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-teal-tint);
+  color: var(--rr-teal-ink);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.recording {
+  background: var(--rr-bad-tint);
+  color: var(--rr-bad-ink);
+}
+
+.dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: rrVoicePulse 1400ms ease-in-out infinite;
+}
+
+@keyframes rrVoicePulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.clock {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.limit {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.player {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+}
+
+.disclosure {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.review {
+  padding: 12px 16px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-warn-tint);
+  color: var(--rr-warn-ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.notice {
+  padding: 14px 16px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-warn-tint);
+  color: var(--rr-warn-ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.unavailable {
+  padding: 14px 16px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-page);
+  color: var(--rr-ink);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.count {
+  margin-top: -8px;
+  font-size: 13px;
+  color: var(--rr-muted);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}
