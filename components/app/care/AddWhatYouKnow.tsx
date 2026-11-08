@@ -1,7 +1,7 @@
 "use client";
 // add what you know: a typed note or a pdf. nothing is approved here; every fact comes back as a suggestion
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
-import { ChevronLeft, FileUp } from "lucide-react";
+import { ChevronLeft, FileUp, Mic } from "lucide-react";
 import { liveErrorMessage, type CareSourceView } from "@/lib/frontend/live-api.ts";
 import { useApis } from "../session.tsx";
 import { Actions, Button, Column, ErrorNote, Note, Question, TextArea, useAnnounce } from "../ui.tsx";
@@ -25,12 +25,16 @@ type Props = {
   /** resolves to a message when the source had nothing to check; otherwise the screen moves on */
   onAdded: (result: CareSourceView, from: AddedFrom) => Promise<string | null>;
   onBack: () => void;
+  /** switch to recording a voice note instead of typing; hidden when not given */
+  onVoice?: () => void;
+  /** starts the field with this text, e.g. words kept from an earlier try */
+  initialText?: string;
 };
 
-export function AddWhatYouKnow({ name, motion, arrived, onAdded, onBack }: Props) {
+export function AddWhatYouKnow({ name, motion, arrived, onAdded, onBack, onVoice, initialText = "" }: Props) {
   const { live } = useApis();
   const announce = useAnnounce();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState<AddedFrom | null>(null);
   const [slow, setSlow] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +174,12 @@ export function AddWhatYouKnow({ name, motion, arrived, onAdded, onBack }: Props
             Check what I wrote
           </Button>
           {slow && <Note>Still reading. This can take a little while.</Note>}
+          {onVoice && (
+            <Button variant="quiet" disabled={busy !== null} onClick={onVoice}>
+              <Mic size={18} aria-hidden="true" />
+              Record a voice note instead
+            </Button>
+          )}
         </Actions>
       </form>
 

@@ -233,13 +233,15 @@ type ColumnProps = {
   remaining?: number;
   /** slides the card in when it mounts; give the Column a new key per step */
   motion?: "forward" | "back" | null;
+  /** "wide" gives an overview screen up to 960px of content; one-question steps keep the 560px default */
+  width?: "regular" | "wide";
 };
 
 /** the one centred column (560px of content); a raised card on wide screens, the whole page on phones */
-export function Column({ children, before, remaining = 0, motion = null }: ColumnProps) {
+export function Column({ children, before, remaining = 0, motion = null, width = "regular" }: ColumnProps) {
   return (
     <div className={s.lane}>
-      <div className={s.column}>
+      <div className={cx(s.column, width === "wide" && s.columnWide)}>
         {before && <div className={s.before}>{before}</div>}
         <div className={s.deck}>
           <div className={cx(s.card, motion === "forward" && s.enterForward, motion === "back" && s.enterBack)}>

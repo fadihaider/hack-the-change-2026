@@ -2,25 +2,30 @@
 // care: what anyone helping rosa should know. one calm overview, and one question per step when checking notes
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 import { liveErrorMessage, type CareFactView, type CareProfileView, type CareSourceView } from "@/lib/frontend/live-api.ts";
 import { recipientName, useApis, useSession } from "../session.tsx";
 import { Actions, ButtonLink, Column, ErrorNote, Question, useAnnounce } from "../ui.tsx";
 import { AddWhatYouKnow, type AddedFrom } from "./AddWhatYouKnow.tsx";
 import { CareHome } from "./CareHome.tsx";
+import { EmergencyHelp } from "./EmergencyHelp.tsx";
 import { ReviewSteps, type ReviewSummary } from "./ReviewSteps.tsx";
+import { VoiceNote } from "./VoiceNote.tsx";
 import { pendingSteps, plural, possessive, type ReviewStep } from "./care-data.ts";
 import s from "./care.module.css";
 
 type View =
   | { kind: "home" }
   | { kind: "add" }
+  | { kind: "voice" }
   | { kind: "review"; steps: ReviewStep[]; intro: string | null; notes: Record<string, string> };
 
 type Review = Extract<View, { kind: "review" }>;
+type From = AddedFrom | "voice";
 
 /** the sub-flow lives in ?step= so the top bar's Care link (plain /care) always returns to the overview */
 function stepOf(param: string | null): View["kind"] {
-  return param === "add" || param === "review" ? param : "home";
+  return param === "add" || param === "voice" || param === "review" ? param : "home";
 }
 
 export function CareScreen() {
@@ -92,13 +97,13 @@ export function CareScreen() {
     window.history.pushState(null, "", url);
   }
 
-  /** a note or pdf was read: check what it found, newest first. returns a message when there is nothing to check */
-  async function added(result: CareSourceView, from: AddedFrom): Promise<string | null> {
+  /** a note, pdf or voice note was read: check what it found, newest first. returns a message when there is nothing to check */
+  async function added(result: CareSourceView, from: From): Promise<string | null> {
     const latest = (await loadProfile()) ?? profile;
     const byId = new Map<string, CareFactView>((latest?.facts ?? []).map((fact) => [fact.id, fact]));
     for (const fact of result.facts) byId.set(fact.id, fact);
     const steps = pendingSteps([...byId.values()], result.source.id);
-    const where = from === "pdf" ? "The PDF" : "Your note";
+    const where = from === "pdf" ? "The PDF" : from === "voice" ? "Your voice note" : "Your note";
     // dropped lines were already on file, repeated, or not found word for word in the source
     const count = result.droppedCount;
     const lines = result.facts.length > 0 ? plural(count, "other line", "other lines") : plural(count, "line", "lines");
@@ -127,6 +132,16 @@ export function CareScreen() {
     return null;
   }
 
+  /** the confirmed transcript is saved as a voice source and checked like a note; a failure keeps the transcript on screen */
+  async function saveTranscript(text: string): Promise<string | null> {
+    try {
+      const result = await live.addCareText("voice", text);
+      return await added(result, "voice");
+    } catch (caught) {
+      return `${liveErrorMessage(caught)} Your transcript is still here.`;
+    }
+  }
+
   function finished(summary: ReviewSummary) {
     const added = summary.approved + summary.kept;
     const parts: string[] = [];
@@ -139,6 +154,7 @@ export function CareScreen() {
     go({ kind: "home" }, "back");
   }
 
+  // 911 and 811 never wait on data: the loading and error states keep emergency help on screen
   if (!session) {
     if (loading) {
       return (
@@ -146,6 +162,7 @@ export function CareScreen() {
           <p className={s.loading} role="status">
             Loading the care details
           </p>
+          <EmergencyHelp name={name} placement="inline" />
         </Column>
       );
     }
@@ -153,6 +170,7 @@ export function CareScreen() {
       <Column>
         <Question>The care details didn’t load.</Question>
         <ErrorNote message={error ?? "ReliefReady couldn’t reach its server."} onRetry={() => void reload()} />
+        <EmergencyHelp name={name} placement="inline" />
       </Column>
     );
   }
@@ -177,6 +195,7 @@ export function CareScreen() {
         <Column>
           <Question>{possessive(name)} care details didn’t load.</Question>
           <ErrorNote message={profileError} onRetry={() => void loadProfile()} />
+          <EmergencyHelp name={name} placement="inline" />
         </Column>
       );
     }
@@ -185,11 +204,13 @@ export function CareScreen() {
         <p className={s.loading} role="status">
           Loading {possessive(name)} care details
         </p>
+        <EmergencyHelp name={name} placement="inline" />
       </Column>
     );
   }
 
   const reviewing = kind === "review" ? review : null;
+  const home = () => go({ kind: "home" }, "back");
 
   if (kind === "add") {
     return (
@@ -199,8 +220,35 @@ export function CareScreen() {
         motion={direction}
         arrived={moved.current}
         onAdded={added}
-        onBack={() => go({ kind: "home" }, "back")}
+        onVoice={() => go({ kind: "voice" }, "forward")}
+        onBack={home}
       />
+    );
+  }
+
+  if (kind === "voice") {
+    return (
+      <Column
+        key="voice"
+        motion={direction}
+        before={
+          <button type="button" className={s.back} onClick={home}>
+            <ChevronLeft size={18} aria-hidden="true" />
+            {possessive(name)} care
+          </button>
+        }
+      >
+        <Question lead="Routines, who to call, where things are kept." autoFocusOnMount={moved.current}>
+          Tell ReliefReady about {name}
+        </Question>
+        <VoiceNote
+          name={name}
+          speech={session.providers.speech}
+          onUseTranscript={saveTranscript}
+          onTypeInstead={() => go({ kind: "add" }, "forward")}
+          onClose={home}
+        />
+      </Column>
     );
   }
 
@@ -232,6 +280,10 @@ export function CareScreen() {
       onAdd={() => {
         setReceipt(null);
         go({ kind: "add" }, "forward");
+      }}
+      onVoice={() => {
+        setReceipt(null);
+        go({ kind: "voice" }, "forward");
       }}
       onReview={(steps) => {
         setReceipt(null);
