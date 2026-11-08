@@ -64,7 +64,7 @@ struct OutboxResponseTests {
         let outbox = try Fixtures.decode(Outbox.self, "outbox")
         let requests = try Fixtures.decode(RecoverResponse.self, "recover-refresh").groups.handled
         let link = ResponseLink(url: "http://127.0.0.1:3107/r/\(Self.decline)", token: Self.decline, choice: .decline)
-        let preview = try #require(ResponsePreview.build(link: link, outbox: outbox, requests: requests))
+        let preview = try ResponsePreview.build(link: link, outbox: outbox, requests: requests).get()
         #expect(preview.subject == "Request to reschedule ENGG 513 group project meeting")
         #expect(preview.choice == .decline)
         // the fixture's request was already accepted, so the page shows the closed message
@@ -73,14 +73,12 @@ struct OutboxResponseTests {
         #expect(preview.respondBy == "2026-11-10T08:11:52.098Z")
         #expect(ResponseLabels.closedMessage(preview.state) == "This request already has a recorded answer: Accepted.")
 
-        // with no matching request it reads the message itself and stays open
-        let bare = try #require(ResponsePreview.build(link: link, outbox: outbox, requests: []))
-        #expect(bare.isOpen)
-        #expect(bare.body == "Hi, I need to step away this week for a family matter. Could we sort out a plan? Thanks, Alex")
+        // with no matching request its recorded state is unknown, so the page never offers the answer form
+        #expect(ResponsePreview.build(link: link, outbox: outbox, requests: []) == .failure(.unavailable))
 
         // an unknown token is the 404 page
         let unknown = ResponseLink(url: "x", token: String(repeating: "z", count: 43), choice: .accept)
-        #expect(ResponsePreview.build(link: unknown, outbox: outbox, requests: requests) == nil)
+        #expect(ResponsePreview.build(link: unknown, outbox: outbox, requests: requests) == .failure(.notFound))
     }
 
     @Test func responseCopy() {

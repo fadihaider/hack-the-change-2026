@@ -197,9 +197,13 @@ struct ResponseView: View {
             async let mail = api.outbox()
             async let list = api.requests()
             let outbox = try await mail
-            let requests = (try? await list)?.requests ?? []
-            guard let preview = ResponsePreview.build(link: link, outbox: outbox, requests: requests) else {
-                phase = .failed(.notFound)
+            // the request list says whether the link can still be answered; without it nothing is offered
+            let requests = try await list
+            let preview: ResponsePreview
+            switch ResponsePreview.build(link: link, outbox: outbox, requests: requests.requests) {
+            case .success(let built): preview = built
+            case .failure(let failure):
+                phase = .failed(failure)
                 return
             }
             if case .loading = phase {
@@ -208,7 +212,7 @@ struct ResponseView: View {
             }
             phase = .ready(preview)
         } catch {
-            phase = .failed(.unavailable)
+            if (error as? APIError)?.isCancelled != true { phase = .failed(.unavailable) }
         }
     }
 

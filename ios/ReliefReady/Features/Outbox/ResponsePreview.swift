@@ -13,22 +13,26 @@ nonisolated struct ResponsePreview: Sendable, Hashable {
 
     var isOpen: Bool { state == RequestState.requested.rawValue }
 
-    /// nil when no outbox message carries the link, as the server answers 404 for an unknown token
-    static func build(link: ResponseLink, outbox: Outbox, requests: [RequestView]) -> ResponsePreview? {
+    /// notFound when no outbox message carries the link, as the server answers 404 for an unknown token.
+    /// unavailable when the request it belongs to is not in the list: its recorded state is unknown, so the page
+    /// never offers an answer that may already be closed (the web reads the state on the server)
+    static func build(
+        link: ResponseLink, outbox: Outbox, requests: [RequestView]
+    ) -> Result<ResponsePreview, ResponseCopy.Failure> {
         guard let message = outbox.messages.first(where: { message in
             message.responseLinks.contains { $0.token == link.token }
-        }) else { return nil }
+        }) else { return .failure(.notFound) }
         guard let choice = link.choice ?? message.responseLinks.first(where: { $0.token == link.token })?.choice else {
-            return nil
+            return .failure(.notFound)
         }
-        let request = matchRequest(for: message, in: requests)
-        return ResponsePreview(
-            subject: request?.subject ?? message.subject,
-            body: request?.body ?? OutboxContent.letterBody(message.body),
-            state: request?.state.rawValue ?? RequestState.requested.rawValue,
+        guard let request = matchRequest(for: message, in: requests) else { return .failure(.unavailable) }
+        return .success(ResponsePreview(
+            subject: request.subject,
+            body: request.body,
+            state: request.state.rawValue,
             choice: choice,
-            respondBy: request?.respondBy
-        )
+            respondBy: request.respondBy
+        ))
     }
 
     /// the request a stored message was sent for: by its gmail_message_id evidence, else by subject and address
@@ -65,7 +69,7 @@ nonisolated enum ResponseCopy {
     }
 
     /// the page's failure screens (FAILURES in page.tsx)
-    enum Failure: Sendable, Hashable {
+    enum Failure: Error, Sendable, Hashable {
         case notFound, unavailable
 
         var title: String {
