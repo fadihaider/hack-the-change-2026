@@ -12,16 +12,12 @@ struct RecoverView: View {
         content
             .screenTitle("Recover")
             .accessibilityIdentifier("screen.recover")
-            // a moved demo clock reloads the session; ask again so deadlines and replies match the new time
+            // a moved demo clock reloads the session; ask again so deadlines and replies match the new time.
+            // swiftui runs .task again each time the tab appears, so every visit also asks again, as the web does
             .task(id: model.session?.appNow) {
                 guard model.session?.episode != nil else { return }
                 recover.announce = { text in AccessibilityNotification.Announcement(text).post() }
                 await recover.load(api: model.api)
-            }
-            // the web reloads the list on each visit; a tab stays alive, so coming back to it asks again
-            .onAppear {
-                guard recover.data != nil else { return }
-                Task { await recover.load(api: model.api) }
             }
     }
 
