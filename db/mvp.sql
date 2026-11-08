@@ -6,3 +6,9 @@ CREATE INDEX IF NOT EXISTS outbox_message_user_sent ON outbox_message (user_id, 
 
 -- the care recipient's name for display ("Rosa"); alias stays the word the user says ("Mom")
 ALTER TABLE care_recipient ADD COLUMN IF NOT EXISTS display_name text;
+
+-- care retrieval (PRD 7): a care_fact vector counts only while its model and text hash match the approved text.
+-- per-recipient passports are small, so search is an exact cosine scan behind the recipient and status filter.
+ALTER TABLE care_fact ADD COLUMN IF NOT EXISTS embedding_model text;
+ALTER TABLE care_fact ADD COLUMN IF NOT EXISTS embedded_hash text;
+CREATE INDEX IF NOT EXISTS care_fact_recipient_status ON care_fact (care_recipient_id, status, created_at);
