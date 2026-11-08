@@ -191,21 +191,25 @@ final class CareFlowTests: XCTestCase {
         shot("15-passport")
         keep.tap()
         XCTAssertTrue(button("passport.section.routine").waitForExistence(timeout: 15))
+        tap(button("passport.section.communication"))
+        tap(button("passport.fact.earlier"))
+        _ = waitFor("Edited \u{2014} version 2")
+        shot("16-passport-edited")
 
         // the day now follows the time that was kept
         scrollToTop()
         let mark = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'care.today.mark.'")).firstMatch
         reveal(mark, timeout: 20)
-        shot("16-today")
+        shot("17-today")
         mark.tap()
         _ = waitFor("Done \u{2014} recorded by you")
-        shot("17-today-done")
+        shot("18-today-done")
 
         // emergency / help: 911, 811 and a trusted contact
         scrollToTop()
         tap(button("care.emergency"))
         XCTAssertTrue(element("care.call911").waitForExistence(timeout: 10))
-        shot("18-emergency")
+        shot("19-emergency")
         tap(button("care.contacts.add"))
         let name = element("care.contactForm.name")
         tap(name)
@@ -217,11 +221,12 @@ final class CareFlowTests: XCTestCase {
         tap(phone)
         phone.typeText("403-555-0142")
         tap(button("care.contactForm.kind.trusted"))
-        shot("19-contact-form")
+        XCTAssertTrue(button("care.contactForm.kind.trusted").isSelected)
+        shot("20-contact-form")
         tap(button("care.contactForm.save"))
         XCTAssertTrue(button("care.contact.call.Aunt Lucia").waitForExistence(timeout: 15))
         reveal(button("care.contact.call.Aunt Lucia"))
-        shot("20-contact-added")
+        shot("21-contact-added")
     }
 
     @MainActor
@@ -248,6 +253,15 @@ final class CareFlowTests: XCTestCase {
         XCTAssertTrue(element("care.voice.consent").waitForExistence(timeout: 10))
         XCTAssertTrue(button("care.voice.record").exists)
         XCTAssertTrue(button("care.voice.typeInstead").exists)
-        shot("21-voice-consent")
+        shot("22-voice-consent")
+    }
+
+    /// the overview with the largest accessibility text size still lays out
+    @MainActor
+    func testLargeTextOverview() throws {
+        try launch(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"])
+        XCTAssertTrue(element("care.title").waitForExistence(timeout: 15))
+        XCTAssertTrue(button("care.emergency").isHittable)
+        shot("23-large-text")
     }
 }
