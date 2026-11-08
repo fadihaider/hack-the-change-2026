@@ -23,9 +23,9 @@ test("session check parses the adapter modes and labels the local outbox honestl
     });
   });
   const session = await api.session();
-  const labels = modeLabels(session.mode);
-  assert.ok(labels.includes("Local outbox, no real email"));
-  assert.ok(labels.some((label) => label.startsWith("Demo AI provider")));
+  const labels = modeLabels(session.mode, session.providers);
+  assert.ok(labels.some((label) => label.key === "mail" && label.value === "Demo outbox"));
+  assert.ok(labels.some((label) => label.key === "ai" && label.value.startsWith("Demo rules")));
 });
 
 test("a pdf goes up as multipart without a json content type, and guide hints come back as plain text", async () => {

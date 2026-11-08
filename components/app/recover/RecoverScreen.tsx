@@ -1,6 +1,7 @@
 "use client";
-// recover: what is left before things are back to normal. one question, then the recorded messages as a calm list,
-// each with its next step where the api has one. help nearby sits at the bottom.
+// recover: what is left before things are back to normal. one question, then the recorded messages in the PRD 13
+// groups (needs follow-up, not sent, new, waiting, handled), each with its evidence and a link back to urgent.
+// help nearby sits at the bottom.
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { CalendarClock, RefreshCw, Send } from "lucide-react";
 import { formatAlberta, liveErrorMessage, type RecoverView } from "@/lib/frontend/live-api.ts";
@@ -17,18 +18,23 @@ import {
   Note,
   Question,
   Receipt,
+  STATE_LABEL,
   StatePill,
   dayLabel,
   useAnnounce,
 } from "../ui.tsx";
 import {
+  evidenceLine,
   namesOf,
+  pillLabel,
   possessive,
   sentence,
   signature,
   sortGroups,
   statusLine,
   summaryLine,
+  urgentHref,
+  type MailMode,
   type NewTime,
 } from "./lines.ts";
 import s from "./recover.module.css";
@@ -99,19 +105,31 @@ export function RecoverScreen() {
   async function send(request: RequestView) {
     if (busy) return;
     const name = request.recipient.name;
+    const outbox = session?.mode.mail === "outbox";
     setBusy({ id: request.id, kind: "send" });
     setDone(null);
     setChecked(null);
     try {
       const result = await requests.send(request.id);
       if (result.state === "requested") {
-        report({ tone: "good", icon: "send", text: `Sent to ${name}. Waiting for a reply.` });
+        report({
+          tone: "good",
+          icon: "send",
+          text: outbox
+            ? `Placed in the demo outbox for ${name}. No real email went out. Waiting for them to use a reply link.`
+            : `Sent by email to ${name}. Waiting for them to use a reply link.`,
+        });
       } else if (result.state === "failed") {
-        report({ tone: "bad", text: `The message to ${name} didn’t go out. Choose what to do in Urgent.` });
+        report({
+          tone: "bad",
+          text: outbox
+            ? `The message to ${name} couldn’t be placed in the demo outbox. Choose what to do in Urgent.`
+            : `The mail service didn’t confirm the message to ${name}. Check your Sent folder, then choose what to do in Urgent.`,
+        });
       } else {
         report({
           tone: "bad",
-          text: `The message to ${name} needs another look before it can go. Open it in Urgent.`,
+          text: `The message to ${name} was held back before it went. Open it in Urgent.`,
         });
       }
     } catch (caught) {
@@ -206,8 +224,10 @@ export function RecoverScreen() {
   // ---------------------------------------------------------------- the list
 
   const sorted = sortGroups(data.groups);
+  const mail: MailMode = session.mode.mail;
+  const outbox = mail === "outbox";
   const total =
-    sorted.needsYou.length + sorted.waiting.length + sorted.handled.length + sorted.closed.length + sorted.newTimes.length;
+    sorted.followUp.length + sorted.notSent.length + sorted.waiting.length + sorted.handled.length + sorted.newTimes.length;
 
   let weekLine = `${possessive(name)} care week ends ${dayLabel(episode.endsOn)}.`;
   if (session.today < episode.startsOn) weekLine = `${possessive(name)} care week starts ${dayLabel(episode.startsOn)}.`;
@@ -269,11 +289,18 @@ export function RecoverScreen() {
         </Actions>
       )}
 
-      <Group title="Needs you" rows={sorted.needsYou}>
+      <Group title="Needs follow-up" hint="Each one needs a next step from you." rows={sorted.followUp}>
+        {(request) => (
+          <RequestRow request={request} mail={mail} newTime={byRequest.get(request.id) ?? null} busy={busy} />
+        )}
+      </Group>
+
+      <Group title="Not sent" hint="Nothing here has gone out." rows={sorted.notSent}>
         {(request) => (
           <RequestRow
             request={request}
-            newTime={byRequest.get(request.id) ?? null}
+            mail={mail}
+            newTime={null}
             busy={busy}
             confirming={confirming === request.id}
             onConfirm={(open) => setConfirming(open ? request.id : null)}
@@ -284,10 +311,13 @@ export function RecoverScreen() {
       </Group>
 
       {sorted.newTimes.length > 0 && (
-        <section className={s.group} aria-labelledby="rr-recover-new">
+        <section className={s.group} aria-labelledby="rr-recover-new" aria-describedby="rr-recover-new-hint">
           <h2 id="rr-recover-new" className={s.groupTitle}>
-            New times from replies
+            New
           </h2>
+          <p id="rr-recover-new-hint" className={s.groupHint}>
+            Times people asked for on their reply links.
+          </p>
           <ul className={s.list} role="list">
             {sorted.newTimes.map((time) => (
               <NewTimeRow key={time.id} time={time} from={everyone.find((r) => r.id === time.requestId) ?? null} />
@@ -296,14 +326,15 @@ export function RecoverScreen() {
         </section>
       )}
 
-      <Group title="Waiting for a reply" rows={sorted.waiting}>
-        {(request) => <RequestRow request={request} newTime={null} busy={busy} />}
+      <Group
+        title="Waiting"
+        hint={outbox ? "In the demo outbox, waiting for a reply link." : "Sent by email, waiting for a reply link."}
+        rows={sorted.waiting}
+      >
+        {(request) => <RequestRow request={request} mail={mail} newTime={null} busy={busy} />}
       </Group>
-      <Group title="Handled" rows={sorted.handled}>
-        {(request) => <RequestRow request={request} newTime={null} busy={busy} />}
-      </Group>
-      <Group title="Not sent" rows={sorted.closed}>
-        {(request) => <RequestRow request={request} newTime={null} busy={busy} />}
+      <Group title="Handled" hint="They said yes. That isn’t the same as done." rows={sorted.handled}>
+        {(request) => <RequestRow request={request} mail={mail} newTime={null} busy={busy} />}
       </Group>
 
       {total > 0 && (
@@ -313,7 +344,12 @@ export function RecoverScreen() {
             Check for new replies
           </Button>
           {checked && <p className={s.checked}>{checked}</p>}
-          <Note>Each status comes from a record: a sent email, a reply link, or a deadline that passed.</Note>
+          <Note>
+            {outbox
+              ? "Each status comes from a record: a message placed in the demo outbox, a reply link someone used, or a deadline that passed."
+              : "Each status comes from a record: an email Gmail accepted, a reply link someone used, or a deadline that passed."}{" "}
+            Email replies aren’t read, so only reply links count.
+          </Note>
         </div>
       )}
 
@@ -326,20 +362,25 @@ export function RecoverScreen() {
 
 function Group({
   title,
+  hint,
   rows,
   children,
 }: {
   title: string;
+  hint: string;
   rows: RequestView[];
   children: (request: RequestView) => ReactNode;
 }) {
   const id = useId();
   if (rows.length === 0) return null;
   return (
-    <section className={s.group} aria-labelledby={id}>
+    <section className={s.group} aria-labelledby={id} aria-describedby={`${id}-hint`}>
       <h2 id={id} className={s.groupTitle}>
         {title}
       </h2>
+      <p id={`${id}-hint`} className={s.groupHint}>
+        {hint}
+      </p>
       <ul className={s.list} role="list">
         {rows.map((request) => (
           <li key={request.id} className={s.row}>
@@ -353,6 +394,7 @@ function Group({
 
 type RowProps = {
   request: RequestView;
+  mail: MailMode;
   newTime: NewTime | null;
   busy: Busy;
   confirming?: boolean;
@@ -361,16 +403,18 @@ type RowProps = {
   onCancel?: () => void;
 };
 
+// states with a next step get a clear link; every other row still links back to urgent quietly
 const URGENT_STEP: Partial<Record<RequestView["state"], string>> = {
   draft: "Review and send in Urgent",
   awaiting_approval: "Review and send in Urgent",
   needs_review: "Open it in Urgent",
+  sending: "Open it in Urgent",
   rejected: "Choose what to do in Urgent",
   expired: "Choose what to do in Urgent",
   failed: "Choose what to do in Urgent",
 };
 
-function RequestRow({ request, newTime, busy, confirming = false, onConfirm, onSend, onCancel }: RowProps) {
+function RequestRow({ request, mail, newTime, busy, confirming = false, onConfirm, onSend, onCancel }: RowProps) {
   const name = request.recipient.name;
   const askId = useId();
   const askRef = useRef<HTMLParagraphElement>(null);
@@ -389,10 +433,10 @@ function RequestRow({ request, newTime, busy, confirming = false, onConfirm, onS
       <div className={s.rowHead}>
         <Avatar name={name} size="sm" />
         <span className={s.name}>{name}</span>
-        <StatePill state={request.state} />
+        <RowPill request={request} />
       </div>
       <p className={s.subject}>{request.subject}</p>
-      <p className={s.when}>{statusLine(request)}</p>
+      <p className={s.when}>{statusLine(request, mail)}</p>
       {request.state === "needs_review" && request.proposedNote && (
         <blockquote className={s.quote}>
           <p>“{request.proposedNote}”</p>
@@ -401,9 +445,10 @@ function RequestRow({ request, newTime, busy, confirming = false, onConfirm, onS
       {newTime && (
         <p className={s.when}>
           <CalendarClock size={16} aria-hidden="true" />
-          <span>The new time is on your list below.</span>
+          <span>The new time is under New below.</span>
         </p>
       )}
+      <OnRecord request={request} mail={mail} />
 
       {confirming && canCancel ? (
         <div className={s.confirm} role="group" aria-labelledby={askId}>
@@ -431,38 +476,69 @@ function RequestRow({ request, newTime, busy, confirming = false, onConfirm, onS
           </div>
         </div>
       ) : (
-        (canSend || urgent || canCancel) && (
-          <div className={s.rowActions}>
-            {canSend && (
-              <Button
-                variant="secondary"
-                busy={mine && busy?.kind === "send"}
-                busyLabel={`Sending to ${name}`}
-                onClick={onSend}
-              >
-                <Send size={17} aria-hidden="true" />
-                Send to {name}
-              </Button>
-            )}
-            {urgent && (
-              <ButtonLink href={`/urgent?request=${encodeURIComponent(request.id)}`} variant="secondary">
-                {urgent}
-              </ButtonLink>
-            )}
-            {canCancel && (
-              <Button ref={triggerRef} variant="quiet" onClick={() => onConfirm?.(true)}>
-                Don’t send it
-              </Button>
-            )}
-          </div>
-        )
+        <div className={s.rowActions}>
+          {canSend && (
+            <Button
+              variant="secondary"
+              busy={mine && busy?.kind === "send"}
+              busyLabel={`Sending to ${name}`}
+              onClick={onSend}
+            >
+              <Send size={17} aria-hidden="true" />
+              Send to {name}
+            </Button>
+          )}
+          <ButtonLink href={urgentHref(request.id)} variant={urgent ? "secondary" : "quiet"}>
+            {urgent ?? "See it in Urgent"}
+          </ButtonLink>
+          {canCancel && (
+            <Button ref={triggerRef} variant="quiet" onClick={() => onConfirm?.(true)}>
+              Don’t send it
+            </Button>
+          )}
+        </div>
       )}
     </>
   );
 }
 
+/** the state pill; a message the server held back at send time says so, never "check the reply" */
+function RowPill({ request }: { request: RequestView }) {
+  const label = pillLabel(request);
+  if (label) return <span className={s.heldPill}>{label}</span>;
+  return <StatePill state={request.state} />;
+}
+
+/** opening a row shows the recorded state and every evidence row behind it, oldest first */
+function OnRecord({ request, mail }: { request: RequestView; mail: MailMode }) {
+  const events = [...request.evidence].reverse();
+  return (
+    <details className={s.record}>
+      <summary className={s.recordSummary}>What’s on record</summary>
+      <p className={s.recordState}>
+        Recorded state: {STATE_LABEL[request.state]} <code className={s.recordCode}>{request.state}</code>
+      </p>
+      {events.length === 0 ? (
+        <p className={s.recordState}>No events recorded yet.</p>
+      ) : (
+        <ol className={s.recordList}>
+          {events.map((event) => (
+            <li key={event.id} className={s.recordItem}>
+              <time dateTime={event.at} className={s.recordTime}>
+                {formatAlberta(event.at)}
+              </time>
+              <span>{evidenceLine(event, request, mail)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </details>
+  );
+}
+
 function NewTimeRow({ time, from }: { time: NewTime; from: RequestView | null }) {
   const title = (time.title ?? "").replace(/^Proposed:\s*/i, "").trim() || "A new time";
+  const name = from?.recipient.name ?? null;
   return (
     <li className={s.row}>
       <div className={s.rowHead}>
@@ -478,7 +554,14 @@ function NewTimeRow({ time, from }: { time: NewTime; from: RequestView | null })
           "No time given yet"
         )}
       </p>
-      <p className={s.subject}>{from ? `${from.recipient.name} asked for this time in their reply.` : "From a reply."}</p>
+      <p className={s.subject}>{name ? `${name} asked for this time on their reply link.` : "From a reply link."}</p>
+      {time.requestId && (
+        <div className={s.rowActions}>
+          <ButtonLink href={urgentHref(time.requestId)} variant="quiet">
+            {name ? `See the message to ${name} in Urgent` : "See the message in Urgent"}
+          </ButtonLink>
+        </div>
+      )}
     </li>
   );
 }
@@ -492,4 +575,3 @@ function actionMessage(error: unknown): string {
   }
   return liveErrorMessage(error);
 }
-
