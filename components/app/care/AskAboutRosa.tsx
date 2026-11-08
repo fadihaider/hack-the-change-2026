@@ -1,12 +1,29 @@
 "use client";
-// ask the profile: answers come only from approved facts, shown word for word; a miss is saved as a question
-import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { CircleHelp, FileText, Phone, Tag } from "lucide-react";
-import { liveErrorMessage, type AskView, type CareFactView, type CareProfileView } from "@/lib/frontend/live-api.ts";
+// the ask bar: answers come only from approved facts, cited word for word; a miss is saved as an open question
+import { useId, useRef, useState, type FormEvent } from "react";
+import { BookOpen, Check, ChevronDown, CircleHelp, Phone, Search } from "lucide-react";
+import {
+  albertaDateOf,
+  formatDate,
+  liveErrorMessage,
+  type AskView,
+  type CareFactView,
+  type CareProfileView,
+  type CitedFactView,
+} from "@/lib/frontend/live-api.ts";
+import {
+  EMERGENCY_LINES,
+  answeredByLabel,
+  redirectText,
+  retrievalLine,
+  sourcePhrase,
+  uniqueQuestions,
+} from "@/lib/frontend/care-help.ts";
+import { PASSPORT_SECTIONS, sectionOf } from "@/lib/frontend/passport.ts";
 import { useApis } from "../session.tsx";
-import { Button, ErrorNote, TextArea, useAnnounce } from "../ui.tsx";
-import { categoryTitle, possessive, sourceLine } from "./care-data.ts";
-import s from "./care.module.css";
+import { Button, ErrorNote, useAnnounce } from "../ui.tsx";
+import { possessive } from "./care-data.ts";
+import a from "./ask.module.css";
 
 const MAX_CHARS = 500;
 
@@ -18,36 +35,46 @@ type Props = {
   onChanged: () => Promise<unknown>;
 };
 
+type Asked = { key: number; question: string; result: AskView };
+
 export function AskAboutRosa({ name, facts, openQuestions, onAdd, onChanged }: Props) {
   const { live } = useApis();
   const announce = useAnnounce();
   const titleId = useId();
-  const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const fieldId = useId();
+  const hintId = useId();
+  const fieldRef = useRef<HTMLInputElement>(null);
+  const asks = useRef(0);
   const [question, setQuestion] = useState("");
-  const [asked, setAsked] = useState<{ question: string; result: AskView } | null>(null);
+  const [asked, setAsked] = useState<Asked | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState(false);
 
   async function ask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     const words = question.trim();
     if (!words) {
-      setError("Write a question first, for example: what time is breakfast?");
+      setInvalid(true);
+      setError("Write a question first, for example: where are her glasses?");
       fieldRef.current?.focus();
       return;
     }
     if (words.length > MAX_CHARS) {
+      setInvalid(true);
       setError("That question is longer than 500 characters. Shorten it, then ask again.");
+      fieldRef.current?.focus();
       return;
     }
     setBusy(true);
     setError(null);
-    announce(`Looking in ${possessive(name)} profile.`);
+    setInvalid(false);
+    announce(`Looking in ${possessive(name)} approved passport.`);
     try {
       const result = await live.ask(words);
-      setAsked({ question: words, result });
-      announce(result.notFound ? `That’s not in ${possessive(name)} profile yet.` : "The answer is below the question.");
+      asks.current += 1;
+      setAsked({ key: asks.current, question: words, result });
       if (result.openQuestionId) void onChanged();
     } catch (caught) {
       setError(liveErrorMessage(caught));
@@ -56,125 +83,248 @@ export function AskAboutRosa({ name, facts, openQuestions, onAdd, onChanged }: P
     }
   }
 
-  function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      event.currentTarget.form?.requestSubmit();
-    }
-  }
-
-  const result = asked?.result ?? null;
-  // asking the same thing twice saves it twice; list each question once
-  const seen = new Set<string>();
-  const stillOpen = openQuestions.filter((item) => {
-    const key = item.question.trim().toLowerCase().replace(/[\s?.]+$/, "");
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const stillOpen = uniqueQuestions(openQuestions);
   const factById = new Map(facts.map((fact) => [fact.id, fact]));
 
   return (
-    <section className={s.section} aria-labelledby={titleId}>
-      <h2 id={titleId} className={s.sectionTitle}>
+    <section className={a.section} aria-labelledby={titleId}>
+      <h2 id={titleId} className={a.title}>
         Ask about {name}
       </h2>
-      <p className={s.sectionHint}>Answers come only from {possessive(name)} profile, never from a guess.</p>
 
-      <form className={s.askForm} onSubmit={ask} noValidate>
-        <TextArea
-          ref={fieldRef}
-          label="Your question"
-          hint="For example: what time is breakfast?"
-          rows={2}
-          value={question}
-          maxLength={MAX_CHARS}
-          readOnly={busy}
-          onChange={(event) => setQuestion(event.target.value)}
-          onKeyDown={submitOnEnter}
-        />
-        {error && <ErrorNote message={error} />}
-        <div className={s.askActions}>
-          <Button type="submit" variant="secondary" busy={busy} busyLabel="Looking it up">
-            Ask
-          </Button>
-        </div>
+      <form className={a.bar} onSubmit={ask} noValidate role="search" aria-labelledby={titleId}>
+        <label htmlFor={fieldId} className={a.srOnly}>
+          Your question about {name}
+        </label>
+        <span className={a.inputWrap}>
+          <Search size={18} aria-hidden="true" className={a.inputIcon} />
+          <input
+            ref={fieldRef}
+            id={fieldId}
+            type="text"
+            enterKeyHint="search"
+            autoComplete="off"
+            className={a.input}
+            placeholder="Ask where her glasses are, what her routine is…"
+            aria-describedby={hintId}
+            aria-invalid={invalid || undefined}
+            value={question}
+            maxLength={MAX_CHARS}
+            readOnly={busy}
+            onChange={(event) => {
+              setQuestion(event.target.value);
+              if (invalid) setInvalid(false);
+            }}
+          />
+        </span>
+        <Button type="submit" variant="primary" className={a.askButton} busy={busy} busyLabel="Looking">
+          Ask
+        </Button>
       </form>
-
-      {asked && result && (
-        <div className={result.notFound ? `${s.answer} ${s.answerMissing}` : s.answer}>
-          <p className={s.answerAsked}>
-            You asked: “{asked.question}”
-          </p>
-          {result.notFound ? (
-            <>
-              <p className={s.answerLead}>
-                <CircleHelp size={20} aria-hidden="true" />
-                <span>That’s not in {possessive(name)} profile yet.</span>
-              </p>
-              <p className={s.answerBody}>
-                Nothing you’ve checked answers it.
-                {result.openQuestionId ? " It’s saved under “Still to find out”, so you can add the answer later." : ""}
-              </p>
-              <div className={s.answerActions}>
-                <Button variant="secondary" onClick={onAdd}>
-                  Add what you know
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className={s.answerText}>
-                {result.answer ?? `Here’s what ${possessive(name)} profile says, word for word.`}
-              </p>
-              {result.citedFacts.length > 0 && (
-                <>
-                  <h3 className={s.basedTitle}>Based on</h3>
-                  <ul className={s.cited} role="list">
-                    {result.citedFacts.map((cited) => {
-                      const fact = factById.get(cited.id);
-                      return (
-                        <li key={cited.id} className={s.citedItem}>
-                          <p className={s.citedText}>{cited.textExact}</p>
-                          <ul className={s.factMeta} role="list">
-                            <li>
-                              <Tag size={15} aria-hidden="true" />
-                              {categoryTitle(cited.category)}
-                            </li>
-                            {fact && (
-                              <li>
-                                <FileText size={15} aria-hidden="true" />
-                                {sourceLine(fact)}
-                              </li>
-                            )}
-                          </ul>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              )}
-              {result.healthNotice && (
-                <p className={s.health}>
-                  <Phone size={18} aria-hidden="true" />
-                  <span>{result.healthNotice}</span>
-                </p>
-              )}
-            </>
-          )}
+      <p id={hintId} className={a.hint}>
+        Answers come only from {possessive(name)} approved passport, never from a guess.
+      </p>
+      {error && (
+        <div className={a.error}>
+          <ErrorNote message={error} />
         </div>
       )}
 
+      {/* the lead sentence of each answer is read aloud; citations and notes stay quiet below it */}
+      <div aria-live="polite" className={a.live}>
+        {asked && <AnswerLead key={asked.key} name={name} asked={asked} />}
+      </div>
+      {asked && (
+        <AnswerDetails key={asked.key} name={name} result={asked.result} factById={factById} onAdd={onAdd} />
+      )}
+
       {stillOpen.length > 0 && (
-        <div className={s.open}>
-          <h3 className={s.groupTitle}>Still to find out</h3>
-          <ul className={s.openList}>
+        <details className={a.openQuestions}>
+          <summary className={a.summary}>
+            <span>Still to find out ({stillOpen.length})</span>
+            <ChevronDown size={18} aria-hidden="true" className={a.chevron} />
+          </summary>
+          <ul className={a.openList}>
             {stillOpen.map((item) => (
               <li key={item.id}>{item.question}</li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
     </section>
+  );
+}
+
+function AnswerLead({ name, asked }: { name: string; asked: Asked }) {
+  const { result } = asked;
+  return (
+    <div
+      className={
+        result.medicalRedirect ? `${a.answer} ${a.answerRedirect}` : result.notFound ? `${a.answer} ${a.answerMissing}` : a.answer
+      }
+    >
+      <p className={a.asked}>You asked: “{asked.question}”</p>
+      {result.medicalRedirect ? (
+        <p className={a.redirectText}>
+          <Phone size={20} aria-hidden="true" />
+          <span>{redirectText(result)}</span>
+        </p>
+      ) : result.notFound ? (
+        <p className={a.missingText}>
+          <CircleHelp size={20} aria-hidden="true" />
+          <span>I don’t have that in {possessive(name)} approved passport.</span>
+        </p>
+      ) : (
+        <p className={a.answerText}>
+          {result.answer ?? `Here’s what ${possessive(name)} passport says, word for word.`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+type DetailsProps = {
+  name: string;
+  result: AskView;
+  factById: Map<string, CareFactView>;
+  onAdd: () => void;
+};
+
+function AnswerDetails({ name, result, factById, onAdd }: DetailsProps) {
+  // a medical question gets the redirect and the two numbers, nothing else
+  if (result.medicalRedirect) {
+    return (
+      <div className={a.calls}>
+        <a className={`${a.call} ${a.callEmergency}`} href={EMERGENCY_LINES.emergency.href}>
+          <Phone size={18} aria-hidden="true" />
+          <span>
+            Call 911
+            <span className={a.callNote}>Emergency</span>
+          </span>
+        </a>
+        <a className={a.call} href={EMERGENCY_LINES.healthLink.href}>
+          <Phone size={18} aria-hidden="true" />
+          <span>
+            Call 811
+            <span className={a.callNote}>Health Link, 24/7 nurse advice</span>
+          </span>
+        </a>
+      </div>
+    );
+  }
+
+  const provider = answeredByLabel(result.answeredBy);
+  const searched = retrievalLine(result.retrieval);
+
+  return (
+    <div className={result.notFound ? `${a.details} ${a.detailsMissing}` : a.details}>
+      {result.notFound ? (
+        <>
+          {result.openQuestionId && (
+            <p className={a.saved}>
+              <Check size={18} aria-hidden="true" />
+              <span>Saved as an open question</span>
+            </p>
+          )}
+          <div className={a.answerActions}>
+            <Button variant="secondary" onClick={onAdd}>
+              Add the answer
+            </Button>
+          </div>
+        </>
+      ) : (
+        result.citedFacts.length > 0 && (
+          <>
+            <h3 className={a.basedTitle}>
+              Based on {result.citedFacts.length === 1 ? "this approved fact" : `these ${result.citedFacts.length} approved facts`}
+            </h3>
+            <ul className={a.cited} role="list">
+              {result.citedFacts.map((cited) => (
+                <Citation key={cited.id} name={name} cited={cited} fact={factById.get(cited.id) ?? null} />
+              ))}
+            </ul>
+          </>
+        )
+      )}
+      {result.healthNotice && (
+        <p className={a.health}>
+          <Phone size={18} aria-hidden="true" />
+          <span>{result.healthNotice}</span>
+        </p>
+      )}
+      {(provider || searched) && (
+        <ul className={a.provenance} role="list">
+          {provider && <li>{provider}</li>}
+          {searched && <li>{searched}</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function sectionTitle(category: string): string {
+  const id = sectionOf(category);
+  return PASSPORT_SECTIONS.find((section) => section.id === id)?.title ?? "Care passport";
+}
+
+/** "From a voice note, Nov 8", from the citation first and the loaded fact second */
+function fromLine(cited: CitedFactView, fact: CareFactView | null): string {
+  const kind = sourcePhrase(cited.sourceKind ?? fact?.sourceKind ?? null);
+  const at = cited.sourceCreatedAt ?? fact?.sourceCreatedAt ?? fact?.createdAt ?? null;
+  const ms = at ? Date.parse(at) : Number.NaN;
+  const day = Number.isFinite(ms) ? formatDate(albertaDateOf(ms)) : null;
+  if (kind && day) return `From ${kind}, ${day}`;
+  if (kind) return `From ${kind}`;
+  if (day) return `Added ${day}`;
+  return "Source not recorded";
+}
+
+/** opens the passport section holding this fact and moves focus to it; false when it is not on the page */
+function revealFact(factId: string): boolean {
+  const target = document.getElementById(`fact-${factId}`);
+  if (!target) return false;
+  for (let node: HTMLElement | null = target; node; node = node.parentElement) {
+    if (node instanceof HTMLDetailsElement) node.open = true;
+  }
+  if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  target.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+  target.focus({ preventScroll: true });
+  return true;
+}
+
+function Citation({ name, cited, fact }: { name: string; cited: CitedFactView; fact: CareFactView | null }) {
+  const [inPassport, setInPassport] = useState(false);
+  const version = Math.max(cited.version, fact?.version ?? 1);
+  return (
+    <li className={a.citedItem}>
+      <details
+        className={a.citation}
+        onToggle={(event) => {
+          if (event.currentTarget.open) setInPassport(Boolean(document.getElementById(`fact-${cited.id}`)));
+        }}
+      >
+        <summary className={a.citationSummary}>
+          <span className={a.citationBody}>
+            <span className={a.chip}>{sectionTitle(cited.category)}</span>
+            <span className={a.citedText}>{cited.textExact}</span>
+          </span>
+          <ChevronDown size={18} aria-hidden="true" className={a.chevron} />
+        </summary>
+        <div className={a.citationMore}>
+          <ul className={a.meta} role="list">
+            <li>{fromLine(cited, fact)}</li>
+            {version > 1 && <li>Version {version}</li>}
+            <li>Approved</li>
+          </ul>
+          {inPassport && (
+            <button type="button" className={a.passportLink} onClick={() => revealFact(cited.id)}>
+              <BookOpen size={16} aria-hidden="true" />
+              Show in {possessive(name)} passport
+            </button>
+          )}
+        </div>
+      </details>
+    </li>
   );
 }
