@@ -268,15 +268,18 @@
   height: 26px;
   margin-top: -1px;
   border-radius: 50%;
-  background: var(--rr-teal);
+  background: var(--rr-band, var(--rr-teal));
   color: var(--rr-surface);
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
+/* the selected card keeps its distance colour and gains a dark ring, like its marker */
 .cardSelected .cardNumber {
-  background: var(--rr-ink);
+  box-shadow:
+    0 0 0 2px var(--rr-surface),
+    0 0 0 4px var(--rr-ink);
 }
 
 .cardTitle {
@@ -535,8 +538,29 @@
   stroke-width: 3;
 }
 
+/* distance colours, green (close) to red (far or beyond the chosen distance). each keeps white numbers at 5:1 or more */
+.band0 {
+  --rr-band: var(--rr-good-ink);
+}
+
+.band1 {
+  --rr-band: #627800;
+}
+
+.band2 {
+  --rr-band: #8a6a00;
+}
+
+.band3 {
+  --rr-band: #b4530f;
+}
+
+.band4 {
+  --rr-band: var(--rr-bad-ink);
+}
+
 .markerDot {
-  fill: var(--rr-teal);
+  fill: var(--rr-band, var(--rr-teal));
   stroke: var(--rr-surface);
   stroke-width: 2;
 }
@@ -547,10 +571,6 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
-}
-
-.markerSelected .markerDot {
-  fill: var(--rr-ink);
 }
 
 .markerSelected .markerRing {
@@ -619,6 +639,17 @@
   font-size: 13px;
   line-height: 1.4;
   color: var(--rr-muted);
+}
+
+/* the legend's plain marker keeps the neutral colour; the scale row shows the five distance colours */
+.legendNeutral {
+  fill: var(--rr-muted);
+}
+
+.swatchScale {
+  flex: none;
+  width: 70px;
+  height: 14px;
 }
 
 .swatch {

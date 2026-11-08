@@ -258,3 +258,24 @@ test("the map fits home and the chosen distance, not a far hospital, and every c
     assert.ok(Math.hypot(marker.x - home.x, marker.y - home.y) >= 13 + 16 + 4 - 0.5, `${i} covers home`);
   });
 });
+
+test("map colours run green to red by straight-line distance, and anything beyond the chosen distance is red", async () => {
+  const { distanceBand, distanceScaleText, DISTANCE_BANDS } = await import("../../components/app/resources/nearby-words.ts");
+  assert.equal(DISTANCE_BANDS, 5);
+  assert.equal(distanceBand(0, 3), 0);
+  assert.equal(distanceBand(0.59, 3), 0);
+  assert.equal(distanceBand(0.6, 3), 1);
+  assert.equal(distanceBand(1.5, 3), 2);
+  assert.equal(distanceBand(2.4, 3), 4);
+  assert.equal(distanceBand(3, 3), 4);
+  assert.equal(distanceBand(0.3, 3, false), 4, "the out-of-radius hospital is red");
+  assert.equal(distanceBand(Number.NaN, 3), 4);
+  assert.equal(
+    distanceScaleText(3),
+    "Colour shows straight-line distance: green is under 0.6 km, red is 2.4 km or more, or beyond 3 km.",
+  );
+  assert.equal(
+    distanceScaleText(1),
+    "Colour shows straight-line distance: green is under 0.2 km, red is 0.8 km or more, or beyond 1 km.",
+  );
+});

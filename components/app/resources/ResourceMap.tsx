@@ -8,7 +8,10 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import type { NearbyResourceView, NearbyView } from "@/lib/frontend/live-api.ts";
 import {
   compassText,
+  distanceBand,
+  distanceScaleText,
   distanceText,
+  DISTANCE_BANDS,
   fitProjection,
   mapBounds,
   originText,
@@ -24,6 +27,8 @@ const DEFAULT_WIDTH = 640;
 const MARKER_R = 13;
 // an invisible ring around each marker so a finger has a 44px target, smaller only where markers sit close
 const HIT_R = 22;
+// green to red by straight-line distance (nearby-words distanceBand); css classes, so still no inline styles
+export const BAND_CLASSES = [s.band0, s.band1, s.band2, s.band3, s.band4] as const;
 const MARKER_SIZES = { markerR: MARKER_R, hitR: HIT_R, homeR: 16, gap: 4, edge: MARKER_R + 12 };
 // the arrow on a marker for a place beyond the map, drawn pointing east and then rotated
 const EDGE_ARROW = `M${MARKER_R + 3} -5 L${MARKER_R + 10} 0 L${MARKER_R + 3} 5 Z`;
@@ -161,7 +166,11 @@ export function ResourceMap({ id, data, resources, selectedId, onSelect }: Resou
           {painted.map(({ resource, number, x, y, clamped, angle }) => (
             <g
               key={resource.id}
-              className={resource.id === selectedId ? `${s.marker} ${s.markerSelected}` : s.marker}
+              className={[
+                s.marker,
+                BAND_CLASSES[distanceBand(resource.distanceKm, data.radiusKm, resource.withinRadius)],
+                resource.id === selectedId ? s.markerSelected : "",
+              ].join(" ")}
               transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`}
             >
               {clamped && <path className={s.edgeArrow} transform={`rotate(${angle.toFixed(1)})`} d={EDGE_ARROW} />}
@@ -213,9 +222,17 @@ export function ResourceMap({ id, data, resources, selectedId, onSelect }: Resou
       <ul className={s.mapLegend} role="list">
         <li className={s.legendItem}>
           <svg className={s.swatch} viewBox="-10 -10 20 20" aria-hidden="true">
-            <circle className={s.markerDot} r={8} />
+            <circle className={`${s.markerDot} ${s.legendNeutral}`} r={8} />
           </svg>
           A listed place, numbered as in the list
+        </li>
+        <li className={s.legendItem}>
+          <svg className={s.swatchScale} viewBox={`0 0 ${DISTANCE_BANDS * 14} 14`} aria-hidden="true">
+            {BAND_CLASSES.map((band, index) => (
+              <circle key={band} className={`${s.markerDot} ${band}`} cx={7 + index * 14} cy={7} r={6} />
+            ))}
+          </svg>
+          {distanceScaleText(data.radiusKm)}
         </li>
         <li className={s.legendItem}>
           <svg className={s.swatch} viewBox="-10 -10 20 20" aria-hidden="true">

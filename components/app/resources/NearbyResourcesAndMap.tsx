@@ -22,6 +22,7 @@ import {
   emptyText,
   firstPageSize,
   hoursText,
+  distanceBand,
   orderResources,
   RADIUS_CHOICES,
   summaryText,
@@ -31,7 +32,7 @@ import {
   wheelchairText,
   type RadiusKm,
 } from "./nearby-words.ts";
-import { ResourceMap } from "./ResourceMap.tsx";
+import { BAND_CLASSES, ResourceMap } from "./ResourceMap.tsx";
 import s from "./NearbyResourcesAndMap.module.css";
 
 const OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright";
@@ -257,6 +258,7 @@ export function NearbyResourcesAndMap({
               key={resource.id}
               resource={resource}
               number={index + 1}
+              band={distanceBand(resource.distanceKm, data.radiusKm, resource.withinRadius)}
               selected={resource.id === selectedId}
               headingLevel={headingLevel === 3 ? 4 : 3}
               mapId={mapId}
@@ -412,6 +414,8 @@ export type ResourceCardProps = {
   resource: NearbyResourceView;
   /** the same number as its marker on the map */
   number: number;
+  /** the marker's distance colour step (nearby-words distanceBand), so the number badge matches its marker */
+  band: number;
   selected: boolean;
   headingLevel: 3 | 4;
   /** the map's id, for the button's aria-controls */
@@ -421,7 +425,7 @@ export type ResourceCardProps = {
 };
 
 /** one place: what it is, how far in a straight line, its listed hours and access (or Unknown), and its source */
-export function ResourceCard({ resource, number, selected, headingLevel, mapId, headingRef, onShow }: ResourceCardProps) {
+export function ResourceCard({ resource, number, band, selected, headingLevel, mapId, headingRef, onShow }: ResourceCardProps) {
   const CardHeading = headingLevel === 4 ? "h4" : "h3";
   const hours = hoursText(resource.hours);
   const tel = telHref(resource.phone);
@@ -430,7 +434,7 @@ export function ResourceCard({ resource, number, selected, headingLevel, mapId, 
   return (
     <li className={selected ? `${s.card} ${s.cardSelected}` : s.card}>
       <div className={s.cardHead}>
-        <span className={s.cardNumber} aria-hidden="true">
+        <span className={`${s.cardNumber} ${BAND_CLASSES[band] ?? ""}`} aria-hidden="true">
           {number}
         </span>
         <CardHeading className={s.cardTitle} tabIndex={-1} ref={headingRef}>

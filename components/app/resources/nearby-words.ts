@@ -44,6 +44,33 @@ export function distanceText(km: number): string {
   return text === "Unknown distance" ? text : `${text} straight-line`;
 }
 
+/** how many colour steps the map uses between close (green) and far (red) */
+export const DISTANCE_BANDS = 5;
+
+/**
+ * the colour step of a place: 0 is the closest fifth of the chosen straight-line distance (green), 4 the farthest
+ * fifth (red). a place beyond the chosen distance, such as the nearest hospital, is always red.
+ */
+export function distanceBand(distanceKm: number, radiusKm: number, withinRadius = true): number {
+  const last = DISTANCE_BANDS - 1;
+  if (!withinRadius || !(radiusKm > 0) || !Number.isFinite(distanceKm)) return last;
+  // a tiny allowance so a place exactly on a step (0.6 of 3 km) is not pushed down by floating point
+  return Math.min(last, Math.max(0, Math.floor((distanceKm * DISTANCE_BANDS) / radiusKm + 1e-9)));
+}
+
+function stepKm(km: number): string {
+  return String(Number(km.toFixed(1)));
+}
+
+/** the legend line for the colours, e.g. "Colour shows straight-line distance: green is under 0.6 km, red is 2.4 km or more." */
+export function distanceScaleText(radiusKm: number): string {
+  const step = radiusKm / DISTANCE_BANDS;
+  return (
+    `Colour shows straight-line distance: green is under ${stepKm(step)} km, ` +
+    `red is ${stepKm(step * (DISTANCE_BANDS - 1))} km or more, or beyond ${stepKm(radiusKm)} km.`
+  );
+}
+
 /** the listed hours, or Unknown; open or closed only when the listed hours say so */
 export function hoursText(hours: NearbyResourceView["hours"]): { text: string; status: string | null } {
   const text = hours.text?.trim() ? hours.text.trim() : "Hours unknown";
