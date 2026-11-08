@@ -3,6 +3,8 @@
 Status: draft v2, 2026-11-07. Open decisions are listed in section 13 with a default for each.
 Companion doc: [IMPLEMENTATION.md](IMPLEMENTATION.md) (AWS, ElevenLabs, agents, data loading).
 
+> **Database update (2026-11-08):** Supabase PostgreSQL replaced AWS Aurora and the RDS Data API as the cloud database. PGlite stays the offline default. The Aurora steps below are kept as history and no longer apply. Current setup: [INTEGRATIONS.md, "Turn on Supabase PostgreSQL"](INTEGRATIONS.md#turn-on-supabase-postgresql).
+
 ## 1. Summary
 
 ReliefReady helps a person in Calgary who suddenly has to care for a family member. It does three jobs.

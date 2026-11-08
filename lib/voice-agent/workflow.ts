@@ -1,8 +1,9 @@
 import "server-only";
 import { z } from "zod";
+import { classifyQuestion, redirectFor } from "../ai/medicalGuard.ts";
 import { MAX_AUDIO_BYTES, MAX_SPEECH_CHARACTERS, SpeechIntegrationError } from "../elevenlabs.ts";
 
-const categories = ["routine", "preference", "communication", "mobility", "contacts", "logistics", "medical_instruction"] as const;
+const categories = ["routine", "preference", "communication", "mobility", "practical", "contacts", "logistics", "medical_instruction"] as const;
 const boundedText = z.string().min(1).max(20_000).refine((value) => value.trim().length > 0);
 const identifier = z.string().min(1).max(200).refine((value) => value.trim().length > 0);
 const source = z.discriminatedUnion("type", [
@@ -180,6 +181,10 @@ export function createVoiceWorkflow(dependencies: VoiceWorkflowDependencies) {
           const saved = await dependencies.saveSuggestedVoiceNote({ userId, careRecipientId: input.careRecipientId, kind: input.source.type === "audio" ? "voice" : "note", s3Key: null, fullText: transcript!, facts });
           const sourceId = parse(identifier, saved.sourceId, "workflow_failed");
           reply = { intent: input.intent, status: "suggested", sourceId, suggestedFacts: facts, text: "Care note saved for review. Suggested facts require your approval before they join the care timeline." };
+        } else if (input.intent === "profile_question" && redirectFor(classifyQuestion(transcript!)) !== null) {
+          // same guard as askProfile: a medical or emergency question gets the fixed 811/911 pointer, with no passport
+          // read, no model call and no open question
+          reply = { intent: input.intent, status: "answered", text: redirectFor(classifyQuestion(transcript!))!, citations: [] };
         } else {
           const facts = parse(z.array(factSchema).max(200), await dependencies.loadApprovedFacts({ userId, careRecipientId: input.careRecipientId }), "invalid_fact");
           if (facts.some((fact) => fact.ownerId !== userId || fact.careRecipientId !== input.careRecipientId) || new Set(facts.map((fact) => fact.id)).size !== facts.length) throw new VoiceWorkflowError("invalid_fact");

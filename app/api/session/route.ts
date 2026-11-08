@@ -1,0 +1,38 @@
+// GET /api/session: the signed-in owner, adapter modes, the care recipient and the active episode
+import "server-only";
+import { albertaDate, loadActiveEpisode, loadRecipient } from "../_lib/context.ts";
+import { handle, isAdmin, json, readContext } from "../_lib/http.ts";
+import { resolveEmbedder } from "../../../lib/ai/embeddings.ts";
+import { paidProvidersAllowed } from "../../../lib/mvp/auth.ts";
+import { speechMode } from "../../../lib/speech/status.ts";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request): Promise<Response> {
+  return handle(async () => {
+    const { rt, user } = await readContext(request);
+    const database = rt.stores.database;
+    const recipient = await loadRecipient(database, user.id).catch(() => null);
+    const episode = await loadActiveEpisode(database, user.id);
+    const appNow = await rt.stores.appNow(user.id);
+    // "vector" only when Ask would really use vectors: paid providers allowed here and an embedder that builds
+    const vectors = paidProvidersAllowed(rt.auth.mode, rt.baseUrl) && resolveEmbedder() !== null;
+    return json({
+      user: { id: user.id, email: user.email },
+      mode: rt.mode,
+      admin: isAdmin(rt, user),
+      appNow: appNow.toISOString(),
+      today: albertaDate(appNow),
+      careRecipient: recipient && {
+        id: recipient.id,
+        alias: recipient.alias,
+        displayName: recipient.displayName,
+        address: recipient.address,
+        community: recipient.community,
+      },
+      episode: episode && { id: episode.id, startsOn: episode.startsOn, endsOn: episode.endsOn, status: episode.status },
+      providers: { speech: speechMode(), retrieval: vectors ? "vector" : "keyword" },
+    });
+  });
+}

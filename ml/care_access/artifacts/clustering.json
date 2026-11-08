@@ -1,0 +1,289 @@
+{
+  "selected": {
+    "algorithm": "KMeans",
+    "parameters": {
+      "k": 2
+    },
+    "silhouette": 0.6660199316749286,
+    "davies_bouldin": 0.6209223792700983,
+    "calinski_harabasz": 263.6710160475642,
+    "coverage": 1.0,
+    "clusters": 2,
+    "perturbation_ari": 1.0
+  },
+  "selection_metric": "silhouette \u00d7 non-noise coverage",
+  "basis": "driving",
+  "areas": 150,
+  "features": [
+    "Pharmacy_20min",
+    "Health Centre_30min",
+    "Hospital_30min",
+    "PHS Clinic_30min",
+    "Social Dev Ctr_30min",
+    "Community Centre_30min",
+    "Library_30min"
+  ],
+  "search": [
+    {
+      "algorithm": "KMeans",
+      "parameters": {
+        "k": 2
+      },
+      "silhouette": 0.6660199316749286,
+      "davies_bouldin": 0.6209223792700983,
+      "calinski_harabasz": 263.6710160475642,
+      "coverage": 1.0,
+      "clusters": 2,
+      "perturbation_ari": 1.0
+    },
+    {
+      "algorithm": "KMeans",
+      "parameters": {
+        "k": 3
+      },
+      "silhouette": 0.527041724967995,
+      "davies_bouldin": 0.8177383496987954,
+      "calinski_harabasz": 212.2291258441434,
+      "coverage": 1.0,
+      "clusters": 3,
+      "perturbation_ari": 1.0
+    },
+    {
+      "algorithm": "KMeans",
+      "parameters": {
+        "k": 4
+      },
+      "silhouette": 0.5017197198952321,
+      "davies_bouldin": 0.7885913544849328,
+      "calinski_harabasz": 235.57780247068075,
+      "coverage": 1.0,
+      "clusters": 4,
+      "perturbation_ari": 0.9178619472043937
+    },
+    {
+      "algorithm": "KMeans",
+      "parameters": {
+        "k": 5
+      },
+      "silhouette": 0.49121860782384924,
+      "davies_bouldin": 0.909087575791259,
+      "calinski_harabasz": 219.71920792253331,
+      "coverage": 1.0,
+      "clusters": 5,
+      "perturbation_ari": 0.9741055904890857
+    },
+    {
+      "algorithm": "KMeans",
+      "parameters": {
+        "k": 6
+      },
+      "silhouette": 0.49887050394268423,
+      "davies_bouldin": 1.0094644677251026,
+      "calinski_harabasz": 214.41740959817574,
+      "coverage": 1.0,
+      "clusters": 6,
+      "perturbation_ari": 0.8333607098564201
+    },
+    {
+      "algorithm": "Gaussian Mixture",
+      "parameters": {
+        "k": 2,
+        "covariance": "diag"
+      },
+      "silhouette": 0.6549967167431735,
+      "davies_bouldin": 0.6391119239234554,
+      "calinski_harabasz": 251.6732219613336,
+      "coverage": 1.0,
+      "clusters": 2,
+      "perturbation_ari": 0.9692667402201344
+    },
+    {
+      "algorithm": "Gaussian Mixture",
+      "parameters": {
+        "k": 2,
+        "covariance": "full"
+      },
+      "silhouette": 0.629775144412857,
+      "davies_bouldin": 0.6860240537292875,
+      "calinski_harabasz": 225.42777024404407,
+      "coverage": 1.0,
+      "clusters": 2,
+      "perturbation_ari": 1.0
+    },
+    {
+      "algorithm": "Gaussian Mixture",
+      "parameters": {
+        "k": 3,
+        "covariance": "diag"
+      },
+      "silhouette": 0.47906882220272595,
+      "davies_bouldin": 0.8071586422546709,
+      "calinski_harabasz": 189.219437949198,
+      "coverage": 1.0,
+      "clusters": 3,
+      "perturbation_ari": 1.0
+    },
+    {
+      "algorithm": "Gaussian Mixture",
+      "parameters": {
+        "k": 3,
+        "covariance": "full"
+      },
+      "silhouette": 0.49201319307851843,
+      "davies_bouldin": 1.051703683938023,
+      "calinski_harabasz": 148.71453949221683,
+      "coverage": 1.0,
+      "clusters": 3,
+      "perturbation_ari": 0.9754774087685545
+    },
+    {
+      "algorithm": "Gaussian Mixture",
+      "parameters": {
+        "k": 4,
+        "covariance": "diag"
+      },
+      "silhouette": 0.4843956232192009,
+      "davies_bouldin": 0.9055703727520794,
+      "calinski_harabasz": 208.54903778342802,
+      "coverage": 1.0,
+      "clusters": 4,
+      "perturbation_ari": 0.9815742438432418
+    },
+    {
+      "algorithm": "Gaussian Mixture",
+      "parameters": {
+        "k": 4,
+        "covariance": "full"
+      },
+      "silhouette": 0.4877404110154683,
+      "davies_bouldin": 0.868684194043144,
+      "calinski_harabasz": 216.66167871695106,
+      "coverage": 1.0,
+      "clusters": 4,
+      "perturbation_ari": 0.9899877765069094
+    },
+    {
+      "algorithm": "Gaussian Mixture",
+      "parameters": {
+        "k": 5,
+        "covariance": "diag"
+      },
+      "silhouette": 0.3974135115722357,
+      "davies_bouldin": 0.8369604812488486,
+      "calinski_harabasz": 164.11929760397416,
+      "coverage": 1.0,
+      "clusters": 5,
+      "perturbation_ari": 0.7153489893561518
+    },
+    {
+      "algorithm": "Gaussian Mixture",
+      "parameters": {
+        "k": 5,
+        "covariance": "full"
+      },
+      "silhouette": 0.43916178720355475,
+      "davies_bouldin": 0.9406377342418117,
+      "calinski_harabasz": 184.46326096693628,
+      "coverage": 1.0,
+      "clusters": 5,
+      "perturbation_ari": 0.5930280892908842
+    },
+    {
+      "algorithm": "DBSCAN",
+      "parameters": {
+        "eps": 0.5,
+        "min_samples": 4
+      },
+      "silhouette": 0.6213904535200683,
+      "davies_bouldin": 0.5204325865810051,
+      "calinski_harabasz": 195.46525321637594,
+      "coverage": 0.7266666666666667,
+      "clusters": 6,
+      "perturbation_ari": 1.0
+    },
+    {
+      "algorithm": "DBSCAN",
+      "parameters": {
+        "eps": 0.8,
+        "min_samples": 4
+      },
+      "silhouette": 0.4824363374770913,
+      "davies_bouldin": 0.7731102094666931,
+      "calinski_harabasz": 146.35472604605098,
+      "coverage": 0.8266666666666667,
+      "clusters": 5,
+      "perturbation_ari": 1.0
+    },
+    {
+      "algorithm": "DBSCAN",
+      "parameters": {
+        "eps": 0.8,
+        "min_samples": 8
+      },
+      "silhouette": 0.5443679820226431,
+      "davies_bouldin": 0.7072519571427767,
+      "calinski_harabasz": 113.58681865227655,
+      "coverage": 0.72,
+      "clusters": 4,
+      "perturbation_ari": 1.0
+    },
+    {
+      "algorithm": "DBSCAN",
+      "parameters": {
+        "eps": 1.2,
+        "min_samples": 4
+      },
+      "silhouette": 0.6594417868505171,
+      "davies_bouldin": 0.3688473007781333,
+      "calinski_harabasz": 105.80856685129916,
+      "coverage": 0.84,
+      "clusters": 2,
+      "perturbation_ari": 1.0
+    },
+    {
+      "algorithm": "DBSCAN",
+      "parameters": {
+        "eps": 1.2,
+        "min_samples": 8
+      },
+      "silhouette": 0.6594417868505171,
+      "davies_bouldin": 0.3688473007781333,
+      "calinski_harabasz": 105.80856685129916,
+      "coverage": 0.84,
+      "clusters": 2,
+      "perturbation_ari": 1.0
+    }
+  ],
+  "profiles": [
+    {
+      "cluster": 0,
+      "areas": 122,
+      "mean_counts": {
+        "Pharmacy_20min": 63.29,
+        "Health Centre_30min": 8.62,
+        "Hospital_30min": 4.62,
+        "PHS Clinic_30min": 8.62,
+        "Social Dev Ctr_30min": 7.99,
+        "Community Centre_30min": 103.76,
+        "Library_30min": 19.6
+      }
+    },
+    {
+      "cluster": 1,
+      "areas": 28,
+      "mean_counts": {
+        "Pharmacy_20min": 29.29,
+        "Health Centre_30min": 6.39,
+        "Hospital_30min": 3.0,
+        "PHS Clinic_30min": 6.39,
+        "Social Dev Ctr_30min": 6.43,
+        "Community Centre_30min": 72.96,
+        "Library_30min": 14.04
+      }
+    }
+  ],
+  "accuracy": null,
+  "accuracy_reason": "Unsupervised labels have no ground-truth classes. Cluster IDs are unordered.",
+  "transit": "Not computed; stops alone are not travel times",
+  "unknown_features": "No independently verified wheelchair/hours fields; these are not imputed into accessibility evidence."
+}

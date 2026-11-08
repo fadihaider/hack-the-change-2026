@@ -1,0 +1,312 @@
+/* near rosa: the care overview section about care places within reach. only --rr-* tokens. */
+
+.section {
+  margin-top: 44px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.title {
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  font-weight: 600;
+  color: var(--rr-ink);
+  text-wrap: pretty;
+}
+
+/* ---------------------------------------------------------------- the drive-time choice */
+
+.drive {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 14px;
+}
+
+.driveLabel {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-muted);
+}
+
+.toggles {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius-sm);
+  background: var(--rr-page);
+}
+
+.toggle {
+  min-width: 72px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--rr-muted);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.toggle[aria-pressed="true"] {
+  background: var(--rr-surface);
+  color: var(--rr-teal-ink);
+  box-shadow:
+    inset 0 0 0 1px var(--rr-teal),
+    0 1px 2px rgb(29 36 51 / 8%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .toggle[aria-pressed="false"]:hover {
+    color: var(--rr-ink);
+    background: rgb(255 255 255 / 60%);
+  }
+}
+
+/* ---------------------------------------------------------------- states */
+
+.loading {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-page);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.problem {
+  margin-top: 16px;
+}
+
+.dim {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+.fallback {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-warn-tint);
+  color: var(--rr-warn-ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ---------------------------------------------------------------- what is in reach */
+
+.summary {
+  margin-top: 16px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+}
+
+.list,
+.list[role="list"] {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rr-hairline);
+}
+
+.item:last-child {
+  border-bottom: 0;
+}
+
+.itemHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+}
+
+.kind {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-ink);
+}
+
+.count {
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--rr-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.count strong {
+  font-weight: 600;
+  color: var(--rr-ink);
+}
+
+.closest {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-ink);
+  overflow-wrap: anywhere;
+}
+
+.placeName {
+  font-weight: 500;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.address {
+  margin-top: 1px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- the quieter notes */
+
+.group {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-page);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+}
+
+.groupLead {
+  font-weight: 600;
+}
+
+.quiet {
+  margin-top: 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.sources {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+  overflow-wrap: anywhere;
+}
+
+.sources a {
+  color: inherit;
+  text-decoration-color: rgb(94 102 119 / 50%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sources a:hover {
+    color: var(--rr-ink);
+  }
+}
+
+/* ---------------------------------------------------------------- cards and map, then the folded snapshot summary */
+
+.nearby {
+  margin-top: 18px;
+}
+
+.snapshot {
+  margin-top: 28px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+}
+
+.snapshotSummary {
+  display: grid;
+  gap: 2px;
+  min-height: 52px;
+  padding: 14px 44px 14px 16px;
+  position: relative;
+  border-radius: var(--rr-radius);
+  cursor: pointer;
+  list-style: none;
+}
+
+.snapshotSummary::-webkit-details-marker {
+  display: none;
+}
+
+/* a chevron that turns when the summary opens */
+.snapshotSummary::after {
+  content: "";
+  position: absolute;
+  top: 22px;
+  right: 18px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--rr-muted);
+  border-bottom: 2px solid var(--rr-muted);
+  transform: rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.snapshot[open] > .snapshotSummary::after {
+  transform: rotate(225deg);
+}
+
+.snapshotSummary:focus-visible {
+  outline: 2px solid var(--rr-teal);
+  outline-offset: 2px;
+}
+
+.snapshotTitle {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-ink);
+}
+
+.snapshotHint {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.snapshotBody {
+  padding: 0 16px 16px;
+}
+
+.subtitle {
+  margin-top: 4px;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--rr-ink);
+  text-wrap: pretty;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle,
+  .dim,
+  .snapshotSummary::after {
+    transition: none;
+  }
+}

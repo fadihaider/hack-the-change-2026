@@ -1,0 +1,116 @@
+{
+  "fetchedAt": "2026-11-07",
+  "notes": "hand-picked; every url was fetched on fetchedAt to confirm the name, offer and phone. InformAlberta entries come from its search for caregiver services in Calgary.",
+  "items": [
+    {
+      "id": "ahs_family_caregiver_centre",
+      "name": "Family Caregiver Centre (Alberta Health Services, Calgary Zone)",
+      "offers": "Information, education and support for family and friends who give unpaid care to someone with a health condition.",
+      "phone": "403-955-1674",
+      "address": "1070 McDougall Road NE, Calgary",
+      "hours": "Tuesday to Thursday, 8:00 am to 4:00 pm",
+      "url": "https://www.albertahealthservices.ca/services/Page13155.aspx",
+      "source": "Alberta Health Services",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "health_link_811",
+      "name": "Health Link 811",
+      "offers": "A free phone line, open 24 hours a day, 7 days a week, for health advice and information.",
+      "phone": "811",
+      "address": null,
+      "hours": "24/7",
+      "url": "https://www.primarycarealberta.ca/page14176.aspx",
+      "source": "Primary Care Alberta",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "caregivers_alberta",
+      "name": "Caregivers Alberta",
+      "offers": "Coaching, peer support groups, education and resources for unpaid family caregivers in Alberta.",
+      "phone": "1-877-453-5088",
+      "address": null,
+      "hours": null,
+      "url": "https://www.caregiversalberta.ca/",
+      "source": "Caregivers Alberta",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "alberta_211",
+      "name": "211 Alberta",
+      "offers": "Free, confidential help finding community and social supports by phone, text or chat, any time.",
+      "phone": "211",
+      "address": null,
+      "hours": "24/7",
+      "url": "https://ab.211.ca/",
+      "source": "211 Alberta",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "unison_caregivers_support_group",
+      "name": "Caregivers Support Group (Unison Society)",
+      "offers": "A monthly support group where caregivers connect, talk about the ups and downs of caregiving and learn about useful topics.",
+      "phone": "403-234-6566",
+      "address": "1133 7 Avenue SW, Calgary",
+      "hours": null,
+      "url": "https://informalberta.ca/servicedetails?serviceid=1080767",
+      "source": "InformAlberta",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "calgary_seniors_caregiver_kindness",
+      "name": "Caregiver Kindness (Calgary Seniors' Resource Society)",
+      "offers": "Weekly volunteer visits to a senior that give the caregiver 1 to 2 hours of respite.",
+      "phone": "403-266-6200",
+      "address": "3639 26 Street NE, Calgary",
+      "hours": null,
+      "url": "https://informalberta.ca/servicedetails?serviceid=1002666",
+      "source": "InformAlberta",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "ilrcc_respite_connect",
+      "name": "Respite Connect (Independent Living Resource Centre of Calgary)",
+      "offers": "Vetted respite workers for families and caregivers.",
+      "phone": "403-263-6880",
+      "address": "1144 29 Avenue NE, Calgary",
+      "hours": null,
+      "url": "https://informalberta.ca/servicedetails?serviceid=1084864",
+      "source": "InformAlberta",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "jfsc_caregiver_support_program",
+      "name": "Caregiver Support Program (Jewish Family Service Calgary)",
+      "offers": "Counselling, group sessions, education and resources for unpaid caregivers of seniors, open to all faiths and backgrounds.",
+      "phone": "403-287-3510",
+      "address": "6131 6 Street SE, Calgary",
+      "hours": null,
+      "url": "https://informalberta.ca/servicedetails?serviceid=1083059",
+      "source": "InformAlberta",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "way_in_network_seniors",
+      "name": "Support Services for Seniors (The Way In Network)",
+      "offers": "Information, referrals, benefit applications and caregiver support for Calgarians aged 65 and older living independently.",
+      "phone": "403-736-4677",
+      "address": "1000 7 Avenue SW, Calgary",
+      "hours": null,
+      "url": "https://informalberta.ca/servicedetails?serviceid=1071245",
+      "source": "InformAlberta",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "distress_centre_calgary",
+      "name": "Distress Centre Calgary",
+      "offers": "Free 24-hour crisis support by phone, text and chat, plus counselling.",
+      "phone": "403-266-4357",
+      "address": null,
+      "hours": "24/7",
+      "url": "https://www.distresscentre.com/",
+      "source": "Distress Centre Calgary",
+      "fetchedAt": "2026-11-07"
+    }
+  ]
+}

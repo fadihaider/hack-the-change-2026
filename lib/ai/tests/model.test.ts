@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { z } from "zod";
 import { APIConnectionError, APIError } from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { callStructured, DEFAULT_MODEL, ModelCallError, NeedsReviewError, type ModelCaller, type UsageRecord } from "../model";
+import { callStructured, DEFAULT_MODEL, ModelCallError, NeedsReviewError, toModelCallError, type ModelCaller, type UsageRecord } from "../model";
+import { geminiCaller, GeminiNotConfiguredError } from "../gemini";
 import { fakeCaller } from "./fakeCaller";
 
 const Out = z.object({ ok: z.boolean() });
@@ -88,6 +89,47 @@ test("a connection failure becomes ModelCallError with no status", async () => {
     assert.ok(error instanceof ModelCallError);
     assert.equal(error.status, null);
     assert.equal(error.code, "APIConnectionError");
+    assert.ok(!error.message.includes("SECRET"));
+    return true;
+  });
+});
+
+// gemini adapter (RR_AI=gemini) through the same guards; the adapter itself is covered in gemini.test.ts
+
+test("a Gemini not-configured error passes through unchanged", async () => {
+  const original = new GeminiNotConfiguredError("GEMINI_API_KEY");
+  assert.equal(toModelCallError(original), original);
+  const caller: ModelCaller = async () => {
+    throw original;
+  };
+  await assert.rejects(callStructured(call, { caller, model: "gemini-not-configured" }), (error: unknown) => {
+    assert.ok(error instanceof ModelCallError);
+    assert.equal(error.status, null);
+    assert.equal(error.code, "not_configured");
+    return true;
+  });
+});
+
+test("a Gemini answer is parsed with the step schema and its tokens are recorded", async () => {
+  const usage: UsageRecord[] = [];
+  const fetch = async () =>
+    Response.json({
+      candidates: [{ content: { parts: [{ text: '{"ok":true}' }] }, finishReason: "STOP" }],
+      usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 3, thoughtsTokenCount: 4 },
+    });
+  const caller = geminiCaller({ apiKey: "k", fetch });
+  const result = await callStructured(call, { caller, model: "gemini-test", onUsage: (u) => void usage.push(u) });
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(usage, [{ step: "intake", model: "gemini-test", inputTokens: 9, outputTokens: 7, stopReason: "end_turn" }]);
+});
+
+test("a Gemini rate limit keeps only status 429 and the shared rate_limit_error code", async () => {
+  const fetch = async () => new Response('{"error":{"message":"SECRET quota text"}}', { status: 429 });
+  const caller = geminiCaller({ apiKey: "k", fetch });
+  await assert.rejects(callStructured(call, { caller, model: "gemini-test" }), (error: unknown) => {
+    assert.ok(error instanceof ModelCallError);
+    assert.equal(error.status, 429);
+    assert.equal(error.code, "rate_limit_error");
     assert.ok(!error.message.includes("SECRET"));
     return true;
   });

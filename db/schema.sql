@@ -1,4 +1,5 @@
--- ReliefReady schema for Aurora PostgreSQL 17 (IMPLEMENTATION section 4); apply with scripts/apply-schema.ts
+-- ReliefReady schema for PostgreSQL 17 (IMPLEMENTATION section 4): PGlite applies it on first boot (lib/mvp/database.ts),
+-- Supabase after db/supabase-extensions.sql (lib/supabase/database.ts, npm run db:migrate)
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -68,9 +69,9 @@ CREATE TABLE care_source (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   author text NOT NULL, created_at timestamptz DEFAULT now());
 CREATE TABLE care_fact (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   care_recipient_id uuid REFERENCES care_recipient ON DELETE CASCADE,
-  category text NOT NULL CHECK (category IN ('routine','preference','communication','mobility','contacts','logistics',
-    'medical_instruction')),
-  text_exact text NOT NULL, source_id uuid REFERENCES care_source ON DELETE CASCADE,
+  category text NOT NULL CHECK (category IN ('routine','preference','communication','mobility','practical','contacts',
+    'logistics','medical_instruction')),
+  text_exact text NOT NULL, display_text text, source_id uuid REFERENCES care_source ON DELETE CASCADE,
   span_start int, span_end int,
   status text NOT NULL CHECK (status IN ('suggested','approved','superseded','conflicting','rejected')),
   version int NOT NULL DEFAULT 1, supersedes uuid REFERENCES care_fact ON DELETE SET NULL,
@@ -92,6 +93,17 @@ CREATE TABLE handoff_grant (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   care_recipient_id uuid REFERENCES care_recipient ON DELETE CASCADE,
   substitute_email text NOT NULL, categories text[] NOT NULL, care_event_ids uuid[] NOT NULL DEFAULT '{}',
   starts_at timestamptz NOT NULL, ends_at timestamptz NOT NULL, revoked_at timestamptz, token_hash text UNIQUE NOT NULL);
+-- people the caregiver typed in for the Emergency / Help sheet; never seeded, removal only sets removed_at
+CREATE TABLE care_contact (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  care_recipient_id uuid NOT NULL REFERENCES care_recipient ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 80),
+  relationship text CHECK (char_length(relationship) <= 60),
+  phone text NOT NULL CHECK (char_length(phone) BETWEEN 3 AND 40),
+  kind text NOT NULL CHECK (kind IN ('emergency','trusted')),
+  created_at timestamptz NOT NULL DEFAULT now(), removed_at timestamptz);
+CREATE INDEX care_contact_recipient ON care_contact (care_recipient_id, created_at);
+-- a timeline occurrence the caregiver marked done: usage_signal kind 'completed', value YYYY-MM-DD, at most one each
+CREATE UNIQUE INDEX usage_signal_completed_once ON usage_signal (care_event_id, value) WHERE kind = 'completed';
 
 -- calgary knowledge
 CREATE TABLE resource (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), kind text NOT NULL, name text NOT NULL,

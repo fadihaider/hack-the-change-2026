@@ -1,0 +1,258 @@
+/* recover: B's calm grouped list in C's colours. only --rr-* tokens. */
+
+.loading {
+  padding: 24px 0;
+  font-size: 16px;
+  color: var(--rr-muted);
+}
+
+.summary {
+  margin: -12px 0 8px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.spaced {
+  margin: 16px 0 4px;
+}
+
+.group {
+  margin-top: 28px;
+}
+
+.group + .group {
+  margin-top: 36px;
+}
+
+.groupTitle {
+  padding-bottom: 4px;
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--rr-muted);
+}
+
+.list {
+  display: grid;
+}
+
+.row {
+  display: grid;
+  gap: 4px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rr-hairline);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.rowHead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+.name {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+}
+
+.timeIcon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--rr-teal-tint);
+  color: var(--rr-teal-ink);
+}
+
+.subject {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+}
+
+.when {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.when svg {
+  margin-top: 2px;
+}
+
+.quote {
+  margin: 6px 0 2px;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--rr-hairline);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+
+.confirm {
+  display: grid;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-warn-tint);
+}
+
+.confirmAsk {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--rr-warn-ink);
+}
+
+.confirmAsk:focus,
+.confirmAsk:focus-visible {
+  outline: none;
+}
+
+.confirm .rowActions {
+  margin-top: 8px;
+}
+
+.foot {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+.checked {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-teal-ink);
+  text-align: center;
+}
+
+.help {
+  margin-top: 40px;
+  padding-top: 32px;
+  border-top: 1px solid var(--rr-hairline);
+}
+
+@media (max-width: 479px) {
+  .rowActions > * {
+    flex: 1 1 100%;
+  }
+}
+
+/* ---------------------------------------------------------------- group hints, held-back pill, evidence */
+
+.groupHint {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+/* matches the shared warn pill (ui.module.css) for a message the server held back at send time */
+.heldPill {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--rr-warn-ink);
+  background: var(--rr-warn-tint);
+}
+
+.record {
+  margin-top: 6px;
+}
+
+.recordSummary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  margin-left: -4px;
+  border-radius: var(--rr-radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--rr-teal-ink);
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.record[open] .recordSummary {
+  margin-bottom: 4px;
+}
+
+.recordState {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-ink);
+}
+
+.recordCode {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--rr-page);
+  color: var(--rr-muted);
+  font-size: 13px;
+}
+
+.recordList {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--rr-radius-sm);
+  background: var(--rr-page);
+  list-style: none;
+}
+
+.recordItem {
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+}
+
+.recordTime {
+  font-size: 13px;
+  color: var(--rr-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 720px) {
+  .recordItem {
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: 12px;
+  }
+}

@@ -17,6 +17,8 @@ const state = z.enum([
   "needs_review",
 ]);
 const timestamp = z.string().datetime({ offset: true });
+const tier = z.enum(["minimal", "general", "detailed"]);
+export type DisclosureTierView = z.infer<typeof tier>;
 export const requestViewSchema = z.object({
   id: z.string().min(1),
   revision: z.string().regex(/^[a-f0-9]{64}$/),
@@ -29,7 +31,9 @@ export const requestViewSchema = z.object({
   }),
   subject: z.string(),
   body: z.string(),
-  disclosureTier: z.enum(["minimal", "general", "detailed"]),
+  disclosureTier: tier,
+  /** the contact group's usual tier; the owner may choose another one for this request */
+  defaultDisclosureTier: tier.optional(),
   healthTermsFound: z.array(z.string()),
   healthOverride: z.boolean(),
   respondBy: timestamp.nullable(),
@@ -50,6 +54,8 @@ export const requestViewSchema = z.object({
         "user_manual",
         "scheduler",
         "error",
+        "sms_message_sid",
+        "sms_status",
       ]),
       evidenceRef: z.string().nullable(),
       actor: z.string(),
@@ -63,6 +69,11 @@ const listSchema = z.object({
   appNow: timestamp,
 });
 const requestSchema = z.object({ request: requestViewSchema });
+const redraftSchema = z.object({
+  request: requestViewSchema,
+  editFlags: z.array(z.string()),
+  approvalBlocked: z.boolean(),
+});
 const refreshSchema = listSchema.extend({
   expiredRequestIds: z.array(z.string()),
 });
@@ -82,6 +93,8 @@ export class RequestApiError extends Error {
     public readonly code: string,
     public readonly status: number,
     public readonly terms: string[] = [],
+    /** a fixed server message (for example the guide's address hints); plain text only */
+    public readonly detail: string | null = null,
   ) {
     super(code);
   }
@@ -107,26 +120,36 @@ export function apiErrorMessage(error: unknown): string {
   return "The action could not be confirmed. Refresh the recorded state before trying again.";
 }
 
-export function createRequestApi(transport: typeof fetch = fetch) {
-  async function call<T>(
+export interface CallOptions {
+  /** a json object, or FormData for a multipart upload; GET when absent */
+  body?: object | FormData;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+}
+
+/** one validated same-origin call: errors become RequestApiError, success is parsed with the schema */
+export function createCaller(transport: typeof fetch = fetch) {
+  return async function call<T>(
     path: string,
     schema: z.ZodType<T>,
-    body?: object,
-    headers: Record<string, string> = {},
+    options: CallOptions = {},
   ): Promise<T> {
+    const { body, headers = {}, timeoutMs = 15000 } = options;
     let response: Response;
     try {
       response = await transport(path, {
         method: body === undefined ? "GET" : "POST",
         credentials: "same-origin",
         cache: "no-store",
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(timeoutMs),
         ...(body === undefined
           ? {}
-          : {
-              headers: { "Content-Type": "application/json", ...headers },
-              body: JSON.stringify(body),
-            }),
+          : body instanceof FormData
+            ? { headers, body }
+            : {
+                headers: { "Content-Type": "application/json", ...headers },
+                body: JSON.stringify(body),
+              }),
       });
     } catch {
       throw new RequestApiError("network_error", 0);
@@ -146,6 +169,7 @@ export function createRequestApi(transport: typeof fetch = fetch) {
           error: z.object({
             code: z.string(),
             terms: z.array(z.string().max(80)).optional(),
+            message: z.string().optional(),
           }),
         })
         .safeParse(data);
@@ -153,12 +177,23 @@ export function createRequestApi(transport: typeof fetch = fetch) {
         error.success ? error.data.error.code : "request_failed",
         response.status,
         error.success ? error.data.error.terms : undefined,
+        error.success ? (error.data.error.message?.slice(0, 400) ?? null) : null,
       );
     }
     const result = schema.safeParse(data);
     if (!result.success) throw new RequestApiError("invalid_response", 502);
     return result.data;
-  }
+  };
+}
+
+export function createRequestApi(transport: typeof fetch = fetch) {
+  const send = createCaller(transport);
+  const call = <T>(
+    path: string,
+    schema: z.ZodType<T>,
+    body?: object,
+    headers: Record<string, string> = {},
+  ) => send(path, schema, { body, headers });
   return {
     list: () => call("/api/requests", listSchema),
     refresh: () => call("/api/requests/refresh", refreshSchema, {}),
@@ -169,8 +204,16 @@ export function createRequestApi(transport: typeof fetch = fetch) {
         body?: string;
         contactId?: string;
         respondBy?: string | null;
+        /** this request only; the revision and the approval hash cover it, so it needs a fresh approval */
+        disclosureTier?: DisclosureTierView;
       },
     ) => call("/api/requests/edit", requestSchema, { requestId, ...changes }),
+    /** a new A3 draft written for the chosen tier; replaces the words, back to awaiting approval */
+    redraft: (requestId: string, disclosureTier: DisclosureTierView) =>
+      send("/api/requests/redraft", redraftSchema, {
+        body: { requestId, disclosureTier },
+        timeoutMs: 90000,
+      }),
     approve: (requestId: string, revision: string, healthOverride = false) => {
       if (!/^[a-f0-9]{64}$/.test(revision))
         return Promise.reject(new RequestApiError("invalid_response", 502));

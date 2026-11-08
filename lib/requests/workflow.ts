@@ -81,9 +81,12 @@ export async function sendApprovedRequest(input: {
   appTime: Date;
   findHealthTerms: (subject: string, body: string) => Promise<string[]>;
   send: (message: { userId: string; to: string; subject: string; text: string }) => Promise<{ id: string }>;
+  /** demo outbox only: the links never leave this machine, so plain HTTP on a LAN address is acceptable */
+  allowHttpLinks?: boolean;
 }): Promise<SendResult> {
   const base = new URL(input.baseUrl);
-  if ((base.protocol !== "https:" && !(base.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname))) || base.username || base.password) {
+  const httpAllowed = input.allowHttpLinks === true || ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname);
+  if ((base.protocol !== "https:" && !(base.protocol === "http:" && httpAllowed)) || base.username || base.password) {
     throw new Error("APP_BASE_URL must use HTTPS (localhost HTTP is allowed)");
   }
   if (!Number.isFinite(input.appTime.getTime())) throw new Error("Invalid app clock");

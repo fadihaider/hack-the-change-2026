@@ -51,16 +51,97 @@ const TIME_MENTION = /(?<![\d:])(\d{1,2})(?::([0-5]\d))?\s*(a\.?\s?m\.?|p\.?\s?m
 const HOURS_MENTION = /(?<![\d:])([01]\d|2[0-3])([0-5]\d)\s*h(?:rs?)?\b/g;
 const OCLOCK_MENTION = /(?<![\d:])(\d{1,2})\s*o'?\s?clock\b/g;
 
+// spoken clock times ("at eight", "eight thirty", "half past eight", "quarter to nine"). a word hour on its own counts
+// only after "at" and before the end of a clause or a time word, so "take one in the morning" (a dose) and
+// "at one point" are never times
+const HOUR_WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const HOUR_WORD = `(${HOUR_WORDS.join("|")})`;
+const HOUR_ANY = `(\\d{1,2}|${HOUR_WORDS.join("|")})`;
+const SPOKEN_PAST = new RegExp(`\\b(half|quarter)\\s+past\\s+${HOUR_ANY}(?![\\w:-])`, "g");
+const SPOKEN_TO = new RegExp(`\\bquarter\\s+to\\s+${HOUR_ANY}(?![\\w:-])`, "g");
+const SPOKEN_MINUTES = new RegExp(`\\b${HOUR_WORD}[\\s-]+(o'?\\s?clock|fifteen|thirty|forty[\\s-]?five)(?![\\w-])`, "g");
+const SPOKEN_AT = new RegExp(
+  `\\bat\\s+(?:around\\s+|about\\s+)?${HOUR_WORD}(?=\\s*[.,;:!?)]|\\s*$|\\s+(?:in the|at night|tonight|a\\.?\\s?m\\b|p\\.?\\s?m\\b|sharp|every|each|daily|and|or|with|then|before|after|on|so|but|if|when|unless)\\b)`,
+  "g",
+);
+const SPOKEN_AM = /^\s*(?:sharp\s+)?(?:in the morning|a\.?\s?m\b)/;
+const SPOKEN_PM = /^\s*(?:sharp\s+)?(?:in the (?:afternoon|evening)|at night|tonight|p\.?\s?m\b)/;
+
+interface SpokenTime {
+  index: number;
+  hour: number;
+  minutes: number;
+  meridiem: "am" | "pm" | null;
+}
+
+function hourValue(word: string): number {
+  return /^\d+$/.test(word) ? Number(word) : HOUR_WORDS.indexOf(word) + 1;
+}
+
+/** spoken times in text order; lower is already lowercase */
+function spokenTimes(lower: string): SpokenTime[] {
+  const found: SpokenTime[] = [];
+  const push = (index: number, end: number, hour: number, minutes: number): void => {
+    if (hour < 1 || hour > 12) {
+      return;
+    }
+    const after = lower.slice(end);
+    const meridiem = SPOKEN_AM.test(after) ? "am" : SPOKEN_PM.test(after) ? "pm" : null;
+    found.push({ index, hour, minutes, meridiem });
+  };
+  for (const match of lower.matchAll(SPOKEN_PAST)) {
+    push(match.index, match.index + match[0].length, hourValue(match[2]), match[1] === "half" ? 30 : 15);
+  }
+  for (const match of lower.matchAll(SPOKEN_TO)) {
+    const hour = hourValue(match[1]);
+    push(match.index, match.index + match[0].length, hour === 1 ? 12 : hour - 1, 45);
+  }
+  for (const match of lower.matchAll(SPOKEN_MINUTES)) {
+    const word = match[2].replace(/[\s-]/g, "");
+    const minutes = word.startsWith("fifteen") ? 15 : word.startsWith("thirty") ? 30 : word.startsWith("forty") ? 45 : 0;
+    push(match.index, match.index + match[0].length, hourValue(match[1]), minutes);
+  }
+  for (const match of lower.matchAll(SPOKEN_AT)) {
+    push(match.index, match.index + match[0].length, hourValue(match[1]), 0);
+  }
+  return found.sort((a, b) => a.index - b.index);
+}
+
+/** every HH:MM a spoken time can mean: without am or pm, 1 to 11 can be morning or evening, as with "8:00" */
+function spokenReadings(time: SpokenTime): string[] {
+  const mm = pad(time.minutes);
+  const base = time.hour % 12;
+  if (time.meridiem === "am") {
+    return [`${pad(base)}:${mm}`];
+  }
+  if (time.meridiem === "pm") {
+    return [`${pad(base + 12)}:${mm}`];
+  }
+  return time.hour === 12 ? [`12:${mm}`] : [`${pad(time.hour)}:${mm}`, `${pad(time.hour + 12)}:${mm}`];
+}
+
+/**
+ * spoken times in text order, each read as morning when am or pm is missing ("at eight" is 08:00), the same reading the
+ * demo provider uses for "8:00". every value here is also in timesMentioned(text).
+ */
+export function spokenClockTimes(text: string): { index: number; time: string }[] {
+  return spokenTimes(text.toLowerCase()).map((time) => ({ index: time.index, time: spokenReadings(time)[0] }));
+}
+
 /**
  * Every HH:MM time a piece of text could mean. A bare number with neither minutes nor am/pm is ignored,
  * so doses and counts ("take 2") never count as times. "8:00" or "8 o'clock" without am/pm can mean 08:00 or 20:00;
- * "08:00" with a leading zero and "20:15" are 24-hour times and mean only that.
+ * "08:00" with a leading zero and "20:15" are 24-hour times and mean only that. Spoken times ("at eight",
+ * "half past eight") follow the same rules.
  */
 export function timesMentioned(text: string): Set<string> {
   const found = new Set<string>();
   const lower = text.toLowerCase();
-  if (/\bnoon\b/.test(lower)) {
+  if (/\b(?:noon|midday)\b/.test(lower)) {
     found.add("12:00");
+  }
+  for (const time of spokenTimes(lower)) {
+    spokenReadings(time).forEach((reading) => found.add(reading));
   }
   if (/\bmidnight\b/.test(lower)) {
     found.add("00:00");
@@ -213,6 +294,15 @@ export function isRuleGrounded(rule: string, text: string): boolean {
   }
   const { days, hasRange } = readDays(text);
   return (hasRange || WEEKLY_CUE.test(text)) && byDay.every((day) => days.has(day));
+}
+
+/**
+ * FREQ=DAILY when the text plainly says it happens every day ("daily", "every day", "each morning"), else null.
+ * "every other day" and wording that names days ("each morning on weekdays", "every day from tomorrow") are not
+ * read as a daily repeat, so no rule is invented from them.
+ */
+export function statedDailyRule(text: string): string | null {
+  return DAILY_CUE.test(text) && !INTERVAL_CUE.test(text) && !namesDay(text) ? "FREQ=DAILY" : null;
 }
 
 /** first date on or after the anchor that the rule allows, so starts_at is a real occurrence */

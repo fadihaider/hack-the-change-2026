@@ -1,4 +1,4 @@
-// durable WorkflowStore for lib/requests/workflow.ts on Aurora PostgreSQL (docs/INTEGRATIONS.md "Store boundary")
+// durable WorkflowStore for lib/requests/workflow.ts on PGlite or Supabase Postgres (docs/INTEGRATIONS.md "Store boundary")
 import "server-only";
 import { p, type Database, type SqlRunner } from "../db.ts";
 import {
@@ -32,7 +32,7 @@ interface TokenRow {
   request_id: string;
 }
 
-// every timestamp leaves the database as ISO 8601 text (IMPLEMENTATION section 3, Data API types)
+// every timestamp leaves the database as ISO 8601 text (lib/sql.ts RESULT_PARSERS)
 const REQUEST_COLUMNS = `r.id, r.user_id, r.state, r.health_override, to_json(r.respond_by)#>>'{}' AS respond_by,
   r.draft_subject, r.draft_body, r.disclosure_tier, c.email AS recipient_email`;
 

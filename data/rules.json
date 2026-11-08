@@ -1,0 +1,50 @@
+{
+  "fetchedAt": "2026-11-07",
+  "items": [
+    {
+      "id": "ab_personal_family_responsibility_leave",
+      "title": "Alberta personal and family responsibility leave",
+      "body": "Eligible employees in Alberta can take up to 5 days of unpaid, job-protected leave each calendar year to meet family responsibilities for a family member. You give your employer notice as soon as is reasonable before taking the leave.",
+      "conditions": {
+        "min_tenure_days": 90,
+        "max_days_per_year": 5,
+        "per": "calendar_year",
+        "paid": false,
+        "notice": "as soon as is reasonable"
+      },
+      "quotes": [
+        "Employees are eligible for personal and family responsibility leave if they have been employed at least 90 days with the same employer.",
+        "Employees with less than 90 days of employment may still be granted leave.",
+        "An employee must give an employer notice as soon as is reasonable before taking a leave.",
+        "The legislation entitles eligible employees to a period of leave without pay, at the end of which they must be reinstated in their same, or an equivalent, job.",
+        "A medical certificate or other documentation is not required by legislation"
+      ],
+      "notes": "unpaid unless an employment contract or collective agreement says otherwise",
+      "source": "Government of Alberta",
+      "sourceUrl": "https://www.alberta.ca/personal-family-responsibility-leave",
+      "fetchedAt": "2026-11-07"
+    },
+    {
+      "id": "ei_caregiving_benefits",
+      "title": "EI caregiving benefits",
+      "body": "EI caregiving benefits may apply if a medical doctor or nurse practitioner certifies that the person is critically ill or injured, or needs end-of-life care. Other eligibility requirements apply; this is not an eligibility decision.",
+      "conditions": {
+        "certified_by": ["medical doctor", "nurse practitioner"],
+        "benefits": [
+          { "name": "Family caregiver benefit for adults", "max_weeks": 15 },
+          { "name": "Family caregiver benefit for children", "max_weeks": 35 },
+          { "name": "Compassionate care benefits", "max_weeks": 26 }
+        ]
+      },
+      "quotes": [
+        "Their condition must be certified by a medical doctor or nurse practitioner.",
+        "A critically ill or injured person is someone whose baseline state of health has changed significantly because of illness or injury.",
+        "End-of-life care is defined as providing care or support to a person who has a serious medical condition with a significant risk of death within 26 weeks (6 months)."
+      ],
+      "notes": "family caregiver benefit for adults up to 15 weeks, for children up to 35 weeks, compassionate care benefits up to 26 weeks",
+      "source": "Government of Canada",
+      "sourceUrl": "https://www.canada.ca/en/services/benefits/ei/caregiving.html",
+      "fetchedAt": "2026-11-07"
+    }
+  ]
+}

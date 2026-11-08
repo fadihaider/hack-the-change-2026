@@ -1,6 +1,6 @@
-// one place to build the durable stores from env (DB_CLUSTER_ARN, DB_SECRET_ARN, APP_AWS_REGION)
+// one place to build the durable stores over a database (PGlite or Supabase, picked by RR_DB in lib/mvp/runtime.ts)
 import "server-only";
-import { db, type Database } from "../db.ts";
+import type { Database } from "../db.ts";
 import type { AccountStore } from "../auth/google.ts";
 import type { WorkflowStore } from "../requests/workflow.ts";
 import { createAccountStore } from "./accountStore.ts";
@@ -15,20 +15,13 @@ export interface AppStores {
   appNow(userId?: string): Promise<Date>;
 }
 
-let stores: AppStores | undefined;
-
-/** throws DatabaseError("not_configured") until the DB env vars are set; routes map that to HTTP 503 */
-export function appStores(): AppStores {
-  if (!stores) {
-    const database = db();
-    stores = {
-      database,
-      workflow: createWorkflowStore(database),
-      accounts: createAccountStore(database),
-      appNow: async () => (await readClock(database)).appNow,
-    };
-  }
-  return stores;
+export function storesFor(database: Database): AppStores {
+  return {
+    database,
+    workflow: createWorkflowStore(database),
+    accounts: createAccountStore(database),
+    appNow: async () => (await readClock(database)).appNow,
+  };
 }
 
 export { jumpClock, readClock, resetClock, sweepExpired } from "./clock.ts";

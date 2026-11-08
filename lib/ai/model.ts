@@ -7,7 +7,8 @@ export const DEFAULT_MODEL = "anthropic.claude-opus-5-5";
 /** sends one non-streaming Messages API request; the Bedrock caller lives in bedrock.ts, tests inject a fake */
 export type ModelCaller = (params: MessageCreateParamsNonStreaming) => Promise<Message>;
 
-export type StepName = "intake" | "impact" | "drafter" | "care_compiler" | "profile_qa" | "resource_composer";
+export type StepName =
+  | "intake" | "impact" | "drafter" | "sms_drafter" | "care_compiler" | "profile_qa" | "resource_composer";
 
 /** usage record for the llm_call table; ids and counts only, never prompt or output text */
 export interface UsageRecord {
