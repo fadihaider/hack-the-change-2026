@@ -61,6 +61,16 @@ final class ReviewModel {
         }
     }
 
+    /// one per step: true once it has a real outcome. a step left for later is not done (done in ReviewSteps.tsx)
+    var done: [Bool] {
+        steps.map { item in
+            switch outcomes[item.key] {
+            case nil, .skipped: false
+            default: true
+            }
+        }
+    }
+
     /// the first step still waiting, for "Check the ones left for later"
     var firstLeft: Int? {
         steps.firstIndex { item in

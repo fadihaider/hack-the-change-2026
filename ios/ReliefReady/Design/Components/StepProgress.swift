@@ -7,6 +7,8 @@ struct StepProgress: View {
     var current: Int
     /// one per step, read by VoiceOver
     var labels: [String] = []
+    /// one per step when steps can be finished out of order (the care review); nil means every step before current
+    var done: [Bool]?
     var backLabel = "Back"
     var onBack: (() -> Void)?
 
@@ -52,15 +54,21 @@ struct StepProgress: View {
         .padding(.bottom, 20)
     }
 
-    private func fill(_ index: Int) -> Color {
-        if index == current { return Theme.ink }
-        return index < current ? Theme.teal : Theme.hairline
+    /// finished in ui.tsx: the step's own entry in done, else whether it comes before the one on screen
+    func isFinished(_ index: Int) -> Bool {
+        guard let done else { return index < current }
+        return done.indices.contains(index) && done[index]
     }
 
-    private var stepsSummary: String {
+    private func fill(_ index: Int) -> Color {
+        if index == current { return Theme.ink }
+        return isFinished(index) ? Theme.teal : Theme.hairline
+    }
+
+    var stepsSummary: String {
         (0..<max(total, 1)).map { index in
             let name = labels.indices.contains(index) ? labels[index] : "Step \(index + 1)"
-            let status = index == current ? "on screen now" : index < current ? "done" : "not done yet"
+            let status = index == current ? "on screen now" : isFinished(index) ? "done" : "not done yet"
             return "\(name), \(status)"
         }
         .joined(separator: "; ")

@@ -19,12 +19,11 @@ struct ReviewStepsView: View {
         .screenTitle("Check what you added")
         .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
+            // a word, not a chevron: on iOS 26 a bar chevron draws alone and reads as one step back, while the
+            // in-page Back right below it is the step back. this one leaves the check
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") {
                     model.finish()
-                } label: {
-                    Label("\(Labels.possessive(model.name)) care", systemImage: "chevron.left")
-                        .labelStyle(.titleAndIcon)
                 }
                 .disabled(model.isWorking)
                 .accessibilityLabel("Back to \(Labels.possessive(model.name)) care")
@@ -73,6 +72,7 @@ struct ReviewStepsView: View {
             total: model.steps.count,
             current: model.index,
             labels: model.labels,
+            done: model.done,
             onBack: model.index > 0 && !model.isWorking ? { model.back() } : nil
         )
         .accessibilityIdentifier("review.progress")

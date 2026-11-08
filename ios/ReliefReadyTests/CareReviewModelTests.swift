@@ -124,6 +124,23 @@ struct CareReviewModelTests {
         #expect(CareRouteStub.calls(host: host).contains("POST /api/care/conflicts/resolve"))
     }
 
+    @Test func aStepLeftForLaterIsNotDoneInTheProgress() async {
+        let facts = F.demoFacts
+        var approved = facts[1]
+        approved.status = .approved
+        let (model, _, _) = await setUp(facts, routes: ["/api/care/facts/\(facts[1].id)/approve": envelope(approved)])
+        model.skip()
+        await model.approve(facts[1])
+        #expect(model.index == 2)
+        #expect(Array(model.done.prefix(3)) == [false, true, false])
+        let progress = StepProgress(total: model.steps.count, current: model.index, labels: model.labels, done: model.done)
+        #expect(!progress.isFinished(0))
+        #expect(progress.isFinished(1))
+        #expect(progress.stepsSummary.contains("\(model.labels[0]), not done yet"))
+        // without a done list every earlier step counts as done, as before
+        #expect(StepProgress(total: 3, current: 2).isFinished(0))
+    }
+
     @Test func backGoesToThePreviousStep() async {
         let (model, _, _) = await setUp(F.demoFacts)
         model.skip()
