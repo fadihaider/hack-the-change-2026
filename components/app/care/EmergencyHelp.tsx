@@ -22,19 +22,27 @@ export type EmergencyHelpProps = {
   name: string;
   /** "header": the compact button at the top of Care; "inline": the block inside the passport Contacts section */
   placement?: "header" | "inline";
+  /**
+   * the inline block's heading level, so it nests under the page's own headings: 2 on its own under the page
+   * heading (the default), 4 inside a passport section. its subheads sit one level lower.
+   */
+  level?: 2 | 3 | 4;
 };
 
-export function EmergencyHelp({ name, placement = "header" }: EmergencyHelpProps) {
+const HEADINGS = { 2: "h2", 3: "h3", 4: "h4", 5: "h5" } as const;
+
+export function EmergencyHelp({ name, placement = "header", level = 2 }: EmergencyHelpProps) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
 
   if (placement === "inline") {
+    const Title = HEADINGS[level];
     return (
       <section className={e.inline} aria-labelledby={titleId}>
-        <h3 id={titleId} className={e.inlineTitle}>
+        <Title id={titleId} className={e.inlineTitle}>
           Emergency / Help
-        </h3>
-        <HelpContent name={name} sub="h4" />
+        </Title>
+        <HelpContent name={name} sub={HEADINGS[(level + 1) as 3 | 4 | 5]} />
       </section>
     );
   }
@@ -53,7 +61,7 @@ export function EmergencyHelp({ name, placement = "header" }: EmergencyHelpProps
   );
 }
 
-type Heading = "h3" | "h4";
+type Heading = "h3" | "h4" | "h5";
 
 function HelpContent({ name, sub: Sub }: { name: string; sub: Heading }) {
   return (

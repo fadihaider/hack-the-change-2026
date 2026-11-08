@@ -2,7 +2,7 @@
 // today's care: the approved times and urgent appointments for one day, what matters now first, the rest a tap away
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { BellRing, CalendarClock, Check, ChevronLeft, ChevronRight, MapPin, Repeat } from "lucide-react";
+import { BellRing, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, MapPin, Repeat } from "lucide-react";
 import {
   addDaysTo,
   formatAlberta,
@@ -19,10 +19,12 @@ import { categoryTitle, clampDate, plural, possessive } from "./care-data.ts";
 import { TellAbout } from "./TellAbout.tsx";
 import {
   STATUS_LABEL,
+  dayItemText,
   dayPreview,
   daySummary,
   itemKey,
   itemStatus,
+  overviewLine,
   reminderAt,
   withCompletion,
 } from "./today-data.ts";
@@ -245,15 +247,6 @@ export function TodayCare({ name, session, episode, version, onVoice, onNote }: 
   );
 }
 
-/** "4 things today. 1 done. Next: Breakfast at 8:00 a.m." */
-function overviewLine(summary: ReturnType<typeof daySummary>): string {
-  const parts = [`${plural(summary.total, "thing", "things")} on this day.`];
-  if (summary.done > 0) parts.push(`${summary.done} marked done.`);
-  if (summary.earlier > 0) parts.push(`${plural(summary.earlier, "earlier item isn’t", "earlier items aren’t")} marked done.`);
-  if (summary.next) parts.push(`Next: ${formatAlberta(summary.next.startsAt, "time")}.`);
-  return parts.join(" ");
-}
-
 type DayItemProps = {
   item: TimelineItemView;
   busy: boolean;
@@ -267,9 +260,8 @@ function DayItem({ item, busy, locked, error, onMark }: DayItemProps) {
   const status = itemStatus(item);
   const remind = reminderAt(item);
   const appointment = item.factId === null;
-  // medical wording is never shortened (PRD 15); other items show the short title with the exact words on expand
-  const medical = item.category === "medical_instruction";
-  const shortText = medical ? (item.fullText ?? item.title) : item.title;
+  // locked wording is never shortened (PRD 15); other items show the short title with the exact words on expand
+  const shortText = dayItemText(item);
   const statusClass = status === "done" ? s.statusDone : status === "reminder" ? s.statusNow : s.statusPlanned;
 
   return (
@@ -319,6 +311,7 @@ function DayItem({ item, busy, locked, error, onMark }: DayItemProps) {
           <summary className={s.daySummary}>
             {appointment ? "Full details" : "Exact approved wording"}
             <VisuallyHidden>{`, ${item.title}`}</VisuallyHidden>
+            <ChevronDown size={16} aria-hidden="true" className={s.dayChevron} />
           </summary>
           <div className={s.dayDetailsBody}>
             <p className={s.dayCategory}>{appointment ? "Appointment" : categoryTitle(item.category)}</p>

@@ -4,16 +4,19 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarPlus, Clock, FileText, LoaderCircle, Tag } from "lucide-react";
 import { liveErrorMessage, type CareFactView, type CareSourceDetailView } from "@/lib/frontend/live-api.ts";
+import { isLockedWording } from "@/lib/care/lockedWording.ts";
 import { useApis, useSession } from "../session.tsx";
 import { Actions, Button, Choices, Column, ErrorNote, Note, Progress, Question, Receipt, TextArea, VisuallyHidden, useAnnounce } from "../ui.tsx";
-import { possessive, shorten, timeLine, type ReviewStep } from "./care-data.ts";
+import { possessive, timeLine, type ReviewStep } from "./care-data.ts";
 import {
   consequenceLine,
   contextLabel,
   noteLabel,
+  quoteOf,
   reviewSourceLine,
   sectionTitle,
   sourceContext,
+  stepLabel,
   summarize,
   summaryRows,
   summarySentence,
@@ -174,7 +177,7 @@ export function ReviewSteps({ name, steps, facts, intro, notes, onChanged, onDon
     return run({ keep: fact.id }, async () => {
       await live.resolveConflict(fact.id);
       void onChanged();
-      const quoted = shorten(fact.textExact, 70);
+      const quoted = quoteOf(fact, 70);
       const stop = /[.!?…]$/.test(quoted) ? "" : ".";
       record(stepKey, { kind: "kept", factId: fact.id }, `Kept “${quoted}”${stop} The other is set aside.`);
     });
@@ -210,7 +213,7 @@ export function ReviewSteps({ name, steps, facts, intro, notes, onChanged, onDon
   const labels = steps.map((item) => {
     if (item.kind === "conflict") return "Notes that disagree";
     const fact = byId.get(item.factId);
-    return fact ? shorten(fact.displayText ?? fact.textExact, 60) : "A suggestion";
+    return fact ? stepLabel(fact) : "A suggestion";
   });
   const done = steps.map((item) => {
     const outcome = outcomes[item.key];
@@ -327,7 +330,7 @@ export function ReviewSteps({ name, steps, facts, intro, notes, onChanged, onDon
       const consequence = consequenceLine(name, fact);
       const source = fact.sourceId ? sources[fact.sourceId] : undefined;
       // written care instructions stay word for word (PRD 15), so they are never reworded here
-      const locked = fact.category === "medical_instruction";
+      const locked = isLockedWording(fact.category, fact.textExact);
       body = (
         <>
           <FactMeta fact={fact} />
@@ -625,7 +628,7 @@ function Changed({
   return (
     <>
       {fact ? (
-        <Question lead={`“${shorten(fact.textExact, INLINE_MAX)}”`} autoFocusOnMount>
+        <Question lead={`“${quoteOf(fact, INLINE_MAX)}”`} autoFocusOnMount>
           {ask}
         </Question>
       ) : (
