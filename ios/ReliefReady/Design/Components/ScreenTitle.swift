@@ -27,14 +27,14 @@ private struct ScreenTitle: ViewModifier {
                 .sharedBackgroundVisibility(.hidden)
             }
             .toolbar(isPresented ? .automatic : .hidden, for: .navigationBar)
-            .overlay(alignment: .top) {
-                if !isPresented { StatusBarFade() }
-            }
+            // every screen, pushed ones too: the bar itself has no background, so without the band scrolled text runs
+            // under the clock and behind the floating back button
+            .overlay(alignment: .top) { StatusBarFade() }
     }
 }
 
-/// with no bar, the page colour behind the status bar, fading out just below it, so scrolled text stays clear of
-/// the clock
+/// the page colour behind the status bar, and behind the bar on a pushed screen (the top safe area covers both),
+/// fading out just below it, so scrolled text stays clear of the clock and the back button
 private struct StatusBarFade: View {
     var body: some View {
         LinearGradient(colors: [Theme.page, Theme.page.opacity(0)], startPoint: .top, endPoint: .bottom)
