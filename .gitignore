@@ -17,3 +17,6 @@ private/
 # local agent config (Claude Code); AGENTS.md stays tracked for the team's Codex agents
 CLAUDE.md
 .claude/
+
+# local MVP database
+.data/
