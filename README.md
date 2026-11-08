@@ -20,6 +20,10 @@ Open `http://127.0.0.1:3000` (or `http://localhost:3000`). No accounts, keys or 
 
 Every setting and its default is listed in [`.env.example`](.env.example). To switch on live providers (ElevenLabs speech, Claude, Claude on Bedrock, Gemini, Google, the Supabase database, the optional ML classifier), follow [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
+## Deployed demo
+
+The demo runs on Vercel at https://reliefready-eight.vercel.app, with Supabase, Gemini and ElevenLabs switched on. Everyone who opens it is the fictional Alex. Paid providers normally run for the demo identity on localhost only; the deployment sets `RR_ALLOW_PAID_DEMO=on`, so every visitor shares Alex's rate limits (30 model calls per 10 minutes, 2000 per day). Pushing to `main` does not redeploy. Run `vercel deploy --prod` from a clean checkout of `main`.
+
 ## Where things are
 
 The main navigation is **Urgent · Care · Recover**.
@@ -41,7 +45,7 @@ The Demo menu in the top bar opens the outbox and moves the demo clock. Moved ti
 | Part | Real | Demo (the default) |
 |---|---|---|
 | Sign-in | Google sign-in callbacks exist and are tested, but no sign-in route is mounted yet | Everyone is the fictional Alex (`RR_AUTH=demo`) |
-| AI steps (intake, conflicts, drafts, care suggestions, Ask) | Claude API (`RR_AI=anthropic`), Claude on Bedrock (`RR_AI=bedrock`), Gemini (`RR_AI=gemini`, verify) when configured | Offline keyword rules (`RR_AI=demo`). They are labelled as demo rules, never as AI |
+| AI steps (intake, conflicts, drafts, care suggestions, Ask) | Claude API (`RR_AI=anthropic`), Claude on Bedrock (`RR_AI=bedrock`), Gemini (`RR_AI=gemini`) when configured | Offline keyword rules (`RR_AI=demo`). They are labelled as demo rules, never as AI |
 | Safety checks on AI output | Always real code: exact-quote checks on suggested facts, cited-fact checks on answers, health-word checks before sending, prompt-injection guards | Same |
 | Email | Gmail adapter exists, but it needs Google sign-in | Demo outbox at `/outbox`. Nothing is emailed |
 | Calendar | Google Calendar adapter exists, but it needs Google sign-in | Six seeded fictional events |
@@ -49,10 +53,11 @@ The Demo menu in the top bar opens the outbox and moves the demo clock. Moved ti
 | Approval | Real: exact text, SHA-256 approval hash and revision check (`If-Match`) | Same |
 | Database | Supabase PostgreSQL with PostGIS and pgvector (`RR_DB=supabase`, `SUPABASE_DB_URL`), server-side only | Local PGlite in `.data/pglite` |
 | Voice notes | ElevenLabs Scribe transcription when `ELEVENLABS_API_KEY` is set. You review and edit the transcript before it is saved | Without a key, Care says voice isn't connected and offers a typed note. Speech is never faked |
-| Ask the Care Passport | Keyword retrieval over approved, current facts, with citations checked in code. Vector search only when `RR_EMBED=bedrock` (verify) | Keyword retrieval; answers come from the demo rules |
+| Ask the Care Passport | Keyword retrieval over approved, current facts, with citations checked in code. Vector search as well when `RR_EMBED=gemini` or `RR_EMBED=bedrock` | Keyword retrieval; answers come from the demo rules |
 | Calgary resources and map | Public data snapshots (OpenStreetMap contributors and City of Calgary open data) with source, licence and fetch date. Map markers use each listed resource's real coordinates, drawn over City community boundaries (verify) | Same data. Distances are straight lines, not travel times. Hours and step-free access are Unknown unless the source lists them |
 | Care Access analysis | Trained artifacts in `ml/care_access/`, built from Statistics Canada ODHF v2 and City of Calgary data: a service-type classifier (from facility names, not care quality), KMeans area groups (not a ranking), and a plain reachability count (not a prediction). Live classification of new names needs `CARE_ACCESS_INFERENCE_URL` | The published snapshot only. No live classification |
 | Emergency / Help | `tel:911` and `tel:811` links. Nothing dials by itself | Trusted contacts are only the ones you enter |
+| Texts (Urgent, "Send a text") | Twilio when `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_PHONE_NUMBER` are set. You approve the exact text and number first | Texts are stored and shown as simulated. Nothing reaches a phone |
 | Clock | Real time | Admins can move the demo clock to show deadlines passing |
 
 ## Checks
@@ -63,14 +68,14 @@ npm test               # lib/demo and lib/frontend unit tests
 npm run test:ai        # lib/ai: model steps, guards, demo rules, docs invariants
 npm run test:store     # stores, rate limits, health terms, care-access engine (PGlite)
 npm run test:mvp       # route modules over an in-memory PGlite runtime (tests/mvp-*.test.ts)
+npm run test:speech    # speech HTTP handlers and the voice companion
 ```
 
 Some older suites have no npm script. Run them directly:
 
 ```bash
 node --conditions=react-server --import tsx --test tests/requests.test.ts tests/integrations.test.ts \
-  tests/approval-revision.test.ts tests/request-http.test.ts tests/google-auth.test.ts \
-  tests/speech*.test.ts tests/voice-agent*.test.ts
+  tests/approval-revision.test.ts tests/request-http.test.ts tests/google-auth.test.ts
 ```
 
 **End-to-end smoke test.** `scripts/mvp-smoke.ts` drives the whole flow over HTTP against a running server, so start `npm run dev` first, in demo mode:
@@ -84,52 +89,23 @@ It needs `RR_AUTH=demo`, `RR_MAIL=outbox` (it reads the outbox to find the Accep
 ## Docs
 
 - [docs/DEMO.md](docs/DEMO.md): a five-minute walkthrough of the Alex and Rosa story.
-- [docs/MVP.md](docs/MVP.md): adapters, runtime, every API route and who owns which files.
+- [docs/MVP.md](docs/MVP.md): adapters, runtime and every API route.
 - [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md): how to switch on each live provider, what failures look like, and the request, response and speech HTTP contracts.
 - [docs/PRD.md](docs/PRD.md) and [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md): product requirements and the implementation guide.
-- [docs/ELEVENLABS_AGENT.md](docs/ELEVENLABS_AGENT.md): the optional hosted voice companion.
 - [ml/care_access/README.md](ml/care_access/README.md): the Care Access data, models and their limits.
 
 ## Team
 
-| Name | GitHub | Agent | Owns (see [`AGENTS.md`](AGENTS.md) section 4) |
-| --- | --- | --- | --- |
-| Haris | @haris-n34 | Codex | Frontend and demo |
-| Fadi | @fadihaider | Claude Code | AI and retrieval; Data and infra |
-| Ali | @alimukhtarawan | Codex | Integrations and state |
+| Name | GitHub | Area |
+| --- | --- | --- |
+| Haris | @haris-n34 | Frontend and demo |
+| Fadi | @fadihaider | AI and retrieval; data, infrastructure and deployment |
+| Ali | @alimukhtarawan | Integrations and state |
 
-Folder ownership and the current team lead are in [`AGENTS.md`](AGENTS.md). Ask on the board before editing someone else's folders.
-
-## Get set up
+## Get the code
 
 ```bash
-gh auth login                          # once per machine
 gh repo clone fadihaider/hack-the-change-2026
 cd hack-the-change-2026
-tools/board whoami                     # should print your GitHub login
-tools/board read                       # see recent posts
+npm install
 ```
-
-Requires `bash`, `git`, and the [GitHub CLI](https://cli.github.com).
-
-## The board
-
-All coordination happens on the pinned **[Message Board (issue #1)](https://github.com/fadihaider/hack-the-change-2026/issues/1)**. Every agent posts there when it finishes or needs something, and tags teammates by GitHub login (`@all` for everyone).
-
-- Start every post with whose agent it is: `[Fadi's Claude] ...`
-- Keep it short: what changed, which files or contracts, what you need, from whom.
-- Full rules are in [`AGENTS.md`](AGENTS.md).
-
-| Command                                 | What it does                                                  |
-| --------------------------------------- | ------------------------------------------------------------- |
-| `tools/board post "[Name's Agent] ..."` | Post to the board                                             |
-| `tools/board unread`                    | Show new posts since your last check; flags ones that tag you |
-| `tools/board wait`                      | Block until someone else posts, then print it                 |
-| `tools/board read -n 20`                | Show the last 20 posts                                        |
-| `tools/board whoami`                    | Print your GitHub login                                       |
-
-**Claude Code** should keep one background `tools/board wait` active and handle completion notifications; local `.claude/` hooks can remind it on session start. **Other agents** (Codex, Cursor, etc.) should run `tools/board unread` before each task and use a supported recurring chat wake-up for unattended work. For ongoing autonomous work, use [the autopilot instructions](docs/AUTOPILOT.md).
-
----
-
-Board setup from [azizu06/hackathon-agent-board](https://github.com/azizu06/hackathon-agent-board).
