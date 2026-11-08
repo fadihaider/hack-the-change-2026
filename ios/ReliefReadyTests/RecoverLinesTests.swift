@@ -93,7 +93,7 @@ struct RecoverLinesTests {
         let requested = Self.request(.requested, evidence: [sent], respondBy: "2026-11-10T08:11:52.098Z")
         #expect(
             RecoverLines.statusLine(requested, mail: "outbox")
-                == "Placed in the demo outbox Sun, Nov 8, 2:11 a.m. No real email went out. Reply due by Tue, Nov 10, 2:11 a.m."
+                == "Placed in the demo outbox Sun, Nov 8, 2:11 a.m. Reply due by Tue, Nov 10, 2:11 a.m."
         )
         #expect(
             RecoverLines.statusLine(requested, mail: "gmail")
@@ -149,7 +149,7 @@ struct RecoverLinesTests {
             "You chose this message to review.",
             "You approved this exact message.",
             "Placing it in the demo outbox started from your approval.",
-            "Placed in the demo outbox. No real email went out.",
+            "Placed in the demo outbox.",
             "Jordan Lee chose Accept on their reply link.",
             "The reply deadline passed with no answer.",
             "It couldn\u{2019}t be placed in the demo outbox.",
@@ -176,7 +176,7 @@ struct RecoverLinesTests {
 
         let ok = RecoverLines.sendMessage(.requested(messageId: "m"), name: "Morgan Chen", mail: "outbox")
         #expect(ok.good)
-        #expect(ok.text == "Placed in the demo outbox for Morgan Chen. No real email went out. Waiting for them to use a reply link.")
+        #expect(ok.text == "Placed in the demo outbox for Morgan Chen. Waiting for them to use a reply link.")
         #expect(!RecoverLines.sendMessage(.needsReview, name: "M", mail: "outbox").good)
         #expect(RecoverLines.actionMessage(APIError(code: "state_conflict", status: 409))
             == "This message changed somewhere else. The list now shows where it stands.")

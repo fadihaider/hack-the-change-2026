@@ -57,7 +57,7 @@ struct RecoverModelTests {
         let request = RecoverLinesTests.request(.approved, name: "Dr. Avery Brooks", id: "r9")
         await model.send(request, api: client, mail: "outbox")
         #expect(model.done?.good == true)
-        #expect(model.done?.text == "Placed in the demo outbox for Dr. Avery Brooks. No real email went out. Waiting for them to use a reply link.")
+        #expect(model.done?.text == "Placed in the demo outbox for Dr. Avery Brooks. Waiting for them to use a reply link.")
         #expect(model.busy == nil)
         #expect(model.actionCount == 1)
         let paths = StubProtocol.requests(host: host).map { $0.request.url?.path() ?? "" }

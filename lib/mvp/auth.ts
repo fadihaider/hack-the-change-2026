@@ -55,12 +55,19 @@ export function createAuthAdapter(mode: AuthMode, deps: { sql: SqlRunner }): Aut
   return mode === "google" ? createGoogleAuth() : createDemoAuth(deps.sql);
 }
 
+/** RR_ALLOW_PAID_DEMO=on: the owner accepts that anyone who can reach a deployed demo spends the shared quotas */
+export function paidDemoOptIn(env: Record<string, string | undefined> = process.env): boolean {
+  return env.RR_ALLOW_PAID_DEMO === "on";
+}
+
 /**
- * paid providers (model calls, ElevenLabs) accept the demo identity only on a local base URL; any deployed origin
- * needs a verified owner (mode "google"). Agreed with the speech routes on the board.
+ * paid providers (model calls, ElevenLabs, Twilio) accept the demo identity only on a local base URL; any deployed
+ * origin needs a verified owner (mode "google"), unless the owner opted in with RR_ALLOW_PAID_DEMO=on. every visitor
+ * of a demo deployment is the same user, so the per-user limits in lib/rateLimit.ts cap the spend for all of them.
  */
 export function paidProvidersAllowed(mode: AuthMode, baseUrl: string, env: Record<string, string | undefined> = process.env): boolean {
   if (mode === "google") return true;
+  if (mode === "demo" && paidDemoOptIn(env)) return true;
   try {
     const url = new URL(baseUrl);
     if (url.protocol !== "http:") return false;

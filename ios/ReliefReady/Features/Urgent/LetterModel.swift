@@ -152,7 +152,7 @@ final class LetterModel: Identifiable {
 
     var sendNote: String {
         outbox
-            ? "Goes to the demo outbox from \(senderEmail). No real email is sent."
+            ? "Goes to the demo outbox from \(senderEmail)."
             : "Sends by email from \(senderEmail)."
     }
 

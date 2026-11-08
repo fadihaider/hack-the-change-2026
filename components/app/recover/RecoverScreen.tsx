@@ -116,7 +116,7 @@ export function RecoverScreen() {
           tone: "good",
           icon: "send",
           text: outbox
-            ? `Placed in the demo outbox for ${name}. No real email went out. Waiting for them to use a reply link.`
+            ? `Placed in the demo outbox for ${name}. Waiting for them to use a reply link.`
             : `Sent by email to ${name}. Waiting for them to use a reply link.`,
         });
       } else if (result.state === "failed") {

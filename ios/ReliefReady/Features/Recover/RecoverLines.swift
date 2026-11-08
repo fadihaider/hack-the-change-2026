@@ -95,9 +95,8 @@ nonisolated enum RecoverLines {
         case .requested:
             let verb = outbox ? "Placed in the demo outbox" : "Sent by email"
             let first = reachedAt(request, .requested).map { sentence("\(verb) \(at($0))") } ?? "\(verb)."
-            let noEmail = outbox ? " No real email went out." : ""
             let due = request.respondBy.map { " " + sentence("Reply due by \(at($0))") } ?? ""
-            return "\(first)\(noEmail)\(due)"
+            return "\(first)\(due)"
         case .accepted:
             return changed.map { sentence("Said yes \(at($0))") } ?? "Said yes."
         case .completed:
@@ -157,7 +156,7 @@ nonisolated enum RecoverLines {
             }
             return "Recorded from your approval."
         case .gmailMessageId:
-            return outbox ? "Placed in the demo outbox. No real email went out." : "Sent by email. Gmail accepted it."
+            return outbox ? "Placed in the demo outbox." : "Sent by email. Gmail accepted it."
         case .linkClick:
             switch event.toState {
             case .accepted: return "\(name) chose Accept on their reply link."
@@ -302,7 +301,7 @@ nonisolated enum RecoverLines {
             return (
                 true,
                 outbox
-                    ? "Placed in the demo outbox for \(name). No real email went out. Waiting for them to use a reply link."
+                    ? "Placed in the demo outbox for \(name). Waiting for them to use a reply link."
                     : "Sent by email to \(name). Waiting for them to use a reply link."
             )
         case .failed:
