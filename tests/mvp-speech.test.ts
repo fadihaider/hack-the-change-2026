@@ -227,6 +227,10 @@ test("speechMode: key plus a runtime that may use paid providers", () => {
   // a demo identity on a deployed origin never spends credits
   assert.equal(speechMode(env({ ...key, APP_BASE_URL: "https://reliefready.example" })), "off");
   assert.equal(speechMode(env({ ...key, APP_BASE_URL: "https://reliefready.example", RR_AUTH: "google" })), "elevenlabs");
+  // the owner's opt-in lets the demo identity speak on a deployed https origin, and only "on" counts
+  assert.equal(speechMode(env({ ...key, APP_BASE_URL: "https://reliefready.example", RR_ALLOW_PAID_DEMO: "on" })), "elevenlabs");
+  assert.equal(speechMode(env({ ...key, APP_BASE_URL: "https://reliefready.example", RR_ALLOW_PAID_DEMO: "1" })), "off");
+  assert.equal(speechMode(env({ ...key, APP_BASE_URL: "http://192.168.1.5:3000", RR_ALLOW_PAID_DEMO: "on" })), "off");
   // plain http off loopback, and [::1], are refused by the speech runtime, so they are off too
   assert.equal(speechMode(env({ ...key, RR_AUTH: "google", APP_BASE_URL: "http://192.168.1.5:3000" })), "off");
   assert.equal(speechMode(env(key), { auth: "demo", baseUrl: "http://[::1]:3000" }), "off");
