@@ -1,0 +1,15 @@
+family,params,cv_macro_f1
+Logistic Regression,"{'model__C': 0.3, 'model__class_weight': None}",0.6223834697719243
+Logistic Regression,"{'model__C': 0.3, 'model__class_weight': 'balanced'}",0.6235891361478013
+Logistic Regression,"{'model__C': 1.0, 'model__class_weight': None}",0.6416182280713719
+Logistic Regression,"{'model__C': 1.0, 'model__class_weight': 'balanced'}",0.6392831946603693
+Logistic Regression,"{'model__C': 3.0, 'model__class_weight': None}",0.6485720924367274
+Logistic Regression,"{'model__C': 3.0, 'model__class_weight': 'balanced'}",0.647274073347333
+Random Forest,"{'model__max_depth': 12, 'model__min_samples_leaf': 1}",0.6928181535414097
+Random Forest,"{'model__max_depth': 12, 'model__min_samples_leaf': 3}",0.6964482717135029
+Random Forest,"{'model__max_depth': None, 'model__min_samples_leaf': 1}",0.6895742966189685
+Random Forest,"{'model__max_depth': None, 'model__min_samples_leaf': 3}",0.7022517020377284
+Gradient Boosting,"{'model__learning_rate': 0.08, 'model__max_depth': 1, 'model__n_estimators': 40}",0.6066020687438243
+Gradient Boosting,"{'model__learning_rate': 0.08, 'model__max_depth': 1, 'model__n_estimators': 70}",0.6276628516468428
+Gradient Boosting,"{'model__learning_rate': 0.08, 'model__max_depth': 2, 'model__n_estimators': 40}",0.6559739901791709
+Gradient Boosting,"{'model__learning_rate': 0.08, 'model__max_depth': 2, 'model__n_estimators': 70}",0.6648088898607921

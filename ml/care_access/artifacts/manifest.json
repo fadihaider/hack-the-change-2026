@@ -1,0 +1,6 @@
+{
+  "classifier_sha256": "47f92a8b907c50a29c78b61318e28643b7b9d2a182a404731164c93bbfc47dc4",
+  "sklearn_version": "1.6.1",
+  "selected_classifier": "Random Forest",
+  "cluster_basis": "driving"
+}
