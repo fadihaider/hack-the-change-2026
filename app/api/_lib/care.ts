@@ -343,8 +343,12 @@ export async function resolveConflict(rt: Runtime, user: SessionUser, keepFactId
 
 // ---------- timeline (C4) ----------
 
+// fact_id IS NULL keeps appointments added from Urgent (/api/commitments/timeline); completed_at is the caregiver's
+// own "done" for this date (usage_signal kind 'completed'), never inferred from viewing
 const TIMELINE = `SELECT e.id::text AS id, e.fact_id::text AS fact_id, e.title, to_json(e.starts_at)#>>'{}' AS starts_at,
-    e.rrule, e.remind_minutes, e.location_text, f.text_exact, f.category
+    e.rrule, e.remind_minutes, e.location_text, f.text_exact, f.category,
+    (SELECT to_json(min(u.at))#>>'{}' FROM usage_signal u
+      WHERE u.care_event_id = e.id AND u.kind = 'completed' AND u.value = CAST(:day AS text)) AS completed_at
   FROM care_event e LEFT JOIN care_fact f ON f.id = e.fact_id
   WHERE e.care_recipient_id = CAST(:recipient_id AS uuid) AND e.status = 'approved'
     AND (e.fact_id IS NULL OR f.status = 'approved') AND e.starts_at IS NOT NULL
@@ -366,6 +370,8 @@ export interface TimelineItem {
   category: CareCategory | null;
   /** inside its reminder window at app time */
   highlight: boolean;
+  /** when the caregiver marked this occurrence done (user-recorded, not verified), or null */
+  completedAt: string | null;
 }
 
 /** approved events for one Alberta day, recurrences expanded, reminders highlighted by app time */
@@ -384,7 +390,8 @@ export async function timelineFor(rt: Runtime, user: SessionUser, date: string |
     location_text: string | null;
     text_exact: string | null;
     category: CareCategory | null;
-  }>(TIMELINE, [p.uuid("recipient_id", recipient.id)]);
+    completed_at: string | null;
+  }>(TIMELINE, [p.uuid("recipient_id", recipient.id), p.text("day", day)]);
   const items: TimelineItem[] = [];
   for (const row of rows) {
     const startsAt = occurrenceOn(row.starts_at, row.rrule, day);
@@ -403,6 +410,7 @@ export async function timelineFor(rt: Runtime, user: SessionUser, date: string |
       fullText: row.text_exact,
       category: row.category,
       highlight: appNow.getTime() >= startMs - remindMinutes * 60_000 && appNow.getTime() <= startMs,
+      completedAt: row.completed_at === null ? null : new Date(row.completed_at).toISOString(),
     });
   }
   items.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
