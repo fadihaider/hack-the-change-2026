@@ -30,6 +30,11 @@ const EMERGENCY: readonly RegExp[] = [
   /\bchoking\b/,
   /\bsuicid/,
   /\bblue lips\b|\blips (?:are |look |turning )?blue\b/,
+  /\bhit (?:her|his|their|my) head\b|\bhead injury\b/,
+  /\bheart attack\b/,
+  /\ballergic reaction\b|\banaphyla/,
+  /\bbleeding (?:a lot|heavily|badly)\b/,
+  /\bambulance\b|\bemergency room\b|\b(?:the )?er\b/,
 ];
 
 const MEDICINE = String.raw`(?:medication|medications|medicine|medicines|meds|pills?|tablets?|dose|doses|dosage|painkillers?|acetaminophen|tylenol|ibuprofen|advil|aspirin|insulin|prescription|antibiotics?|drug|drugs)`;
@@ -53,6 +58,12 @@ const MEDICAL: readonly RegExp[] = [
   /\b(?:rash|dizzy|dizziness|nausea|nauseous|vomit|vomiting|throwing up|diarrh|constipat|confused|confusion|infection|infected)\b/,
   /\bdiagnos/,
   /\bwhat(?:'s| is) wrong with\b/,
+  new RegExp(String.raw`\bhow (?:much|many)\b.*\b${MEDICINE}`),
+  /\bblood (?:sugar|pressure|thinners?)\b/,
+  /\bheadaches?\b/,
+  /\b(?:see|need) a (?:doctor|nurse)\b|\bhospital\b/,
+  /\bdiabet|\bdementia\b|\ballerg/,
+  /\bwith (?:her|his|their) (?:medication|medications|medicine|medicines|meds|pills)\b/,
 ];
 
 /** lowercase, straight quotes, single spaces, so the patterns stay simple */

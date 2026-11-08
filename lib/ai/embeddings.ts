@@ -16,8 +16,11 @@ export interface Embedder {
   /** stored next to each vector, so a model change makes old vectors unusable */
   readonly model: string;
   readonly dims: 1024;
-  embed(texts: string[]): Promise<number[][]>;
+  /** task defaults to "document" (stored facts); pass "query" for a question. models without task types ignore it */
+  embed(texts: string[], task?: EmbedTask): Promise<number[][]>;
 }
+
+export type EmbedTask = "document" | "query";
 
 /** RR_EMBED, defaulting to off; an unknown value also means off, so a typo never sends care text anywhere */
 export function embeddingMode(env: Env = process.env): EmbeddingMode {
@@ -110,7 +113,7 @@ export function createEmbedder(mode: EmbeddingMode, env: Env = process.env): Emb
   if (mode === "gemini") {
     // unverified until a real key is tried; GEMINI_API_KEY and GEMINI_EMBED_MODEL are required (lib/ai/gemini.ts)
     const gemini = createGeminiEmbedder({ env });
-    return { model: gemini.model, dims: EMBEDDING_DIMENSIONS, embed: (texts) => gemini.embed(texts) };
+    return { model: gemini.model, dims: EMBEDDING_DIMENSIONS, embed: (texts, task) => gemini.embed(texts, task) };
   }
   if (mode === "bedrock") {
     return titanEmbedder({
@@ -135,4 +138,16 @@ export function currentEmbedder(): Embedder | null {
   const mode = embeddingMode();
   if (!cached || cached.mode !== mode) cached = { mode, embedder: createEmbedder(mode) };
   return cached.embedder;
+}
+
+/**
+ * currentEmbedder without throwing: null when embeddings are off or the chosen provider is not configured (for
+ * example RR_EMBED=gemini without GEMINI_API_KEY or GEMINI_EMBED_MODEL), so Ask falls back to keyword ranking
+ */
+export function resolveEmbedder(): Embedder | null {
+  try {
+    return currentEmbedder();
+  } catch {
+    return null;
+  }
 }

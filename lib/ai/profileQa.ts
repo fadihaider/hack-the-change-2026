@@ -25,6 +25,14 @@ export interface ProfileQaInput {
   question: string;
   /** approved facts after owner-scoped retrieval (lib/ai/retrieval.ts), best match first, at most 200 */
   facts: ApprovedFact[];
+  /** the recipient's alias and display name ("Mom", "Rosa"); never counted as a shared word in a keyword lookup */
+  names?: string[];
+}
+
+/** names sent with a question: trimmed, non-empty, deduplicated, a few short ones only */
+function cleanNames(names: readonly string[] | undefined): string[] {
+  const out = (names ?? []).map((name) => normalizeText(name).slice(0, 80)).filter((name) => name.length > 0);
+  return [...new Set(out)].slice(0, 5);
 }
 
 /** a cited fact with its stored text, never model wording */
@@ -83,6 +91,7 @@ export async function runProfileQa(input: ProfileQaInput, deps: StepDeps): Promi
     // an empty profile can't answer anything, so no model call is made
     return applyProfileQaGuards({ answer: "", citedFactIds: [], notFound: true }, { question, facts });
   }
+  const names = cleanNames(input.names);
   const output = await callStructured(
     {
       step: "profile_qa",
@@ -90,6 +99,10 @@ export async function runProfileQa(input: ProfileQaInput, deps: StepDeps): Promi
       content: [
         { type: "text", text: `Question:\n${wrapUntrusted(question)}` },
         { type: "text", text: `Approved facts:\n${wrapUntrusted(JSON.stringify(facts))}` },
+        // the demo lookup reads this third block so the recipient's name never counts as a shared word
+        ...(names.length > 0
+          ? [{ type: "text" as const, text: `Recipient names (not search words):\n${wrapUntrusted(JSON.stringify(names))}` }]
+          : []),
       ],
       format: profileQaFormat,
       effort: "low",
@@ -137,7 +150,7 @@ export function redirectProfileQa(input: ProfileQaInput, kind: Exclude<QuestionK
     return { notFound: false, answer: notice, citedFacts: [], createOpenQuestion: false, healthNotice: null };
   }
   const question = normalizeText(input.question).slice(0, PROFILE_QA_LIMITS.questionChars);
-  const matches = keywordMatches(question, input.facts.slice(0, PROFILE_QA_LIMITS.maxFacts), 3);
+  const matches = keywordMatches(question, input.facts.slice(0, PROFILE_QA_LIMITS.maxFacts), 3, cleanNames(input.names));
   const citedFacts = [
     ...matches.filter((fact) => fact.category === "medical_instruction"),
     ...matches.filter((fact) => fact.category !== "medical_instruction"),

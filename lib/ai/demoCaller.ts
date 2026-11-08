@@ -497,13 +497,16 @@ function sharesTopic(a: string, b: string): boolean {
 
 // ---------------------------------------------------------------- A5 profile Q&A
 
-// exact-fact lookup by shared words and a small synonym list (lib/ai/retrieval.ts); the wording says it is not AI
+// exact-fact lookup by shared words and a few true synonyms (lib/ai/retrieval.ts); the wording says it is not AI.
+// the optional third block lists the recipient's names, which never count as a shared word
 function demoProfileQa(content: string): ProfileQaOutput {
-  const [question = "", factsJson] = untrustedBlocks(content);
+  const [question = "", factsJson, namesJson] = untrustedBlocks(content);
   const facts = parseJson<{ id: string; category: string; textExact: string }[]>(factsJson, []).filter(
     (fact) => typeof fact?.id === "string" && typeof fact.textExact === "string",
   );
-  const cited = keywordMatches(question, facts, 3);
+  const parsedNames = parseJson<unknown>(namesJson, []);
+  const names = Array.isArray(parsedNames) ? parsedNames.filter((name): name is string => typeof name === "string") : [];
+  const cited = keywordMatches(question, facts, 3, names);
   if (cited.length === 0) {
     return { answer: "unknown", citedFactIds: [], notFound: true };
   }
