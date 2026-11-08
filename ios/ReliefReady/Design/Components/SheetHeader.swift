@@ -4,6 +4,8 @@ import SwiftUI
 struct SheetHeader: View {
     var title: String
     var closeLabel = "Close"
+    /// true while a save or send runs: the sheet stays until it finishes
+    var closeDisabled = false
     var onClose: () -> Void
 
     var body: some View {
@@ -22,6 +24,8 @@ struct SheetHeader: View {
                     .background(Theme.page, in: .rect(cornerRadius: 12))
             }
             .buttonStyle(.plain)
+            .disabled(closeDisabled)
+            .opacity(closeDisabled ? 0.4 : 1)
             .accessibilityLabel(closeLabel)
         }
         .padding(.bottom, 20)

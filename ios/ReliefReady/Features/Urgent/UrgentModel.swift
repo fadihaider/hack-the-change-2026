@@ -68,12 +68,16 @@ final class UrgentModel {
 
     // kept for the whole app run, so coming back to Urgent does not scan the calendar (a model call) again
     private static var impactCache: [String: ImpactResponse] = [:]
+    /// one scan per care week while it runs (memory.pending in UrgentFlow.tsx): a tab switch never cancels it, and
+    /// coming back, or Retry, waits on the same call instead of starting another model call
+    private static var impactPending: [String: Task<Result<ImpactResponse, APIError>, Never>] = [:]
     private static var timelineCache: Set<String> = []
     static var flagsCache: [String: [String]] = [:]
 
     /// test hook: forget what earlier runs kept
     static func clearCaches() {
         impactCache = [:]
+        impactPending = [:]
         timelineCache = []
         flagsCache = [:]
     }
@@ -97,6 +101,10 @@ final class UrgentModel {
     var receipt: UrgentReceipt?
     var busy: String?
     var stepError: UrgentStepError?
+    /// a link named a message that is not in the list; shown above the summary heading until Alex moves
+    var linkProblem: String?
+    /// bumped when the summary heading should take the voiceover focus once the letter has closed
+    var focusSummary = 0
     var letter: LetterModel?
     var smsOpen = false
     var added: Set<String>
@@ -208,14 +216,36 @@ final class UrgentModel {
     private func loadImpact() async {
         if let cached = Self.impactCache[episodeId] {
             impact = cached
+            impactError = nil
             return
         }
-        do throws(APIError) {
-            let result = try await api.impact(episodeId: episodeId)
-            Self.impactCache[episodeId] = result
-            impact = result
+        // a new attempt shows "Checking your week", not the last failure
+        impactError = nil
+        let id = episodeId
+        let task: Task<Result<ImpactResponse, APIError>, Never>
+        if let pending = Self.impactPending[id] {
+            task = pending
+        } else {
+            let api = self.api
+            task = Task {
+                do throws(APIError) {
+                    return .success(try await api.impact(episodeId: id))
+                } catch {
+                    return .failure(error)
+                }
+            }
+            Self.impactPending[id] = task
+        }
+        // awaiting the value never cancels the scan, so it lands here even after the tab went away
+        let result = await task.value
+        if Self.impactPending[id] == task { Self.impactPending[id] = nil }
+        switch result {
+        case .success(let response):
+            Self.impactCache[id] = response
+            impact = response
             impactError = nil
-        } catch {
+        case .failure(let error):
+            guard !error.isCancelled, impact == nil else { return }
             impactError = error.userMessage
         }
     }
@@ -228,7 +258,8 @@ final class UrgentModel {
             listError = nil
             return result.requests
         } catch {
-            listError = error.userMessage
+            // a tab switch cancelled the call; the next visit loads again
+            if !error.isCancelled { listError = error.userMessage }
             return nil
         }
     }
@@ -248,7 +279,7 @@ final class UrgentModel {
             textsProblem = nil
             return result.texts
         } catch {
-            textsProblem = error.userMessage
+            if !error.isCancelled { textsProblem = error.userMessage }
             return nil
         }
     }
@@ -292,6 +323,7 @@ final class UrgentModel {
         moved = true
         self.forward = forward
         stepError = nil
+        linkProblem = nil
         index = max(0, min(total, next))
     }
 
@@ -470,13 +502,14 @@ final class UrgentModel {
     /// a message named by another tab (/urgent?request=<id> in UrgentFlow.tsx): one that needs a new choice reopens
     /// its step, one that can still be reviewed opens its letter over the summary, anything else shows its outcome
     func openLinked(_ requestId: String) async {
+        // the tab stays alive, so its list can be older than the tab that sent the link: read it again first
+        // (a failed reload falls back to the list already here)
+        _ = await loadList()
         let target = byId[requestId]
         receipt = nil
         guard let target else {
             go(total, forward: true)
-            stepError = UrgentStepError(
-                at: Self.summaryKey, message: "That message isn\u{2019}t in your list any more. Everyone you asked is below."
-            )
+            linkProblem = "That message isn\u{2019}t in your list any more. Everyone you asked is below."
             return
         }
         if Self.chooseAgain.contains(target.state), let c = commitmentOf(requestId),
@@ -533,7 +566,8 @@ final class UrgentModel {
 
     /// the letter was swiped or tapped closed; typed words are saved, never sent
     func closeLetter() {
-        guard let closing = letter else { return }
+        // an edit, approve or send still running keeps the letter open, so its outcome is seen (close() in LetterSheet.tsx)
+        guard let closing = letter, closing.busy == nil else { return }
         letter = nil
         Task {
             let note = await closing.saveOnClose()
@@ -566,7 +600,11 @@ final class UrgentModel {
             return
         }
         say("Sent to \(who). Waiting for a reply.", .send)
-        if fromStep { go((index ?? 0) + 1, forward: true) }
+        if fromStep {
+            go((index ?? 0) + 1, forward: true)
+        } else {
+            focusSummary += 1
+        }
     }
 
     // MARK: - texts

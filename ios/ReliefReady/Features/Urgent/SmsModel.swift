@@ -136,8 +136,35 @@ final class SmsModel {
         changed()
     }
 
+    /// the web's maxLength on each field (SmsSheet.tsx); the server refuses longer ones
+    enum Limit {
+        static let phone = 32
+        static let name = 60
+        static let sender = 60
+        static let note = 500
+        static let body = 1600
+    }
+
+    /// the most characters a field takes, by its key path
+    static func limit(_ path: ReferenceWritableKeyPath<SmsModel, String>) -> Int? {
+        let limits: [PartialKeyPath<SmsModel>: Int] = [
+            \SmsModel.otherPhone: Limit.phone, \SmsModel.otherName: Limit.name, \SmsModel.senderName: Limit.sender,
+            \SmsModel.note: Limit.note, \SmsModel.body: Limit.body,
+        ]
+        return limits[path]
+    }
+
+    /// writes a typed field, cut to its limit
+    func set(_ path: ReferenceWritableKeyPath<SmsModel, String>, _ text: String) {
+        guard let max = Self.limit(path) else {
+            self[keyPath: path] = text
+            return
+        }
+        TextLimit.assign(text, max: max) { self[keyPath: path] = $0 }
+    }
+
     func editBody(_ text: String) {
-        body = text
+        set(\.body, text)
         terms = []
         override = false
         changed()

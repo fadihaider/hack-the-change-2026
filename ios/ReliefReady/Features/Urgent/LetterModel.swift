@@ -139,7 +139,8 @@ final class LetterModel: Identifiable {
             if let group = current.defaultDisclosureTier, group != .detailed {
                 return "It mentions \(words). You chose to share more detail with \(name), so it can go as written."
             }
-            return "It mentions \(words). \(Labels.possessive(name)) group is set to hear more detail, so it can go as written."
+            // always ’s, as LetterSheet.tsx writes it
+            return "It mentions \(words). \(name)\u{2019}s group is set to hear more detail, so it can go as written."
         }
         return "It mentions \(words). You chose to send it anyway."
     }
@@ -152,13 +153,17 @@ final class LetterModel: Identifiable {
 
     // MARK: - typing
 
+    /// the web caps the subject and message fields (maxLength in LetterSheet.tsx); the server refuses longer ones
+    static let subjectMax = 300
+    static let bodyMax = 5000
+
     func setSubject(_ text: String) {
-        subject = text.replacingOccurrences(of: "\n", with: " ")
+        TextLimit.assign(text.replacingOccurrences(of: "\n", with: " "), max: Self.subjectMax) { subject = $0 }
         keep()
     }
 
     func setBody(_ text: String) {
-        body = text
+        TextLimit.assign(text, max: Self.bodyMax) { body = $0 }
         keep()
     }
 

@@ -198,6 +198,114 @@ struct UrgentModelTests {
         #expect(model.stepError?.message.hasPrefix("The message to Jordan didn\u{2019}t send") == true)
     }
 
+    // MARK: - scans, links and focus
+
+    @Test func twoLoadsOfOneWeekShareOneScan() async throws {
+        let api = FakeUrgentAPI()
+        let impact = try UrgentFixtures.impact()
+        api.impactHandler = { _ throws(APIError) in impact }
+        let first = UrgentModel(api: api, episodeId: "episode-shared", care: UrgentFixtures.care, appNow: UrgentFixtures.appNow)
+        let second = UrgentModel(api: api, episodeId: "episode-shared", care: UrgentFixtures.care, appNow: UrgentFixtures.appNow)
+        async let a: Void = first.load()
+        async let b: Void = second.load()
+        _ = await (a, b)
+        #expect(api.calls.filter { $0 == "impact" }.count == 1)
+        #expect(first.total == 6 && second.total == 6)
+    }
+
+    @Test func aCancelledLoadShowsNoProblem() async throws {
+        let api = FakeUrgentAPI()
+        api.impactHandler = { _ throws(APIError) in throw APIError.cancelled }
+        api.requestsHandler = { () throws(APIError) in throw APIError.cancelled }
+        api.smsListHandler = { _ throws(APIError) in throw APIError.cancelled }
+        let model = UrgentModel(api: api, episodeId: "episode-cancel", care: UrgentFixtures.care, appNow: UrgentFixtures.appNow)
+        await model.load()
+        #expect(model.impactError == nil)
+        #expect(model.listError == nil)
+        #expect(model.textsProblem == nil)
+    }
+
+    @Test func aNewScanAttemptClearsTheLastFailure() async throws {
+        let api = FakeUrgentAPI()
+        api.impactHandler = { _ throws(APIError) in throw APIError(code: "model_unavailable", status: 503) }
+        let model = UrgentModel(api: api, episodeId: "episode-again", care: UrgentFixtures.care, appNow: UrgentFixtures.appNow)
+        await model.load()
+        #expect(model.impactError != nil)
+        let impact = try UrgentFixtures.impact()
+        api.impactHandler = { _ throws(APIError) in impact }
+        // coming back to the tab runs load again: the old failure is not left on screen while it scans
+        await model.load()
+        #expect(model.impactError == nil)
+        #expect(model.index == 0)
+    }
+
+    @Test func aLinkReadsTheListAgainBeforeChoosingWhatToOpen() async throws {
+        let api = FakeUrgentAPI()
+        let model = try await loadedModel(api)
+        let decided = try UrgentFixtures.decide()
+        api.decideHandler = { _ throws(APIError) in decided }
+        await model.choose(model.commitments[0], .reschedule)
+        model.closeLetter()
+        var answered = try #require(decided.request)
+        // Urgent last saw it waiting; the person said no from the outbox while another tab was open
+        answered.state = .rejected
+        let fresh = answered
+        api.requestsHandler = { () throws(APIError) in RequestList(requests: [fresh], appNow: UrgentFixtures.appNow) }
+        model.go(model.total, forward: true)
+        let before = api.calls.filter { $0 == "requests" }.count
+        await model.openLinked(fresh.id)
+        #expect(api.calls.filter { $0 == "requests" }.count == before + 1)
+        #expect(model.index == 0)
+        #expect(model.receipt?.text.hasSuffix("Choose what to do now.") == true)
+        #expect(api.calls.contains("reopen:\(UrgentFixtures.groupMeetingId)"))
+    }
+
+    @Test func anUnknownLinkSaysSoAboveTheSummaryUntilAlexMoves() async throws {
+        let api = FakeUrgentAPI()
+        let model = try await loadedModel(api)
+        await model.openLinked("not-a-request")
+        #expect(model.onSummary)
+        #expect(model.linkProblem == "That message isn\u{2019}t in your list any more. Everyone you asked is below.")
+        #expect(model.stepError == nil)
+        model.go(0, forward: false)
+        #expect(model.linkProblem == nil)
+    }
+
+    @Test func aSendFromTheSummaryMovesFocusToItsHeading() async throws {
+        let api = FakeUrgentAPI()
+        let model = try await loadedModel(api)
+        let decided = try UrgentFixtures.decide()
+        api.decideHandler = { _ throws(APIError) in decided }
+        await model.choose(model.commitments[0], .reschedule)
+        let request = try #require(decided.request)
+        model.go(model.total, forward: true)
+        model.sent(request, .requested(messageId: "m1"))
+        #expect(model.focusSummary == 1)
+        #expect(model.receipt?.text == "Sent to Jordan. Waiting for a reply.")
+    }
+
+    @Test func theLetterStaysOpenWhileItsSendRuns() async throws {
+        let api = FakeUrgentAPI()
+        let model = try await loadedModel(api)
+        let decided = try UrgentFixtures.decide()
+        api.decideHandler = { _ throws(APIError) in decided }
+        let approved = try UrgentFixtures.approved()
+        api.approveHandler = { _, _, _ throws(APIError) in RequestEnvelope(request: approved) }
+        api.sendHandler = { _ throws(APIError) in .requested(messageId: "m1") }
+        api.sendDelay = .milliseconds(400)
+        await model.choose(model.commitments[0], .reschedule)
+        let letter = try #require(model.letter)
+        let sending = Task { await letter.send(override: false) }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(letter.busy != nil)
+        model.closeLetter()
+        #expect(model.letter === letter)
+        await sending.value
+        #expect(letter.busy == nil)
+        model.closeLetter()
+        #expect(model.letter == nil)
+    }
+
     // MARK: - the letter
 
     private func letter(_ api: FakeUrgentAPI, request: RequestView) -> (LetterModel, Box) {
@@ -352,6 +460,38 @@ struct UrgentModelTests {
         await letter.strip()
         #expect(saved?.body == "Mom had today.")
         #expect(!letter.blocked)
+    }
+
+    @Test func lettersAndTextsAreCutToTheWebsLimits() async throws {
+        let api = FakeUrgentAPI()
+        let (letter, _) = letter(api, request: try UrgentFixtures.draft())
+        letter.setSubject(String(repeating: "s", count: 400))
+        #expect(letter.subject.count == LetterModel.subjectMax)
+        letter.setBody(String(repeating: "b", count: 6000))
+        #expect(letter.body.count == LetterModel.bodyMax)
+
+        let sms = SmsModel(api: api, episodeId: "e1", careAlias: "Mom", aiMode: "demo", onChange: { _ in })
+        sms.set(\.otherPhone, String(repeating: "4", count: 40))
+        sms.set(\.otherName, String(repeating: "n", count: 80))
+        sms.set(\.senderName, String(repeating: "a", count: 80))
+        sms.set(\.note, String(repeating: "x", count: 600))
+        sms.editBody(String(repeating: "t", count: 2000))
+        #expect(sms.otherPhone.count == 32)
+        #expect(sms.otherName.count == 60)
+        #expect(sms.senderName.count == 60)
+        #expect(sms.note.count == 500)
+        #expect(sms.body.count == 1600)
+        #expect(TextLimit.cut("short", max: 10) == "short")
+    }
+
+    @Test func aDetailedGroupNoteAlwaysSaysApostropheS() async throws {
+        var request = try UrgentFixtures.draft()
+        request.recipient.name = "Chris Doe"
+        request.disclosureTier = .detailed
+        request.defaultDisclosureTier = .detailed
+        request.healthTermsFound = ["surgery"]
+        let (letter, _) = letter(FakeUrgentAPI(), request: request)
+        #expect(letter.allowedNote == "It mentions \u{201C}surgery\u{201D}. Chris\u{2019}s group is set to hear more detail, so it can go as written.")
     }
 
     @Test func closingKeepsOrSavesTypedWords() async throws {

@@ -67,10 +67,11 @@ struct UrgentWeekView: View {
             }
             .onChange(of: flow.index) { _, _ in
                 guard flow.moved else { return }
-                Task {
-                    try? await Task.sleep(for: .milliseconds(350))
-                    headingFocused = true
-                }
+                focusHeadingSoon()
+            }
+            .onChange(of: flow.focusSummary) { _, _ in
+                // a send from the summary: its heading takes the focus once the letter has gone
+                focusHeadingSoon()
             }
             .sheet(item: Binding(get: { flow.letter }, set: { if $0 == nil { flow.closeLetter() } })) { letter in
                 // the stack gives the keyboard its Done bar; its own bar stays hidden
@@ -93,6 +94,13 @@ struct UrgentWeekView: View {
             }
     }
 
+    private func focusHeadingSoon() {
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            headingFocused = true
+        }
+    }
+
     /// a link from another tab, once the week and the list have loaded (an unloaded list drops the message part)
     private func consumeLink() {
         guard let link = appModel.urgentLink, flow.isReady else { return }
@@ -101,10 +109,7 @@ struct UrgentWeekView: View {
         if let requestId = link.requestId, flow.all != nil {
             Task { await flow.openLinked(requestId) }
         } else if link.fromStart {
-            Task {
-                try? await Task.sleep(for: .milliseconds(350))
-                headingFocused = true
-            }
+            focusHeadingSoon()
         }
     }
 
@@ -553,6 +558,9 @@ struct UrgentWeekView: View {
         return VStack(alignment: .leading, spacing: 16) {
             receiptView
             listProblem
+            if let problem = flow.linkProblem {
+                ErrorNote(problem).accessibilityIdentifier("urgent.linkProblem")
+            }
             question(
                 anything == 0 ? "You haven\u{2019}t asked anyone." : "Here\u{2019}s who you asked",
                 lead: anything == 0 ? "Nothing has gone out yet." : nil

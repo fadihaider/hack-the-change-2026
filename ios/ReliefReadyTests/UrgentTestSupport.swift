@@ -37,6 +37,8 @@ final class FakeUrgentAPI: UrgentAPI, @unchecked Sendable {
     var smsDraftHandler: (SmsDraftInput) throws(APIError) -> SmsDraft = { _ throws(APIError) in throw unexpected }
     var smsApproveHandler: (SmsApproveInput) throws(APIError) -> SmsEnvelope = { _ throws(APIError) in throw unexpected }
     var smsSendHandler: (String) throws(APIError) -> SmsEnvelope = { _ throws(APIError) in throw unexpected }
+    /// waited on before a send answers, so a test can act while it runs
+    var sendDelay: Duration?
 
     func impact(episodeId: String) async throws(APIError) -> ImpactResponse {
         record("impact")
@@ -95,6 +97,7 @@ final class FakeUrgentAPI: UrgentAPI, @unchecked Sendable {
 
     func sendRequest(id: String) async throws(APIError) -> SendResult {
         record("send:\(id)")
+        if let sendDelay { try? await Task.sleep(for: sendDelay) }
         return try sendHandler(id)
     }
 

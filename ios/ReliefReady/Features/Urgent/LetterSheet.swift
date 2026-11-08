@@ -12,7 +12,9 @@ struct LetterSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     StatePill(state: letter.current.state)
                         .accessibilityIdentifier("letter.state")
-                    SheetHeader(title: letter.title, closeLabel: letter.closeLabel, onClose: onClose)
+                    SheetHeader(
+                        title: letter.title, closeLabel: letter.closeLabel, closeDisabled: letter.busy != nil, onClose: onClose
+                    )
                         .accessibilityIdentifier("letter.close")
                         .padding(.bottom, -12)
                     Text(letter.leadLine)

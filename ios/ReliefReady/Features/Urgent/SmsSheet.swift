@@ -118,7 +118,7 @@ struct SmsSheet: View {
         Binding(
             get: { sms[keyPath: path] },
             set: {
-                sms[keyPath: path] = $0
+                sms.set(path, $0)
                 if resets { sms.changed() }
             }
         )
