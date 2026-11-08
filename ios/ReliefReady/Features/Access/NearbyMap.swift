@@ -15,6 +15,8 @@ struct NearbyMap: View {
 
     @State private var size = CGSize.zero
     @ScaledMetric(relativeTo: .body) private var mapHeight: CGFloat = 340
+    /// the badge grows with Dynamic Type up to 1.6 times (NearbyNumberBadge), so the layout keeps that much apart
+    @ScaledMetric(relativeTo: .caption) private var badgeScale: CGFloat = 1
 
     private struct Marker {
         var resource: NearbyResource
@@ -40,7 +42,11 @@ struct NearbyMap: View {
         let projection = NearbyWords.ScreenProjection(region: region, width: size.width, height: size.height)
         let home = projection.point(lat: data.origin.lat, lon: data.origin.lon)
         let points = resources.map { projection.point(lat: $0.lat, lon: $0.lon) }
-        let placed = NearbyWords.placeMarkers(points, home: home, width: size.width, height: size.height)
+        let grow = Double(min(badgeScale, 1.6))
+        var sizes = NearbyWords.MarkerSizes()
+        sizes.markerR *= grow
+        sizes.edge = sizes.markerR + 12
+        let placed = NearbyWords.placeMarkers(points, home: home, width: size.width, height: size.height, sizes: sizes)
         let markers = resources.enumerated().map { index, resource in
             let spot = placed[index]
             return Marker(
