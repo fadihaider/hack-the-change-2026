@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test lib/demo/*.test.ts lib/frontend/*.test.ts",
     "test:ai": "node --import tsx --test lib/ai/**/*.test.ts",
-    "test:store": "node --conditions=react-server --import tsx --test tests/store.test.ts tests/rate-limit.test.ts tests/health-terms.test.ts tests/care-access.test.ts",
+    "test:store": "node --conditions=react-server --import tsx --test tests/store.test.ts tests/rate-limit.test.ts tests/health-terms.test.ts tests/care-access.test.ts tests/lan-hosts.test.ts",
     "mvp:reset": "node -e \"require('node:fs').rmSync(process.env.RR_PGLITE_DIR || '.data/pglite', { recursive: true, force: true })\"",
     "db:migrate": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/supabase-migrate.ts",
     "db:verify": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/verify-store-live.ts",
