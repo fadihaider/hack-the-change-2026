@@ -9,7 +9,8 @@ nonisolated enum CareHelp {
     /// a tel: link for a typed phone number, or nil when it is not a plain number
     static func telURL(_ value: String) -> URL? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.wholeMatch(of: /\+?[\d\s().\-]+/) != nil else { return nil }
+        // 0-9, not \d: swift's \d takes any unicode digit, so "403５５５0142" would pass and dial a different number
+        guard trimmed.wholeMatch(of: /\+?[0-9\s().\-]+/) != nil else { return nil }
         let digits = trimmed.filter { $0.isASCII && $0.isNumber }
         guard digits.count >= 3, digits.count <= 15 else { return nil }
         return URL(string: "tel:\(trimmed.hasPrefix("+") ? "+" : "")\(digits)")

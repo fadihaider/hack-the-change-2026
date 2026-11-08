@@ -185,6 +185,7 @@ struct CareTextField: View {
     var keyboard: UIKeyboardType = .default
     var contentType: UITextContentType?
     var identifier: String
+    var focus: FocusState<Bool>.Binding?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -193,7 +194,7 @@ struct CareTextField: View {
                 if optional { Text("(optional)").font(.rrNote).foregroundStyle(Theme.muted) }
             }
             if let hint { Text(hint).font(.rrNote).foregroundStyle(Theme.muted) }
-            TextField("", text: $text)
+            input
                 .font(.rrBody)
                 .keyboardType(keyboard)
                 .textContentType(contentType)
@@ -214,6 +215,14 @@ struct CareTextField: View {
             if let error {
                 Text(error).font(.rrNote.weight(.semibold)).foregroundStyle(Theme.badInk)
             }
+        }
+    }
+
+    @ViewBuilder private var input: some View {
+        if let focus {
+            TextField("", text: $text).focused(focus)
+        } else {
+            TextField("", text: $text)
         }
     }
 }

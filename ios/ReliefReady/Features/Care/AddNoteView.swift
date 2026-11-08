@@ -145,26 +145,27 @@ struct AddNoteView: View {
 
     private func picked(_ url: URL) {
         guard busy == nil else { return }
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else {
-            notice = nil
-            error = "This PDF could not be read. Try another file or type the key lines as a note."
-            return
-        }
         guard url.pathExtension.lowercased() == "pdf" || UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) == true
         else {
             notice = nil
             error = "Only PDF files can be uploaded here. Pick a PDF, or type the key lines as a note."
             return
         }
-        guard data.count <= AddNoteLimits.maxPDFBytes else {
-            notice = nil
-            error = "That file is too large. Upload a PDF under 10 MB."
-            return
-        }
         let filename = url.lastPathComponent.isEmpty ? "care-document.pdf" : url.lastPathComponent
-        run(.pdf) { () throws(APIError) in try await app.api.uploadCarePDF(data, filename: filename) }
+        Task {
+            // the size is checked before the file is read, and the read runs off the main thread
+            switch await PickedPDF.read(url, maxBytes: AddNoteLimits.maxPDFBytes) {
+            case .tooLarge:
+                notice = nil
+                error = "That file is too large. Upload a PDF under 10 MB."
+            case .unreadable:
+                notice = nil
+                error = "This PDF could not be read. Try another file or type the key lines as a note."
+            case .data(let data):
+                guard busy == nil else { return }
+                run(.pdf) { () throws(APIError) in try await app.api.uploadCarePDF(data, filename: filename) }
+            }
+        }
     }
 
     private func run(_ from: AddedFrom, _ work: @escaping () async throws(APIError) -> CareSourceResult) {
@@ -184,5 +185,21 @@ struct AddNoteView: View {
             }
             busy = nil
         }
+    }
+}
+
+/// reads a picked file for upload: refuses one over the limit from its size on disk, before reading any of it
+nonisolated enum PickedPDF: Equatable {
+    case data(Data)
+    case tooLarge
+    case unreadable
+
+    @concurrent
+    static func read(_ url: URL, maxBytes: Int) async -> PickedPDF {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > maxBytes { return .tooLarge }
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return .unreadable }
+        return data.count <= maxBytes ? .data(data) : .tooLarge
     }
 }

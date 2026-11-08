@@ -155,7 +155,7 @@ final class ContactsModel {
             let list = try await api.careContacts()
             if mine == seq { contacts = list.contacts }
         } catch {
-            if mine == seq { loadError = error.userMessage }
+            if mine == seq, !error.isCancelled { loadError = error.userMessage }
         }
     }
 
@@ -328,6 +328,9 @@ private struct ContactForm: View {
     @State private var fieldError: (field: CareHelp.DraftField, message: String)?
     @State private var error: String?
     @State private var busy = false
+    @FocusState private var nameFocused: Bool
+    @FocusState private var relationshipFocused: Bool
+    @FocusState private var phoneFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -337,17 +340,17 @@ private struct ContactForm: View {
                 .accessibilityAddTraits(.isHeader)
             CareTextField(
                 label: "Name", text: $draft.name, error: message(.name), maxLength: CareHelp.nameLimit,
-                contentType: .name, identifier: "care.contactForm.name"
+                contentType: .name, identifier: "care.contactForm.name", focus: $nameFocused
             )
             CareTextField(
                 label: "Relationship", optional: true, hint: "For example: daughter, neighbour, family doctor",
                 text: $draft.relationship, error: message(.relationship), maxLength: CareHelp.relationshipLimit,
-                identifier: "care.contactForm.relationship"
+                identifier: "care.contactForm.relationship", focus: $relationshipFocused
             )
             CareTextField(
                 label: "Phone number", hint: "For example: 403-555-0142", text: $draft.phone, error: message(.phone),
                 maxLength: CareHelp.phoneLimit, keyboard: .phonePad, contentType: .telephoneNumber,
-                identifier: "care.contactForm.phone"
+                identifier: "care.contactForm.phone", focus: $phoneFocused
             )
             VStack(alignment: .leading, spacing: 8) {
                 Text("When to call them").font(.rrLabel)
@@ -370,9 +373,16 @@ private struct ContactForm: View {
         }
         .padding(16)
         .careBox(Theme.radius)
-        .onChange(of: draft) { _, _ in fieldError = nil }
+        // only an edit to the field that holds the problem clears it (set() in EmergencyHelp.tsx)
+        .onChange(of: draft.name) { _, _ in clearError(.name) }
+        .onChange(of: draft.relationship) { _, _ in clearError(.relationship) }
+        .onChange(of: draft.phone) { _, _ in clearError(.phone) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("care.contactForm")
+    }
+
+    private func clearError(_ field: CareHelp.DraftField) {
+        if fieldError?.field == field { fieldError = nil }
     }
 
     private func message(_ field: CareHelp.DraftField) -> String? {
@@ -416,6 +426,12 @@ private struct ContactForm: View {
         switch CareHelp.check(draft) {
         case .invalid(let field, let text):
             fieldError = (field, text)
+            // the field with the problem takes the focus, as the web form does
+            switch field {
+            case .name: nameFocused = true
+            case .relationship: relationshipFocused = true
+            case .phone: phoneFocused = true
+            }
             careAnnounce(text)
         case .ok(let input):
             busy = true

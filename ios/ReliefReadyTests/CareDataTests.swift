@@ -197,11 +197,32 @@ struct CareDataTests {
 
     // MARK: - emergency / help and ask
 
+    @Test func aPickedPDFOverTheLimitIsRefusedFromItsSize() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("picked-\(UUID().uuidString).pdf")
+        try Data(repeating: 1, count: 64).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        #expect(await PickedPDF.read(file, maxBytes: 10) == .tooLarge)
+        #expect(await PickedPDF.read(file, maxBytes: 64) == .data(Data(repeating: 1, count: 64)))
+        let missing = file.deletingLastPathComponent().appendingPathComponent("missing-\(UUID().uuidString).pdf")
+        #expect(await PickedPDF.read(missing, maxBytes: 64) == .unreadable)
+    }
+
     @Test func phoneNumbersBecomeTelLinks() {
         #expect(CareHelp.telURL("403-555-0142")?.absoluteString == "tel:4035550142")
         #expect(CareHelp.telURL("+1 (403) 555.0142")?.absoluteString == "tel:+14035550142")
         #expect(CareHelp.telURL("call me") == nil)
         #expect(CareHelp.telURL("12") == nil)
+        // full-width and arabic-indic digits are refused, as the web and the server do, never dialled as other numbers
+        #expect(CareHelp.telURL("403\u{FF15}\u{FF15}\u{FF15}0142") == nil)
+        #expect(CareHelp.telURL("\u{0664}\u{0660}\u{0663}") == nil)
+        if case .invalid(let field, let message) = CareHelp.check(
+            CareHelp.ContactDraft(name: "Lucia", phone: "403\u{FF15}\u{FF15}\u{FF15}0142")
+        ) {
+            #expect(field == .phone)
+            #expect(message == "Use digits only, for example 403-555-0142.")
+        } else {
+            Issue.record("a number with non-ascii digits must be refused here")
+        }
     }
 
     @Test func contactDraftsAreCheckedBeforeSending() {
