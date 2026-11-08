@@ -4,6 +4,8 @@ import { RELIEFREADY_VOICE_SYSTEM_PROMPT } from "./prompt.ts";
 
 export const VOICE_AGENT_NAME = "ReliefReady — private voice workflow foundation";
 export const VOICE_AGENT_TAG = "reliefready-issue-27";
+/** Non-secret ID; the private agent still requires an authenticated signed session. */
+export const HOSTED_VOICE_AGENT_ID = "agent_6401m6w6da4afmc8q86d9pa3s494";
 // Stock voice from the official skill. No cloning or voice-library changes.
 export const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 type AgentCreateRequest = Parameters<ElevenLabsClient["conversationalAi"]["agents"]["create"]>[0];
@@ -66,6 +68,7 @@ export function buildVoiceAgentConfig(voiceId = DEFAULT_VOICE_ID): AgentCreateRe
         deleteTranscriptAndPii: true, deleteAudio: true, zeroRetentionMode: false,
       },
       overrides: {
+        conversationConfigOverride: { conversation: { textOnly: false } },
         enableStartingWorkflowNodeIdFromClient: false,
         enableProcedureIdsFromClient: false,
         enableConversationInitiationClientDataFromWebhook: false,

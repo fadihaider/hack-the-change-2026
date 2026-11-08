@@ -1,20 +1,26 @@
 # ElevenLabs voice workflow
 
-Issue #27 is an optional P1 foundation requested by Ali. It does not replace or
+Issue #27 is the voice integration requested by Ali. It does not replace or
 block the core real-email/Accept milestone (#6/#11) or the protected speech routes
 in #16. The server workflow and hosted conversation graph are separate layers.
-No HTTP routes, UI embedding, production model/store adapters or substitute access
-are enabled by this change. Existing `lib/elevenlabs.ts` remains unchanged.
+The isolated `/voice` page provides explicit-consent recording, transcript review,
+Flash read-aloud and private AI companion controls. STT/TTS and signed-session
+composition consumes the shared runtime's owner identity and durable quota. Thin
+route registration is pending the publication of Fadi's `lib/mvp/runtime.ts`;
+the provider and UI are ready, but the application is not end-to-end ready until
+that dependency is connected. Existing
+`lib/elevenlabs.ts` remains unchanged. No substitute access or automatic
+profile/message mutation is added.
 
 Current verification: 24 workflow fixtures, 6 hosted-configuration fixtures and
 10 existing speech fixtures pass; TypeScript and the production build pass.
 CLI onboarding confirms a working local key plus a declared/imported SDK.
-Remote provisioning is **not complete**: the create API returns HTTP 400,
-`input_invalid` / `invalid_parameters`, including for a minimal private setup
-draft. The model catalog confirms both selected models exist, and SDK wire
-serialization uses the documented snake-case fields. No successful agent ID or
-conversation has been obtained. Keep this PR draft until that provider validation
-failure is resolved; do not claim the hosted workflow is deployed or live-tested.
+The private hosted agent is provisioned and its complete requested configuration
+has passed read-back verification. Its non-secret ID is
+`agent_6401m6w6da4afmc8q86d9pa3s494`. No conversation or paid speech test has been
+run. The platform rejected Flash v2.5 for hosted-agent TTS; that optional
+conversational layer uses the accepted v4 Turbo model. The direct `/api/tts`
+read-aloud path retains the PRD's Flash v2.5 model.
 
 ## System prompt
 
@@ -132,15 +138,17 @@ This optional navigation layer uses hosted `gpt-oss-120b` with temperature 0 and
 400-token response cap. It does not change the project's Bedrock model/provider
 decision or A1–A6 implementation. ASR is `scribe_realtime` for the optional hosted
 conversation; the PRD application path still uses batch Scribe v2. TTS is explicit
-Flash v2.5 with a stock voice, never a cloned voice.
+v4 Turbo with a stock voice, never a cloned voice. Exact approved medical
+read-aloud stays on the direct Flash v2.5 path; it is not rephrased by the companion.
 
 The configuration requires signed authorization (`enableAuth:true`), disables
 client workflow/procedure overrides, recording, monitoring and file input, and
 sets retention to 0 with transcript/audio deletion requested. Retention 0 means
 scheduled provider deletion, not an enterprise zero-retention guarantee or proof
 that all debugging logs/backups disappear. No signed URL, public widget, phone
-connection or conversation is created by provisioning. Future token issuance
-must check the application session, consent and quota first.
+connection or conversation is created by provisioning. `POST /api/voice-agent/session`
+checks the shared application identity, matching Origin, explicit consent and
+durable quota before issuing a signed URL. It never logs or persists that bearer URL.
 
 Limits are one concurrent call, ten calls/day, 180 seconds per call, no bursting
 and no queue. Focus, prompt-injection and two blocking custom guardrails provide
@@ -154,6 +162,22 @@ The SDK reads `ELEVENLABS_API_KEY` from the environment. Next.js loads ignored
 `.env.local`; standalone Node can use `--env-file=.env.local`. Do not print, commit
 or paste that file. `ELEVENLABS_VOICE_ID` is optional for provisioning and otherwise
 uses the stock Sarah voice from the official skill.
+
+The shared `getRuntime()` supplies `rt.auth.currentUserId(request)`,
+`rt.stores.database` and `rt.baseUrl`. The lead-approved local demo can access
+paid providers only at HTTP localhost/127.0.0.1. Deployed origins require Google
+owner mode. No anonymous deployed demo identity can issue a voice session. Fadi
+owns this runtime and the main UI; this change adds only `/voice` and its panel.
+The server uses `ELEVENLABS_AGENT_ID` when supplied, otherwise the provisioned
+project ID above. Credentials stay server-side. There is no AWS secret-loader
+dependency in the current local runtime plan.
+
+Open `/voice` after starting the app. Consent is unchecked by default. Recording
+stays in browser memory until the user chooses Transcribe; transcripts remain
+editable and are not automatically saved as care facts. Read-aloud and companion
+start each require their own user action. The main app's review/approval screens
+remain the authority for using that text. All provider actions use real endpoints;
+errors never substitute fixture speech or simulated success.
 
 ```sh
 # No network or key needed: inspect the proposed configuration summary.
