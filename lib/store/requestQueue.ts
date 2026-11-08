@@ -2,7 +2,7 @@
 import "server-only";
 import { p, type Database, type SqlRunner } from "../db.ts";
 import type { RequestView } from "../frontend/request-api.ts";
-import { findHealthTerms } from "../healthTerms.ts";
+import { findExtraHealthTerms, findHealthTerms } from "../healthTerms.ts";
 import { approvalRevision, requireApprovalRevision } from "../requests/approval-revision.ts";
 import { WorkflowError, type RequestRecord } from "../requests/workflow.ts";
 import { approvalHash, type DisclosureTier, type EvidenceKind, type RequestState } from "../state.ts";
@@ -10,7 +10,8 @@ import { readClock, sweepExpired } from "./clock.ts";
 
 export type RequestAction = RequestView["action"];
 
-export type HealthTermChecker = (subject: string, body: string) => string[] | Promise<string[]>;
+/** extra: the request's own extra terms; a checker that ignores them still gets them added by the queue */
+export type HealthTermChecker = (subject: string, body: string, extra?: readonly string[]) => string[] | Promise<string[]>;
 
 /** approval blocked: health terms in a minimal or general draft without an override; routes answer HTTP 422 */
 export class HealthTermsError extends Error {
@@ -31,6 +32,8 @@ export interface DraftInput {
   body: string;
   /** terms the drafter's own guard found; merged with the server check */
   healthTermsFound?: string[];
+  /** server-only: words that also count as health terms for this request (intake reason, medical facts) */
+  extraHealthTerms?: string[];
 }
 
 export interface EditInput {
@@ -40,6 +43,10 @@ export interface EditInput {
   contactId?: string;
   /** ISO time with Z or an offset; null clears it and the send uses the default 48 hours */
   respondBy?: string | null;
+  /** the owner's choice for this request; absent keeps the current tier (a new contact takes its group's tier) */
+  disclosureTier?: DisclosureTier;
+  /** server-only (never from the browser): replaces the request's extra health terms, for a redraft */
+  extraHealthTerms?: string[];
 }
 
 export interface RequestQueue {
@@ -52,6 +59,8 @@ export interface RequestQueue {
   cancel(userId: string, requestId: string): Promise<RequestView>;
   /** owner-scoped expiry sweep in app time, then the list */
   refresh(userId: string): Promise<{ requests: RequestView[]; expiredRequestIds: string[] }>;
+  /** server-only: the request's extra health terms for the send check; [] for a missing or foreign request */
+  extraHealthTerms(userId: string, requestId: string): Promise<string[]>;
 }
 
 interface ViewRow {
@@ -66,7 +75,9 @@ interface ViewRow {
   draft_subject: string | null;
   draft_body: string | null;
   disclosure_tier: DisclosureTier;
+  group_tier: DisclosureTier;
   health_terms_json: string;
+  extra_terms_json: string;
   contact_id: string;
   contact_name: string;
   recipient_email: string;
@@ -90,12 +101,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_SUBJECT = 300;
 const MAX_BODY = 5000;
 const MAX_TERM = 80;
+const MAX_EXTRA_TERMS = 200;
+const TIERS = new Set<string>(["minimal", "general", "detailed"]);
 
 // every timestamp leaves the database as ISO text; arrays as JSON text (both work the same on the Data API)
 const VIEW_COLUMNS = `r.id::text AS id, r.user_id::text AS user_id, r.state, r.action, r.health_override,
   to_json(r.respond_by)#>>'{}' AS respond_by, to_json(r.proposed_at)#>>'{}' AS proposed_at, r.proposed_note,
   r.draft_subject, r.draft_body, r.disclosure_tier,
   array_to_json(coalesce(r.health_terms_found, '{}'))::text AS health_terms_json,
+  array_to_json(coalesce(r.extra_health_terms, '{}'))::text AS extra_terms_json, g.disclosure_tier AS group_tier,
   c.id::text AS contact_id, c.name AS contact_name, c.email AS recipient_email`;
 
 /** owner filter covers the request and the contact's group (IMPLEMENTATION section 4, ownership) */
@@ -124,23 +138,34 @@ const OWNED_CONTACT = `SELECT c.id::text AS id, g.disclosure_tier
   WHERE c.id = CAST(:contact_id AS uuid) AND g.user_id = CAST(:user_id AS uuid)
   FOR SHARE OF c, g`;
 
+const EXTRA_TERMS = `SELECT array_to_json(coalesce(r.extra_health_terms, '{}'))::text AS extra_terms_json ${OWNED}
+  AND r.id = CAST(:request_id AS uuid)`;
+
 const OWNED_COMMITMENT = `SELECT id::text AS id FROM commitment
   WHERE id = CAST(:commitment_id AS uuid) AND user_id = CAST(:user_id AS uuid)`;
 
 // the Data API takes no array parameters, so term lists travel as a JSON text array
 const TERMS_ARRAY = `ARRAY(SELECT jsonb_array_elements_text(CAST(:terms AS jsonb)))`;
+const EXTRA_ARRAY = `ARRAY(SELECT jsonb_array_elements_text(CAST(:extra AS jsonb)))`;
 
 const INSERT_REQUEST = `INSERT INTO request (user_id, commitment_id, contact_id, action, draft_subject, draft_body,
-    disclosure_tier, health_terms_found, state)
+    disclosure_tier, health_terms_found, extra_health_terms, state)
   VALUES (CAST(:user_id AS uuid), CAST(:commitment_id AS uuid), CAST(:contact_id AS uuid), :action, :subject, :body,
-    :tier, ${TERMS_ARRAY}, 'draft')
+    :tier, ${TERMS_ARRAY}, ${EXTRA_ARRAY}, 'draft')
   RETURNING id::text AS id`;
 
 const UPDATE_DRAFT = `UPDATE request SET draft_subject = :subject, draft_body = :body,
     contact_id = CAST(:contact_id AS uuid), disclosure_tier = :tier,
     respond_by = CASE WHEN :keep_respond_by THEN respond_by ELSE CAST(:respond_by AS timestamptz) END,
-    health_terms_found = ${TERMS_ARRAY}, health_override = false, updated_at = now()
+    health_terms_found = ${TERMS_ARRAY},
+    extra_health_terms = CASE WHEN :keep_extra THEN extra_health_terms ELSE ${EXTRA_ARRAY} END,
+    health_override = false, updated_at = now()
   WHERE id = CAST(:request_id AS uuid)`;
+
+/** ids and tiers only; the owner chose a different tier for this one request */
+const AUDIT_TIER = `INSERT INTO audit_event (actor, action, entity, entity_id, detail)
+  VALUES (:actor, 'disclosure_tier_change', 'request', :request_id,
+    jsonb_build_object('from', CAST(:from_tier AS text), 'to', CAST(:to_tier AS text)))`;
 
 const SAVE_APPROVAL_CHECK = `UPDATE request SET health_terms_found = ${TERMS_ARRAY}, health_override = :override,
     updated_at = now()
@@ -202,6 +227,7 @@ function toView(row: ViewRow, events: EventRow[]): RequestView {
     subject: row.draft_subject ?? "",
     body: row.draft_body ?? "",
     disclosureTier: row.disclosure_tier,
+    defaultDisclosureTier: row.group_tier,
     healthTermsFound: JSON.parse(row.health_terms_json) as string[],
     healthOverride: row.health_override,
     respondBy: iso(row.respond_by),
@@ -265,13 +291,28 @@ function checkBody(value: unknown): string {
   return value;
 }
 
-function checkTerms(value: unknown): string[] {
+function checkTerms(value: unknown, max = 50): string[] {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 50) invalid();
+  if (!Array.isArray(value) || value.length > max) invalid();
   return value.map((term) => {
     if (typeof term !== "string" || !term.trim() || [...term].length > MAX_TERM) invalid();
     return term;
   });
+}
+
+function checkTier(value: unknown): DisclosureTier {
+  if (typeof value !== "string" || !TIERS.has(value)) invalid();
+  return value as DisclosureTier;
+}
+
+function parseTerms(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const value = JSON.parse(json) as unknown;
+    return Array.isArray(value) ? value.filter((term): term is string => typeof term === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 async function ownedContact(tx: SqlRunner, userId: string, contactId: string): Promise<{ id: string; tier: DisclosureTier }> {
@@ -284,8 +325,13 @@ async function ownedContact(tx: SqlRunner, userId: string, contactId: string): P
 }
 
 export function createRequestQueue(database: Database, options: { findHealthTerms?: HealthTermChecker } = {}): RequestQueue {
-  const check = async (subject: string, body: string) =>
-    [...new Set(await (options.findHealthTerms ?? findHealthTerms)(subject, body))];
+  // the injected checker covers the base list; the request's extra terms are always added here (A3 guards)
+  const check = async (subject: string, body: string, extra: readonly string[] = []) => [
+    ...new Set([
+      ...await (options.findHealthTerms ?? findHealthTerms)(subject, body, extra),
+      ...findExtraHealthTerms(subject, body, extra),
+    ]),
+  ];
 
   /** one transaction holding the owner-scoped row lock; returns the view read after the writes */
   async function withLockedRequest(
@@ -319,7 +365,8 @@ export function createRequestQueue(database: Database, options: { findHealthTerm
       if (!ACTIONS.has(input.action)) invalid();
       const subject = checkSubject(input.subject);
       const body = checkBody(input.body);
-      const terms = [...new Set([...checkTerms(input.healthTermsFound), ...await check(subject, body)])];
+      const extra = checkTerms(input.extraHealthTerms, MAX_EXTRA_TERMS);
+      const terms = [...new Set([...checkTerms(input.healthTermsFound), ...await check(subject, body, extra)])];
       return database.transaction(async (tx) => {
         if (input.commitmentId !== null) {
           const owned = await tx.query<{ id: string }>(OWNED_COMMITMENT, [
@@ -338,6 +385,7 @@ export function createRequestQueue(database: Database, options: { findHealthTerm
           p.text("body", body),
           p.text("tier", contact.tier),
           p.text("terms", JSON.stringify(terms)),
+          p.text("extra", JSON.stringify(extra)),
         ]);
         const id = rows[0].id;
         // the user picked the action, so the draft goes straight to the queue (section 4 transition table)
@@ -351,8 +399,15 @@ export function createRequestQueue(database: Database, options: { findHealthTerm
         if (!EDITABLE.has(row.state)) throw new WorkflowError("state_conflict");
         const subject = input.subject === undefined ? row.draft_subject ?? "" : checkSubject(input.subject);
         const body = input.body === undefined ? row.draft_body ?? "" : checkBody(input.body);
-        // the tier always comes from the contact's group, never from the client
+        // the tier starts as the contact group's; the owner may choose another one for this request, and the revision
+        // and the approval hash both cover it, so any change needs a fresh approval
         const contact = await ownedContact(tx, userId, input.contactId ?? row.contact_id);
+        const contactChanged = contact.id !== row.contact_id;
+        const tier = input.disclosureTier !== undefined
+          ? checkTier(input.disclosureTier)
+          : contactChanged ? contact.tier : row.disclosure_tier;
+        const keepExtra = input.extraHealthTerms === undefined;
+        const extra = keepExtra ? parseTerms(row.extra_terms_json) : checkTerms(input.extraHealthTerms, MAX_EXTRA_TERMS);
         let respondBy: Date | null = null;
         if (typeof input.respondBy === "string") {
           const at = input.respondBy;
@@ -366,12 +421,22 @@ export function createRequestQueue(database: Database, options: { findHealthTerm
           p.text("subject", subject),
           p.text("body", body),
           p.uuid("contact_id", contact.id),
-          p.text("tier", contact.tier),
+          p.text("tier", tier),
           p.bool("keep_respond_by", input.respondBy === undefined),
           p.ts("respond_by", respondBy),
-          p.text("terms", JSON.stringify(await check(subject, body))),
+          p.text("terms", JSON.stringify(await check(subject, body, extra))),
+          p.bool("keep_extra", keepExtra),
+          p.text("extra", JSON.stringify(extra)),
           p.uuid("request_id", row.id),
         ]);
+        if (tier !== row.disclosure_tier) {
+          await tx.execute(AUDIT_TIER, [
+            p.text("actor", userId),
+            p.text("request_id", row.id),
+            p.text("from_tier", row.disclosure_tier),
+            p.text("to_tier", tier),
+          ]);
+        }
         // the move back to awaiting_approval is what invalidates any earlier approval
         await transition(tx, row.id, { from: row.state, to: "awaiting_approval", kind: "user_manual", ref: null, actor: "user" });
       });
@@ -383,7 +448,7 @@ export function createRequestQueue(database: Database, options: { findHealthTerm
         // revision first, inside the lock, before any write (approval-revision.ts)
         requireApprovalRevision(record, ifMatch);
         if (record.state !== "awaiting_approval") throw new WorkflowError("state_conflict");
-        const terms = await check(record.subject, record.body);
+        const terms = await check(record.subject, record.body, parseTerms(row.extra_terms_json));
         const blocked = record.disclosureTier !== "detailed" && terms.length > 0;
         if (blocked && !healthOverride) throw new HealthTermsError(terms);
         await tx.execute(SAVE_APPROVAL_CHECK, [
@@ -417,6 +482,15 @@ export function createRequestQueue(database: Database, options: { findHealthTerm
     async refresh(userId) {
       const expiredRequestIds = await sweepExpired(database, userId);
       return { requests: await list(userId), expiredRequestIds };
+    },
+
+    async extraHealthTerms(userId, requestId) {
+      if (typeof requestId !== "string" || !UUID.test(requestId)) return [];
+      const rows = await database.query<{ extra_terms_json: string }>(EXTRA_TERMS, [
+        p.uuid("user_id", userId),
+        p.uuid("request_id", requestId.toLowerCase()),
+      ]);
+      return parseTerms(rows[0]?.extra_terms_json);
     },
   };
 }

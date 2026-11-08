@@ -63,7 +63,7 @@ export function Intake({ current, onBack, arrived }: Props) {
   const answerRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    router.prefetch("/urgent");
+    router.prefetch("/urgent?from=intake");
   }, [router]);
 
   useEffect(() => {
@@ -126,7 +126,7 @@ export function Intake({ current, onBack, arrived }: Props) {
       opening = true;
       setBusy("opening");
       announce(`Care week saved, ${weekRange(result.startDate, result.endDate)}. Opening what it affects.`);
-      router.push("/urgent");
+      router.push("/urgent?from=intake");
     } catch (caught) {
       setError(liveErrorMessage(caught));
     } finally {
@@ -192,7 +192,7 @@ export function Intake({ current, onBack, arrived }: Props) {
           </ul>
         </div>
         <Actions>
-          <ButtonLink href="/urgent" variant="primary">
+          <ButtonLink href="/urgent?from=intake" variant="primary">
             See what it affects
           </ButtonLink>
         </Actions>

@@ -17,6 +17,8 @@ const state = z.enum([
   "needs_review",
 ]);
 const timestamp = z.string().datetime({ offset: true });
+const tier = z.enum(["minimal", "general", "detailed"]);
+export type DisclosureTierView = z.infer<typeof tier>;
 export const requestViewSchema = z.object({
   id: z.string().min(1),
   revision: z.string().regex(/^[a-f0-9]{64}$/),
@@ -29,7 +31,9 @@ export const requestViewSchema = z.object({
   }),
   subject: z.string(),
   body: z.string(),
-  disclosureTier: z.enum(["minimal", "general", "detailed"]),
+  disclosureTier: tier,
+  /** the contact group's usual tier; the owner may choose another one for this request */
+  defaultDisclosureTier: tier.optional(),
   healthTermsFound: z.array(z.string()),
   healthOverride: z.boolean(),
   respondBy: timestamp.nullable(),
@@ -63,6 +67,11 @@ const listSchema = z.object({
   appNow: timestamp,
 });
 const requestSchema = z.object({ request: requestViewSchema });
+const redraftSchema = z.object({
+  request: requestViewSchema,
+  editFlags: z.array(z.string()),
+  approvalBlocked: z.boolean(),
+});
 const refreshSchema = listSchema.extend({
   expiredRequestIds: z.array(z.string()),
 });
@@ -193,8 +202,16 @@ export function createRequestApi(transport: typeof fetch = fetch) {
         body?: string;
         contactId?: string;
         respondBy?: string | null;
+        /** this request only; the revision and the approval hash cover it, so it needs a fresh approval */
+        disclosureTier?: DisclosureTierView;
       },
     ) => call("/api/requests/edit", requestSchema, { requestId, ...changes }),
+    /** a new A3 draft written for the chosen tier; replaces the words, back to awaiting approval */
+    redraft: (requestId: string, disclosureTier: DisclosureTierView) =>
+      send("/api/requests/redraft", redraftSchema, {
+        body: { requestId, disclosureTier },
+        timeoutMs: 90000,
+      }),
     approve: (requestId: string, revision: string, healthOverride = false) => {
       if (!/^[a-f0-9]{64}$/.test(revision))
         return Promise.reject(new RequestApiError("invalid_response", 502));

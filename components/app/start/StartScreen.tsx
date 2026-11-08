@@ -97,7 +97,7 @@ function Welcome({
         Pick up where you left off?
       </Question>
       <Actions>
-        <ButtonLink href="/urgent" variant="primary">
+        <ButtonLink href="/urgent?from=start" variant="primary">
           Continue with this week
         </ButtonLink>
         <Button variant="secondary" onClick={onNewWeek}>

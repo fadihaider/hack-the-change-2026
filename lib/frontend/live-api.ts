@@ -118,6 +118,8 @@ const commitmentSchema = z.object({
   conflictReason: maybe,
   ruleConflicts: z.array(text),
   decision: decision.nullable(),
+  /** "Change the plan" opened the step again on the server; the next decision clears it */
+  reopened: z.boolean().default(false),
   suggestedAction: decision.nullable(),
   forCareRecipient: z.boolean(),
   dependencies: z.array(
@@ -129,9 +131,24 @@ const commitmentSchema = z.object({
       origin: text,
       confirmed: z.boolean(),
       contactId: maybe,
+      /** the saved contact name; null means no contact matches, so show the address as it is */
+      contactName: maybe.default(null),
     }),
   ),
   suggestedContactId: maybe,
+  /** every matched contact in order; a group commitment can have several, each asked separately */
+  suggestedContactIds: z.array(text).default([]),
+  contacts: z
+    .array(
+      z.object({
+        contactId: text,
+        name: text,
+        email: text,
+        group: text,
+        tier: z.enum(["minimal", "general", "detailed"]),
+      }),
+    )
+    .default([]),
   requests: z.array(z.object({ id: text, state: text, contactId: maybe })),
 });
 export type CommitmentView = z.infer<typeof commitmentSchema>;
@@ -145,10 +162,23 @@ export type ImpactView = z.infer<typeof impactSchema>;
 
 const decideSchema = z.object({
   commitment: z.object({ id: text, decision }),
+  /** the first of requests, for single-recipient callers */
   request: requestViewSchema.nullable(),
   existing: z.boolean(),
   editFlags: z.array(text),
   approvalBlocked: z.boolean(),
+  /** one request per chosen contact, each approved and sent on its own */
+  requests: z.array(requestViewSchema).default([]),
+  drafts: z
+    .array(
+      z.object({
+        requestId: text,
+        existing: z.boolean(),
+        editFlags: z.array(text),
+        approvalBlocked: z.boolean(),
+      }),
+    )
+    .default([]),
 });
 export type DecideView = z.infer<typeof decideSchema>;
 
@@ -414,8 +444,19 @@ export function createLiveApi(transport: typeof fetch = fetch) {
       commitmentId: string;
       decision: Decision;
       contactId?: string;
+      /** several people for a group commitment; not together with contactId */
+      contactIds?: string[];
       note?: string;
     }) => call("/api/commitments/decide", decideSchema, { body: input, ...model }),
+    /** "Change the plan": the step stays open across reloads; no request changes */
+    reopen: (commitmentId: string) =>
+      call(
+        "/api/commitments/reopen",
+        z.object({
+          commitment: z.object({ id: text, decision: decision.nullable(), reopened: z.literal(true) }),
+        }),
+        { body: { commitmentId } },
+      ),
     addToTimeline: (commitmentId: string) =>
       call(
         "/api/commitments/timeline",

@@ -23,9 +23,24 @@ export const ALTERNATIVES: Record<MessageDecision, Decision[]> = {
 
 export const TIER_LABEL: Record<Tier, string> = {
   minimal: "Family matter only",
-  general: "Say I’m caring for my mom",
+  general: "Say I’m caring for family",
   detailed: "Share more detail",
 };
+
+export const TIERS: readonly Tier[] = ["minimal", "general", "detailed"];
+
+// the family words a "general" message can name; any other alias (a first name, say) stays "family"
+const FAMILY_WORDS = new Set([
+  "mom", "mum", "mother", "mama", "dad", "father", "papa", "grandma", "grandmother", "nana", "grandpa",
+  "grandfather", "wife", "husband", "partner", "son", "daughter", "sister", "brother", "aunt", "uncle",
+]);
+
+/** the tier's name as the picker shows it; "Say I’m caring for my mom" only when the alias is a family word */
+export function tierLabel(tier: Tier, alias: string | null) {
+  if (tier !== "general") return TIER_LABEL[tier];
+  const word = alias?.trim().toLowerCase().replace(/^my\s+/, "") ?? "";
+  return FAMILY_WORDS.has(word) ? `Say I’m caring for my ${word}` : TIER_LABEL.general;
+}
 
 export const TIER_HINT: Record<Tier, string> = {
   minimal: "Says only that you have a family caregiving situation, and the dates.",
@@ -93,35 +108,22 @@ export function whenLine(c: CommitmentView) {
 
 // ---------------------------------------------------------------- people
 
-function nameFromEmail(email: string) {
-  return email
-    .split("@")[0]
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
 /**
- * contact names by id. request recipients carry the real names; a contact nobody has written to yet is named from
- * the email address the impact scan matched it with.
+ * contact names by id, only as the server saved them: request recipients, then the contacts the impact scan matched.
+ * a name is never made up from an email address.
  */
-export function buildDirectory(commitments: CommitmentView[], requests: RequestView[], userEmail: string): Directory {
+export function buildDirectory(commitments: CommitmentView[], requests: RequestView[]): Directory {
   const dir: Directory = new Map();
   for (const r of requests) dir.set(r.recipient.contactId, r.recipient);
-  const owner = userEmail.trim().toLowerCase();
   for (const c of commitments) {
-    for (const d of c.dependencies) {
-      if (d.contactId && d.toRef && !dir.has(d.contactId)) {
-        dir.set(d.contactId, { contactId: d.contactId, email: d.toRef, name: nameFromEmail(d.toRef) });
+    for (const contact of c.contacts) {
+      if (!dir.has(contact.contactId)) {
+        dir.set(contact.contactId, { contactId: contact.contactId, name: contact.name, email: contact.email });
       }
     }
-    if (c.suggestedContactId && !dir.has(c.suggestedContactId)) {
-      const others = [c.organizerEmail, ...c.attendees.map((a) => a.email)].filter(
-        (email): email is string => Boolean(email) && email!.trim().toLowerCase() !== owner,
-      );
-      if (others[0]) {
-        dir.set(c.suggestedContactId, { contactId: c.suggestedContactId, email: others[0], name: nameFromEmail(others[0]) });
+    for (const d of c.dependencies) {
+      if (d.contactId && d.contactName && d.toRef && !dir.has(d.contactId)) {
+        dir.set(d.contactId, { contactId: d.contactId, name: d.contactName, email: d.toRef });
       }
     }
   }
@@ -130,10 +132,11 @@ export function buildDirectory(commitments: CommitmentView[], requests: RequestV
 
 const TITLES = /^(?:dr|mr|mrs|ms|mx|prof)\.?$/i;
 
-/** "Jordan" from "Jordan Lee"; a titled name keeps its title and surname ("Dr. Brooks") */
+/** "Jordan" from "Jordan Lee"; a titled name keeps its title and surname ("Dr. Brooks"); an address stays whole */
 export function shortName(name: string) {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "them";
+  if (name.includes("@")) return name.trim();
   if (words.length > 1 && TITLES.test(words[0])) return `${words[0]} ${words[words.length - 1]}`;
   return words[0];
 }
@@ -143,12 +146,12 @@ export function joinNames(names: string[]) {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-/** the people on the event besides Alex, for the "With" line */
+/** the people on the event besides Alex, for the "With" line: saved names, or the address itself when unknown */
 export function withNames(c: CommitmentView, dir: Directory) {
   const names: string[] = [];
   for (const d of c.dependencies) {
     const person = d.contactId ? dir.get(d.contactId) : undefined;
-    const name = person?.name ?? (d.toRef ? nameFromEmail(d.toRef) : null);
+    const name = person?.name ?? d.contactName ?? d.toRef?.trim() ?? null;
     if (name && !names.includes(name)) names.push(name);
   }
   return names;
@@ -292,6 +295,19 @@ export function outcomeLine(r: RequestView) {
     case "cancelled":
       return `You withdrew the message to ${who}.`;
   }
+}
+
+/** the step's heading when it wrote to several people, each message approved and sent on its own */
+export function outcomeLineMany(requests: RequestView[]) {
+  if (requests.length === 1) return outcomeLine(requests[0]);
+  const ready = requests.filter(
+    (r) => r.state === "draft" || r.state === "awaiting_approval" || r.state === "approved" ||
+      (r.state === "needs_review" && !isProposal(r)),
+  );
+  const names = joinNames(requests.map((r) => shortName(r.recipient.name)));
+  if (ready.length === requests.length) return `Your messages to ${names} are ready for your OK.`;
+  if (ready.length === 0) return `You wrote to ${names}.`;
+  return `You wrote to ${names}. ${ready.length === 1 ? "One message is" : `${ready.length} messages are`} ready for your OK.`;
 }
 
 /** when the request last changed state, from its evidence (newest first) */

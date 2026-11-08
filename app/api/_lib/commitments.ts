@@ -42,6 +42,17 @@ export interface DependencyView {
   confirmed: boolean;
   /** the owner's contact with this email, when there is one */
   contactId: string | null;
+  /** that contact's saved name; null when no contact matches (the UI then shows the address, never a guess) */
+  contactName: string | null;
+}
+
+/** one of the owner's contacts a request for this commitment could go to, with the saved name */
+export interface CommitmentContactView {
+  contactId: string;
+  name: string;
+  email: string;
+  group: string;
+  tier: "minimal" | "general" | "detailed";
 }
 
 export interface CommitmentView {
@@ -58,6 +69,8 @@ export interface CommitmentView {
   ruleConflicts: string[];
   /** the saved user decision */
   decision: CommitmentDecision | null;
+  /** "Change the plan" opened this step again; the next decision clears it */
+  reopened: boolean;
   /** A2 preselection only */
   suggestedAction: CommitmentDecision | null;
   /** the care recipient's own commitment: keep, and offer "Add to care timeline" */
@@ -65,6 +78,9 @@ export interface CommitmentView {
   dependencies: DependencyView[];
   /** contact a request would go to when decide gets no contactId */
   suggestedContactId: string | null;
+  /** every matched contact, in the same order (the first is suggestedContactId); a group event can have several */
+  suggestedContactIds: string[];
+  contacts: CommitmentContactView[];
   requests: { id: string; state: string; contactId: string | null }[];
 }
 
@@ -79,20 +95,37 @@ interface OwnedContact {
   id: string;
   name: string;
   email: string;
+  group: string;
   tier: "minimal" | "general" | "detailed";
 }
 
-const CONTACTS = `SELECT c.id::text AS id, c.name, c.email, g.disclosure_tier
+const CONTACTS = `SELECT c.id::text AS id, c.name, c.email, g.name AS group_name, g.disclosure_tier
   FROM contact c JOIN contact_group g ON g.id = c.group_id
   WHERE g.user_id = CAST(:user_id AS uuid)
   ORDER BY g.name, c.name`;
 
+/** a request is written to at most this many people at once (each one still approved and sent separately) */
+const MAX_RECIPIENTS = 10;
+
 async function loadContacts(sql: SqlRunner, userId: string): Promise<OwnedContact[]> {
-  const rows = await sql.query<{ id: string; name: string; email: string; disclosure_tier: OwnedContact["tier"] }>(
-    CONTACTS,
-    [p.uuid("user_id", userId)],
-  );
-  return rows.map((row) => ({ id: row.id, name: row.name, email: row.email, tier: row.disclosure_tier }));
+  const rows = await sql.query<{
+    id: string;
+    name: string;
+    email: string;
+    group_name: string;
+    disclosure_tier: OwnedContact["tier"];
+  }>(CONTACTS, [p.uuid("user_id", userId)]);
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    group: row.group_name,
+    tier: row.disclosure_tier,
+  }));
+}
+
+function contactView(contact: OwnedContact): CommitmentContactView {
+  return { contactId: contact.id, name: contact.name, email: contact.email, group: contact.group, tier: contact.tier };
 }
 
 function byEmail(contacts: OwnedContact[]): Map<string, OwnedContact> {
@@ -104,12 +137,14 @@ function byEmail(contacts: OwnedContact[]): Map<string, OwnedContact> {
   return map;
 }
 
-/** confirmed dependencies first, then model ones, then the organizer, then attendees; never the owner */
-function pickContact(
-  contacts: Map<string, OwnedContact>,
-  ownerEmail: string,
-  candidates: { dependencies: { toRef: string | null; confirmed: boolean }[]; organizerEmail: string | null; attendees: Attendee[] },
-): OwnedContact | null {
+type ContactCandidates = {
+  dependencies: { toRef: string | null; confirmed: boolean }[];
+  organizerEmail: string | null;
+  attendees: Attendee[];
+};
+
+/** confirmed dependencies first, then model ones, then the organizer, then attendees; never the owner; each once */
+function matchContacts(contacts: Map<string, OwnedContact>, ownerEmail: string, candidates: ContactCandidates): OwnedContact[] {
   const ordered = [
     ...candidates.dependencies.filter((d) => d.confirmed).map((d) => d.toRef),
     ...candidates.dependencies.filter((d) => !d.confirmed).map((d) => d.toRef),
@@ -117,13 +152,19 @@ function pickContact(
     ...candidates.attendees.map((a) => a.email),
   ];
   const owner = ownerEmail.toLowerCase();
+  const matched: OwnedContact[] = [];
   for (const email of ordered) {
     const key = email?.trim().toLowerCase();
     if (!key || key === owner) continue;
     const contact = contacts.get(key);
-    if (contact) return contact;
+    if (contact && !matched.some((m) => m.id === contact.id)) matched.push(contact);
+    if (matched.length >= MAX_RECIPIENTS) break;
   }
-  return null;
+  return matched;
+}
+
+function pickContact(contacts: Map<string, OwnedContact>, ownerEmail: string, candidates: ContactCandidates): OwnedContact | null {
+  return matchContacts(contacts, ownerEmail, candidates)[0] ?? null;
 }
 
 // ---------- impact scan ----------
@@ -189,7 +230,7 @@ const INSERT_DEPENDENCY = `INSERT INTO dependency (from_commitment, to_kind, to_
 
 const EPISODE_COMMITMENTS = `SELECT id::text AS id, source_id, title, to_json(starts_at)#>>'{}' AS starts_at,
     to_json(ends_at)#>>'{}' AS ends_at, location, organizer_email, attendees::text AS attendees_json,
-    conflict_reason, decision
+    conflict_reason, decision, (reopened_at IS NOT NULL) AS reopened
   FROM commitment
   WHERE user_id = CAST(:user_id AS uuid) AND episode_id = CAST(:episode_id AS uuid) AND source = 'calendar'
   ORDER BY starts_at, id`;
@@ -221,6 +262,7 @@ interface CommitmentRow {
   attendees_json: string | null;
   conflict_reason: string | null;
   decision: CommitmentDecision | null;
+  reopened: boolean;
 }
 
 interface DependencyRow {
@@ -390,16 +432,21 @@ async function listEpisodeCommitments(
     const attendees = parseAttendees(row.attendees_json);
     const dependencies = dependencyRows
       .filter((dependency) => dependency.commitment_id === row.id)
-      .map((dependency) => ({
-        id: dependency.id,
-        toKind: dependency.to_kind,
-        toRef: dependency.to_ref,
-        evidence: dependency.evidence,
-        origin: dependency.origin,
-        confirmed: dependency.confirmed,
-        contactId: contacts.get(dependency.to_ref?.trim().toLowerCase() ?? "")?.id ?? null,
-      }));
+      .map((dependency) => {
+        const contact = contacts.get(dependency.to_ref?.trim().toLowerCase() ?? "");
+        return {
+          id: dependency.id,
+          toKind: dependency.to_kind,
+          toRef: dependency.to_ref,
+          evidence: dependency.evidence,
+          origin: dependency.origin,
+          confirmed: dependency.confirmed,
+          contactId: contact?.id ?? null,
+          contactName: contact?.name ?? null,
+        };
+      });
     const title = row.title ?? "(no title)";
+    const matched = matchContacts(contacts, user.email, { dependencies, organizerEmail: row.organizer_email, attendees });
     return {
       id: row.id,
       sourceId: row.source_id,
@@ -412,10 +459,13 @@ async function listEpisodeCommitments(
       conflictReason: row.conflict_reason,
       ruleConflicts: row.conflict_reason ? [row.conflict_reason] : [],
       decision: row.decision,
+      reopened: row.reopened === true,
       suggestedAction: null,
       forCareRecipient: isCareRecipientEvent({ title, attendees }, aliases),
       dependencies,
-      suggestedContactId: pickContact(contacts, user.email, { dependencies, organizerEmail: row.organizer_email, attendees })?.id ?? null,
+      suggestedContactId: matched[0]?.id ?? null,
+      suggestedContactIds: matched.map((contact) => contact.id),
+      contacts: matched.map(contactView),
       requests: requestRows
         .filter((request) => request.commitment_id === row.id)
         .map((request) => ({ id: request.id, state: request.state, contactId: request.contact_id })),
@@ -429,17 +479,30 @@ export interface DecideInput {
   commitmentId: string;
   decision: CommitmentDecision;
   contactId?: string;
+  /** several people for a group commitment; each gets a separate request, approved and sent on its own */
+  contactIds?: string[];
   note?: string;
 }
 
-export interface DecideResponse {
-  commitment: { id: string; decision: CommitmentDecision };
-  request: RequestView | null;
+export interface DraftOutcome {
+  requestId: string;
   /** true when an open request for this commitment and contact already existed (double click guard) */
   existing: boolean;
   /** A3 guard flags: the user must edit the draft before approving */
   editFlags: string[];
   approvalBlocked: boolean;
+}
+
+export interface DecideResponse {
+  commitment: { id: string; decision: CommitmentDecision };
+  /** the first request (same as requests[0]); kept for single-recipient callers */
+  request: RequestView | null;
+  existing: boolean;
+  editFlags: string[];
+  approvalBlocked: boolean;
+  /** one request per contact, in the order the contacts were chosen */
+  requests: RequestView[];
+  drafts: DraftOutcome[];
 }
 
 interface DecideRow {
@@ -465,7 +528,8 @@ const DECIDE_COMMITMENT = `SELECT c.id::text AS id, c.title, to_json(c.starts_at
   JOIN care_recipient r ON r.id = e.care_recipient_id AND r.owner_id = c.user_id
   WHERE c.id = CAST(:id AS uuid) AND c.user_id = CAST(:user_id AS uuid)`;
 
-const SAVE_DECISION = `UPDATE commitment SET decision = :decision
+// a new decision also closes a reopened step
+const SAVE_DECISION = `UPDATE commitment SET decision = :decision, reopened_at = NULL
   WHERE id = CAST(:id AS uuid) AND user_id = CAST(:user_id AS uuid)`;
 
 const OPEN_REQUEST = `SELECT id::text AS id FROM request
@@ -506,20 +570,69 @@ function extraHealthTerms(reasonText: string | null, medicalFacts: string[], ali
 
 const TITLES = /^(?:dr|mr|mrs|ms|mx|prof)\.?$/i;
 
-/** "Jordan" from "Jordan Lee"; a titled name keeps its title and surname ("Dr. Brooks") */
+/** "Jordan" from "Jordan Lee"; a titled name keeps its title and surname ("Dr. Brooks"); never an email address */
 function firstName(name: string): string {
-  const parts = name.trim().split(/\s+/);
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0 || parts.some((part) => part.includes("@"))) return "there";
   if (parts.length > 1 && TITLES.test(parts[0])) return `${parts[0]} ${parts[parts.length - 1]}`;
-  return parts[0] || "there";
+  return parts[0];
 }
 
-/** saves the user's decision; notify, reschedule, extension and coverage get an A3 draft in the approval queue */
+async function loadDecideRow(rt: Runtime, user: SessionUser, commitmentId: string): Promise<DecideRow> {
+  const rows = await rt.stores.database.query<DecideRow>(DECIDE_COMMITMENT, [
+    p.uuid("id", requireUuid(commitmentId)),
+    p.uuid("user_id", user.id),
+  ]);
+  if (!rows[0]) throw new ApiError(404, "not_found");
+  return rows[0];
+}
+
+/** the request's extra health terms: the intake reason and the recipient's approved medical_instruction facts */
+async function draftTermsFor(rt: Runtime, row: DecideRow): Promise<string[]> {
+  const aliases = recipientAliases({ alias: row.alias, displayName: row.display_name });
+  const medical = await rt.stores.database.query<{ text_exact: string }>(MEDICAL_FACTS, [
+    p.uuid("recipient_id", row.recipient_id),
+  ]);
+  return extraHealthTerms(row.reason_text, medical.map((fact) => fact.text_exact), aliases);
+}
+
+/** one A3 draft for one contact at one tier; counts against the owner's model quota first */
+async function draftFor(
+  rt: Runtime,
+  user: SessionUser,
+  row: DecideRow,
+  contact: OwnedContact,
+  action: RequestView["action"],
+  tier: OwnedContact["tier"],
+  note: string | null,
+  extra: string[],
+) {
+  const deps = await reserveModel(rt, user.id, "drafter");
+  const draft = await runDrafter(
+    {
+      recipientFirstName: firstName(contact.name),
+      recipientEmail: contact.email,
+      relationship: relationshipFor(row.alias),
+      commitmentTitle: row.title ?? "(no title)",
+      commitmentStart: row.starts_at === null ? null : new Date(row.starts_at).toISOString(),
+      action,
+      episodeStart: row.starts_on,
+      episodeEnd: row.ends_on,
+      tier,
+      reasonText: row.reason_text,
+      userNote: note,
+      extraHealthTerms: extra,
+    },
+    deps,
+  );
+  if (draft.editFlags.includes("empty")) throw new ApiError(422, "draft_empty");
+  return draft;
+}
+
+/** saves the user's decision; notify, reschedule, extension and coverage get an A3 draft per contact in the queue */
 export async function decideCommitment(rt: Runtime, user: SessionUser, input: DecideInput): Promise<DecideResponse> {
   const database = rt.stores.database;
-  const commitmentId = requireUuid(input.commitmentId);
-  const rows = await database.query<DecideRow>(DECIDE_COMMITMENT, [p.uuid("id", commitmentId), p.uuid("user_id", user.id)]);
-  const row = rows[0];
-  if (!row) throw new ApiError(404, "not_found");
+  const row = await loadDecideRow(rt, user, input.commitmentId);
   const attendees = parseAttendees(row.attendees_json);
   const aliases = recipientAliases({ alias: row.alias, displayName: row.display_name });
   const title = row.title ?? "(no title)";
@@ -529,70 +642,156 @@ export async function decideCommitment(rt: Runtime, user: SessionUser, input: De
   await database.execute(SAVE_DECISION, [p.text("decision", decision), p.uuid("id", row.id), p.uuid("user_id", user.id)]);
   const saved = { id: row.id, decision };
   if (!createsRequest(decision)) {
-    return { commitment: saved, request: null, existing: false, editFlags: [], approvalBlocked: false };
+    return { commitment: saved, request: null, existing: false, editFlags: [], approvalBlocked: false, requests: [], drafts: [] };
   }
 
   const contacts = await loadContacts(database, user.id);
-  let contact: OwnedContact | null;
-  if (input.contactId !== undefined) {
-    const id = requireUuid(input.contactId);
-    contact = contacts.find((candidate) => candidate.id === id) ?? null;
-    if (!contact) throw new ApiError(404, "not_found");
+  const chosen = input.contactIds ?? (input.contactId !== undefined ? [input.contactId] : null);
+  let targets: OwnedContact[];
+  if (chosen) {
+    targets = [];
+    for (const raw of chosen.slice(0, MAX_RECIPIENTS)) {
+      const id = requireUuid(raw);
+      const contact = contacts.find((candidate) => candidate.id === id);
+      if (!contact) throw new ApiError(404, "not_found");
+      if (!targets.some((target) => target.id === contact.id)) targets.push(contact);
+    }
   } else {
     const dependencies = await database.query<{ to_ref: string | null; confirmed: boolean }>(COMMITMENT_DEPENDENCIES, [
       p.uuid("id", row.id),
     ]);
-    contact = pickContact(byEmail(contacts), user.email, {
+    const contact = pickContact(byEmail(contacts), user.email, {
       dependencies: dependencies.map((d) => ({ toRef: d.to_ref, confirmed: d.confirmed })),
       organizerEmail: row.organizer_email,
       attendees,
     });
     if (!contact) throw new ApiError(422, "contact_required");
+    targets = [contact];
   }
 
-  const open = await database.query<{ id: string }>(OPEN_REQUEST, [
-    p.uuid("user_id", user.id),
-    p.uuid("commitment_id", row.id),
-    p.uuid("contact_id", contact.id),
-  ]);
-  if (open[0]) {
-    return { commitment: saved, request: await rt.queue.read(user.id, open[0].id), existing: true, editFlags: [], approvalBlocked: false };
+  // open requests come back as they are; every new draft is written before any is queued, so a model failure
+  // queues nothing new
+  const slots: ({ request: RequestView; outcome: DraftOutcome } | { contact: OwnedContact })[] = [];
+  for (const contact of targets) {
+    const open = await database.query<{ id: string }>(OPEN_REQUEST, [
+      p.uuid("user_id", user.id),
+      p.uuid("commitment_id", row.id),
+      p.uuid("contact_id", contact.id),
+    ]);
+    if (open[0]) {
+      const request = await rt.queue.read(user.id, open[0].id);
+      slots.push({ request, outcome: { requestId: request.id, existing: true, editFlags: [], approvalBlocked: false } });
+    } else {
+      slots.push({ contact });
+    }
   }
-
-  const medical = await database.query<{ text_exact: string }>(MEDICAL_FACTS, [p.uuid("recipient_id", row.recipient_id)]);
-  const deps = await reserveModel(rt, user.id, "drafter");
-  const draft = await runDrafter(
-    {
-      recipientFirstName: firstName(contact.name),
-      recipientEmail: contact.email,
-      relationship: relationshipFor(row.alias),
-      commitmentTitle: title,
-      commitmentStart: row.starts_at === null ? null : new Date(row.starts_at).toISOString(),
+  const extra = slots.some((slot) => "contact" in slot) ? await draftTermsFor(rt, row) : [];
+  const written = new Map<string, Awaited<ReturnType<typeof draftFor>>>();
+  for (const slot of slots) {
+    if (!("contact" in slot)) continue;
+    written.set(slot.contact.id, await draftFor(rt, user, row, slot.contact, decision, slot.contact.tier, input.note ?? null, extra));
+  }
+  const requests: RequestView[] = [];
+  const drafts: DraftOutcome[] = [];
+  for (const slot of slots) {
+    if (!("contact" in slot)) {
+      requests.push(slot.request);
+      drafts.push(slot.outcome);
+      continue;
+    }
+    const draft = written.get(slot.contact.id)!;
+    const request = await rt.queue.createDraft(user.id, {
+      commitmentId: row.id,
+      contactId: slot.contact.id,
       action: decision,
-      episodeStart: row.starts_on,
-      episodeEnd: row.ends_on,
-      tier: contact.tier,
-      reasonText: row.reason_text,
-      userNote: input.note ?? null,
-      extraHealthTerms: extraHealthTerms(row.reason_text, medical.map((fact) => fact.text_exact), aliases),
-    },
-    deps,
+      subject: draft.subject,
+      body: draft.body,
+      healthTermsFound: draft.healthTermsFound,
+      extraHealthTerms: extra,
+    });
+    requests.push(request);
+    drafts.push({ requestId: request.id, existing: false, editFlags: draft.editFlags, approvalBlocked: draft.approvalBlocked });
+  }
+  const first = drafts[0];
+  return {
+    commitment: saved,
+    request: requests[0] ?? null,
+    existing: first?.existing ?? false,
+    editFlags: first?.editFlags ?? [],
+    approvalBlocked: first?.approvalBlocked ?? false,
+    requests,
+    drafts,
+  };
+}
+
+// ---------- change the plan ----------
+
+const REOPEN = `UPDATE commitment SET reopened_at = now()
+  WHERE id = CAST(:id AS uuid) AND user_id = CAST(:user_id AS uuid) AND source = 'calendar'
+  RETURNING id::text AS id, decision`;
+
+/** "Change the plan": the step shows its choices again after a reload; requests are not touched */
+export async function reopenCommitment(
+  rt: Runtime,
+  user: SessionUser,
+  commitmentId: string,
+): Promise<{ commitment: { id: string; decision: CommitmentDecision | null; reopened: true } }> {
+  const rows = await rt.stores.database.query<{ id: string; decision: CommitmentDecision | null }>(REOPEN, [
+    p.uuid("id", requireUuid(commitmentId)),
+    p.uuid("user_id", user.id),
+  ]);
+  if (!rows[0]) throw new ApiError(404, "not_found");
+  return { commitment: { id: rows[0].id, decision: rows[0].decision, reopened: true } };
+}
+
+// ---------- redraft at another tier ----------
+
+const REDRAFT_REQUEST = `SELECT r.commitment_id::text AS commitment_id, r.contact_id::text AS contact_id, r.action, r.state
+  FROM request r WHERE r.id = CAST(:id AS uuid) AND r.user_id = CAST(:user_id AS uuid)`;
+
+const REDRAFTABLE = new Set(["draft", "awaiting_approval", "needs_review"]);
+
+/**
+ * a fresh A3 draft written for the tier the owner chose for this request. it is saved through the queue's edit, so the
+ * request goes back to awaiting approval and the tier change is audited; nothing is approved or sent here
+ */
+export async function redraftRequest(
+  rt: Runtime,
+  user: SessionUser,
+  input: { requestId: string; disclosureTier: OwnedContact["tier"] },
+): Promise<{ request: RequestView; editFlags: string[]; approvalBlocked: boolean }> {
+  const database = rt.stores.database;
+  const requestId = requireUuid(input.requestId);
+  const rows = await database.query<{ commitment_id: string | null; contact_id: string; action: RequestView["action"]; state: string }>(
+    REDRAFT_REQUEST,
+    [p.uuid("id", requestId), p.uuid("user_id", user.id)],
   );
-  if (draft.editFlags.includes("empty")) throw new ApiError(422, "draft_empty");
-  const request = await rt.queue.createDraft(user.id, {
-    commitmentId: row.id,
-    contactId: contact.id,
-    action: decision,
+  const found = rows[0];
+  if (!found) throw new ApiError(404, "not_found");
+  if (found.commitment_id === null) {
+    throw new ApiError(422, "redraft_unavailable", { message: "This message can’t be rewritten. Change the words by hand." });
+  }
+  // advisory: the queue's edit checks the state again under the row lock
+  if (!REDRAFTABLE.has(found.state)) throw new ApiError(409, "state_conflict");
+  const row = await loadDecideRow(rt, user, found.commitment_id);
+  const contact = (await loadContacts(database, user.id)).find((candidate) => candidate.id === found.contact_id);
+  if (!contact) throw new ApiError(404, "not_found");
+  const extra = await draftTermsFor(rt, row);
+  const draft = await draftFor(rt, user, row, contact, found.action, input.disclosureTier, null, extra);
+  const request = await rt.queue.edit(user.id, {
+    requestId,
     subject: draft.subject,
     body: draft.body,
-    healthTermsFound: draft.healthTermsFound,
+    disclosureTier: input.disclosureTier,
+    extraHealthTerms: extra,
   });
-  return { commitment: saved, request, existing: false, editFlags: draft.editFlags, approvalBlocked: draft.approvalBlocked };
+  return { request, editFlags: draft.editFlags, approvalBlocked: draft.approvalBlocked };
 }
 
 // ---------- add to care timeline (PRD C9, A2 guards) ----------
 
-const TIMELINE_COMMITMENT = `SELECT c.title, to_json(c.starts_at)#>>'{}' AS starts_at, c.location, r.id::text AS recipient_id
+const TIMELINE_COMMITMENT = `SELECT c.title, to_json(c.starts_at)#>>'{}' AS starts_at, c.location, r.id::text AS recipient_id,
+    c.attendees::text AS attendees_json, r.alias, r.display_name
   FROM commitment c
   JOIN care_episode e ON e.id = c.episode_id AND e.user_id = c.user_id
   JOIN care_recipient r ON r.id = e.care_recipient_id AND r.owner_id = c.user_id
@@ -607,15 +806,34 @@ const INSERT_TIMELINE_EVENT = `INSERT INTO care_event (care_recipient_id, title,
   VALUES (CAST(:recipient_id AS uuid), :title, CAST(:starts_at AS timestamptz), :location, 'approved')
   RETURNING id::text AS id`;
 
-/** one click puts the care recipient's appointment on the timeline as an approved event; repeats return the same one */
+interface TimelineRow {
+  title: string | null;
+  starts_at: string | null;
+  location: string | null;
+  recipient_id: string;
+  attendees_json: string | null;
+  alias: string;
+  display_name: string | null;
+}
+
+/**
+ * one click puts the care recipient's appointment on the timeline as an approved event; repeats return the same one.
+ * only the care recipient's own appointments qualify, so the caregiver's work and school stay out of care data
+ */
 export async function addToTimeline(rt: Runtime, user: SessionUser, commitmentId: string): Promise<{ eventId: string; created: boolean }> {
   const database = rt.stores.database;
-  const rows = await database.query<{ title: string | null; starts_at: string | null; location: string | null; recipient_id: string }>(
-    TIMELINE_COMMITMENT,
-    [p.uuid("id", requireUuid(commitmentId)), p.uuid("user_id", user.id)],
-  );
+  const rows = await database.query<TimelineRow>(TIMELINE_COMMITMENT, [
+    p.uuid("id", requireUuid(commitmentId)),
+    p.uuid("user_id", user.id),
+  ]);
   const row = rows[0];
   if (!row) throw new ApiError(404, "not_found");
+  const aliases = recipientAliases({ alias: row.alias, displayName: row.display_name });
+  if (!isCareRecipientEvent({ title: row.title ?? "", attendees: parseAttendees(row.attendees_json) }, aliases)) {
+    throw new ApiError(422, "not_care_recipient_event", {
+      message: "Only the care recipient’s own appointments can go on their timeline.",
+    });
+  }
   if (row.starts_at === null) throw new ApiError(422, "start_time_required");
   const params = [
     p.uuid("recipient_id", row.recipient_id),
