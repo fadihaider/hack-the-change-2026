@@ -4,6 +4,7 @@ import { p, type SqlRunner } from "../../../lib/db.ts";
 import { CARE_LIMITS, eventTitle, runCareCompiler, type CareCategory, type ExistingFact } from "../../../lib/ai/careCompiler.ts";
 import { classifyQuestion } from "../../../lib/ai/medicalGuard.ts";
 import { redirectProfileQa, runProfileQa, type ProfileQaResult } from "../../../lib/ai/profileQa.ts";
+import { keywordMatches } from "../../../lib/ai/retrieval.ts";
 import { normalizeText } from "../../../lib/ai/text.ts";
 import { albertaTimestamp, datesMentioned, isRuleGrounded, timesMentioned } from "../../../lib/ai/time.ts";
 import type { SessionUser } from "../../../lib/mvp/auth.ts";
@@ -619,6 +620,20 @@ const INSERT_QUESTION = `INSERT INTO open_question (care_recipient_id, asked_by,
   VALUES (CAST(:recipient_id AS uuid), 'caregiver', :question, 'open')
   RETURNING id::text AS id`;
 
+// once an approved fact answers a question, the matching open question leaves "Still to find out"
+const ANSWER_OPEN_QUESTION = `UPDATE open_question SET status = 'answered', answer_fact_id = CAST(:fact_id AS uuid)
+  WHERE care_recipient_id = CAST(:recipient_id AS uuid) AND status = 'open' AND lower(question) = lower(:question)`;
+
+// facts held back while two notes disagree; read only to say so, never cited
+const CONFLICTING_FACTS = `SELECT f.id::text AS id, f.category, f.text_exact
+  FROM care_fact f
+  JOIN care_recipient r ON r.id = f.care_recipient_id AND r.owner_id = CAST(:owner_id AS uuid)
+  WHERE f.care_recipient_id = CAST(:recipient_id AS uuid) AND f.status = 'conflicting'
+  ORDER BY f.created_at DESC, f.id
+  LIMIT 200`;
+
+export const CONFLICT_PENDING_ANSWER = "Two notes about this disagree. Pick the right one in Review, then ask again.";
+
 /** who produced the answer wording: demo keyword rules are never presented as AI; "none" means no model call */
 export type AnsweredBy = "demo_rules" | "anthropic" | "bedrock" | "gemini" | "none";
 
@@ -639,6 +654,8 @@ export type AskResult = Omit<ProfileQaResult, "citedFacts"> & {
   answeredBy: AnsweredBy;
   /** the question asked for medical judgment or described an emergency: the answer is a fixed 811/911 pointer */
   medicalRedirect: boolean;
+  /** nothing approved answers it, but notes that disagree about it wait in Review: no open question is saved */
+  conflictPending: boolean;
   retrieval: { method: "keyword" | "keyword+vector" | "none"; considered: number };
 };
 
@@ -653,7 +670,8 @@ type Provenance = Pick<AskCitedFact, "sourceId" | "sourceKind" | "sourceCreatedA
 /**
  * A5 over the owner's approved, current facts only (PRD 7.2). approved facts come from careRetrieval.ts (owner-scoped,
  * passage-checked, ranked). a medical or emergency question gets a fixed 811/911 pointer before any model call;
- * otherwise retrieval picks the context and the A5 guards check every citation. no answer creates an open question.
+ * otherwise retrieval picks the context and the A5 guards check every citation. no answer creates an open question,
+ * unless notes that disagree about it wait in Review; an answer closes the same open question asked earlier.
  */
 export async function askProfile(rt: Runtime, user: SessionUser, question: string): Promise<AskResult> {
   const database = rt.stores.database;
@@ -663,6 +681,7 @@ export async function askProfile(rt: Runtime, user: SessionUser, question: strin
   let retrieval: AskResult["retrieval"] = { method: "none", considered: 0 };
   let byId = new Map<string, Provenance>();
   let recipientId: string;
+  let names: string[] = [];
 
   if (kind === "emergency") {
     // nothing from the passport is shown next to an emergency, and nothing is read or sent to a model
@@ -672,21 +691,44 @@ export async function askProfile(rt: Runtime, user: SessionUser, question: strin
     // medical questions never reach a model, so they skip the paid embedding call too
     const retrieved = await retrievePassport(rt, user, question, { useVector: kind === "profile" });
     recipientId = retrieved.scope.careRecipientId;
+    names = retrieved.scope.names;
     byId = retrieved.byId;
     retrieval = { method: retrieved.method, considered: retrieved.considered };
     if (kind === "medical") {
-      result = redirectProfileQa({ question, facts: retrieved.facts }, kind);
+      result = redirectProfileQa({ question, facts: retrieved.facts, names }, kind);
     } else {
       // runProfileQa makes no model call for an empty profile, so nothing is reserved then
       const deps = retrieved.facts.length > 0 ? await reserveModel(rt, user.id, "profile_qa") : rt.ai;
-      result = await runProfileQa({ question, facts: retrieved.facts }, deps);
+      result = await runProfileQa({ question, facts: retrieved.facts, names }, deps);
       if (retrieved.facts.length > 0) answeredBy = answeredByFor(rt.mode.ai);
+    }
+  }
+
+  const questionParam = p.text("question", normalizeText(question).slice(0, 500));
+  let conflictPending = false;
+  if (kind === "profile" && !result.notFound && result.citedFacts.length > 0) {
+    // the answer is approved now, so the same question asked earlier is closed with the first cited fact
+    await database.execute(ANSWER_OPEN_QUESTION, [
+      p.uuid("fact_id", result.citedFacts[0].id),
+      p.uuid("recipient_id", recipientId),
+      questionParam,
+    ]);
+  } else if (result.createOpenQuestion) {
+    // a question about notes that disagree is not missing: it waits for the caregiver's choice in Review
+    const rows = await database.query<{ id: string; category: CareCategory; text_exact: string }>(CONFLICTING_FACTS, [
+      p.uuid("owner_id", user.id),
+      p.uuid("recipient_id", recipientId),
+    ]);
+    const conflicting = rows.map((row) => ({ id: row.id, category: row.category, textExact: row.text_exact }));
+    if (conflicting.length > 0 && keywordMatches(question, conflicting, 1, names).length > 0) {
+      conflictPending = true;
+      result = { notFound: true, answer: CONFLICT_PENDING_ANSWER, citedFacts: [], createOpenQuestion: false, healthNotice: null };
     }
   }
 
   let openQuestionId: string | null = null;
   if (result.createOpenQuestion) {
-    const params = [p.uuid("recipient_id", recipientId), p.text("question", normalizeText(question).slice(0, 500))];
+    const params = [p.uuid("recipient_id", recipientId), questionParam];
     const existing = await database.query<{ id: string }>(OPEN_QUESTION_LIKE, params);
     openQuestionId = existing[0]?.id ?? (await database.query<{ id: string }>(INSERT_QUESTION, params))[0].id;
   }
@@ -703,5 +745,5 @@ export async function askProfile(rt: Runtime, user: SessionUser, question: strin
       version: known?.version ?? 1,
     };
   });
-  return { ...result, citedFacts, openQuestionId, answeredBy, medicalRedirect: kind !== "profile", retrieval };
+  return { ...result, citedFacts, openQuestionId, answeredBy, medicalRedirect: kind !== "profile", conflictPending, retrieval };
 }

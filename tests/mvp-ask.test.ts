@@ -275,3 +275,90 @@ async function retrievalAs(user: { id: string; email: string }, question: string
   assert.equal(result.method, "keyword+vector");
   return result.facts.map((fact) => fact.id);
 }
+
+test("in demo mode a question that only shares the recipient's name or a loose synonym is Not in profile", async () => {
+  const [recipient] = await sql("SELECT alias, display_name FROM care_recipient WHERE id = CAST(:r AS uuid)", [s("r", rosaId)]);
+  const name = String(recipient.display_name ?? recipient.alias);
+  // the approved breakfast fact names her, so before the fix this cited it
+  const facts = await sql("SELECT text_exact FROM care_fact WHERE care_recipient_id = CAST(:r AS uuid) AND status = 'approved'", [
+    s("r", rosaId),
+  ]);
+  assert.ok(facts.some((row) => String(row.text_exact).includes(name)));
+  for (const question of [`What is ${name}'s doctor's name?`, `When does ${name} have lunch?`]) {
+    const ask = await call("POST", "care/ask", { body: { question } });
+    assert.equal(ask.status, 200);
+    assert.equal(ask.data.notFound, true, question);
+    assert.deepEqual(ask.data.citedFacts, [], question);
+    assert.ok(ask.data.openQuestionId, question);
+  }
+  const breakfast = await call("POST", "care/ask", { body: { question: "What time is breakfast?" } });
+  assert.equal(breakfast.data.notFound, false);
+  assert.ok(breakfast.data.citedFacts[0].textExact.includes("breakfast"));
+});
+
+test("an approved answer closes the open question, and notes that disagree wait in Review instead", async () => {
+  const question = "Where is her house key?";
+  const missing = await call("POST", "care/ask", { body: { question } });
+  assert.equal(missing.data.notFound, true);
+  assert.ok(missing.data.openQuestionId);
+  const key = await sql(
+    `INSERT INTO care_fact (care_recipient_id, category, text_exact, status)
+      VALUES (CAST(:r AS uuid), 'practical', 'Her house key is under the blue pot.', 'approved') RETURNING id::text AS id`,
+    [s("r", rosaId)],
+  );
+  const answered = await call("POST", "care/ask", { body: { question } });
+  assert.equal(answered.data.notFound, false);
+  assert.deepEqual(answered.data.citedFacts.map((fact: any) => fact.id), [key[0].id]);
+  const [row] = await sql("SELECT status, answer_fact_id::text AS fact FROM open_question WHERE id = CAST(:id AS uuid)", [
+    s("id", missing.data.openQuestionId),
+  ]);
+  assert.deepEqual({ status: row.status, fact: row.fact }, { status: "answered", fact: key[0].id });
+
+  // two notes that disagree are held back from Ask, but the question is not missing
+  for (const text of ["Her bath is on Tuesday evening.", "Her bath is on Friday morning."]) {
+    await sql(
+      `INSERT INTO care_fact (care_recipient_id, category, text_exact, status)
+        VALUES (CAST(:r AS uuid), 'routine', :t, 'conflicting') RETURNING id`,
+      [s("r", rosaId), s("t", text)],
+    );
+  }
+  const before = Number((await sql("SELECT count(*)::int AS n FROM open_question"))[0].n);
+  const bath = await call("POST", "care/ask", { body: { question: "When is her bath?" } });
+  assert.equal(bath.status, 200);
+  assert.equal(bath.data.notFound, true);
+  assert.equal(bath.data.conflictPending, true);
+  assert.equal(bath.data.answer, care.CONFLICT_PENDING_ANSWER);
+  assert.deepEqual(bath.data.citedFacts, []);
+  assert.equal(bath.data.openQuestionId, null);
+  assert.equal(Number((await sql("SELECT count(*)::int AS n FROM open_question"))[0].n), before);
+});
+
+test("an unconfigured Gemini embedder never breaks Ask, and the session then reports keyword retrieval", async () => {
+  const saved = { mode: process.env.RR_EMBED, key: process.env.GEMINI_API_KEY, model: process.env.GEMINI_EMBED_MODEL };
+  process.env.RR_EMBED = "gemini";
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_EMBED_MODEL;
+  try {
+    const ask = await call("POST", "care/ask", { body: { question: "Where are her spare glasses?" } });
+    assert.equal(ask.status, 200);
+    assert.equal(ask.data.retrieval.method, "keyword");
+    assert.deepEqual(ask.data.citedFacts.map((fact: any) => fact.id), [glassesId]);
+    const medical = await call("POST", "care/ask", { body: { question: "Should I give her more pain medicine?" } });
+    assert.equal(medical.status, 200);
+    assert.equal(medical.data.medicalRedirect, true);
+    assert.equal((await call("GET", "session")).data.providers.retrieval, "keyword");
+  } finally {
+    for (const [name, value] of [["RR_EMBED", saved.mode], ["GEMINI_API_KEY", saved.key], ["GEMINI_EMBED_MODEL", saved.model]] as const) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+  assert.equal((await call("GET", "session")).data.providers.retrieval, "keyword");
+  embeddings.setEmbedder({ model: "fake-bow:1024", dims: 1024, embed: async (texts) => texts.map(fakeVector) });
+  try {
+    // a local origin may use paid providers, and an embedder resolves, so vectors really run
+    assert.equal((await call("GET", "session")).data.providers.retrieval, "vector");
+  } finally {
+    embeddings.setEmbedder(undefined);
+  }
+});

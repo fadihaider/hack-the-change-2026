@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DEMO_MODEL, demoCaller } from "../demoCaller.ts";
-import { EmbeddingError, embeddingMode, titanEmbedder, toVectorLiteral } from "../embeddings.ts";
+import { createEmbedder, EmbeddingError, embeddingMode, resolveEmbedder, titanEmbedder, toVectorLiteral } from "../embeddings.ts";
 import { classifyQuestion, EMERGENCY_REDIRECT, MEDICAL_REDIRECT } from "../medicalGuard.ts";
 import { runProfileQa, type ApprovedFact } from "../profileQa.ts";
 import { keywordMatches, rankFacts, selectContext, tokenize } from "../retrieval.ts";
@@ -163,6 +163,122 @@ test("a generic liking word alone never anchors a demo exact-fact answer", () =>
     { id: "c", category: "practical", textExact: "Her spare glasses are in the bedroom drawer." },
   ];
   assert.deepEqual(keywordMatches("What is her favourite TV show?", facts, 3, ["Rosa", "Mom"]), []);
-  assert.deepEqual(keywordMatches("Does she like music?", facts, 3, ["Rosa", "Mom"]).map((fact) => fact.id), ["a"]);
+  // "music" only loosely matches "radio": it still ranks the radio fact first, but the demo lookup needs a shared word
+  assert.deepEqual(keywordMatches("Does she like music?", facts, 3, ["Rosa", "Mom"]), []);
+  assert.equal(rankFacts("Does she like music?", facts, ["Rosa", "Mom"])[0].fact.id, "a");
+  assert.deepEqual(keywordMatches("Does she like the radio?", facts, 3, ["Rosa", "Mom"]).map((fact) => fact.id), ["a"]);
   assert.deepEqual(keywordMatches("Where are her spectacles?", facts, 3, ["Rosa", "Mom"]).map((fact) => fact.id), ["c"]);
+});
+
+test("the recipient's name, a generic word or a loose synonym alone never anchors a demo answer", () => {
+  const facts: ApprovedFact[] = [
+    ...passport,
+    { id: "f-tea", category: "preference", textExact: "Rosa drinks her tea with milk." },
+  ];
+  const names = ["Rosa", "Mom"];
+  for (const question of [
+    // shares only the recipient's name
+    "What is Rosa's doctor's name?",
+    "Does Rosa have a cat?",
+    // "glass" is not "glasses"
+    "Can she have a glass of wine?",
+    // one meal is not another, and eating words are generic
+    "When does she have lunch?",
+    "What food does she eat?",
+    "What does she have for dinner?",
+    // shares only a generic word
+    "What is her doctor's phone number?",
+  ]) {
+    assert.deepEqual(keywordMatches(question, facts, 3, names), [], question);
+  }
+  assert.deepEqual(keywordMatches("Where are her spare glasses?", facts, 3, names).map((fact) => fact.id), ["f-glasses"]);
+  assert.deepEqual(keywordMatches("Where are Rosa's eyeglasses?", facts, 3, names).map((fact) => fact.id), ["f-glasses"]);
+  assert.deepEqual(keywordMatches("What time is breakfast?", facts, 3, names).map((fact) => fact.id), ["f-breakfast"]);
+  assert.deepEqual(keywordMatches("How does Rosa take her tea?", facts, 3, names).map((fact) => fact.id), ["f-tea"]);
+  // loose synonyms still rank: a lunch question puts the breakfast fact above the unrelated ones
+  assert.equal(rankFacts("What does she eat?", facts, names)[0].fact.id, "f-breakfast");
+});
+
+test("demo A5 ignores the recipient's name: a question that only names her is Not in profile", async () => {
+  const deps = { caller: demoCaller, model: DEMO_MODEL };
+  const names = ["Rosa", "Mom"];
+  const missing = await runProfileQa({ question: "What is Rosa's doctor's name?", facts: passport, names }, deps);
+  assert.equal(missing.notFound, true);
+  assert.equal(missing.createOpenQuestion, true);
+  assert.deepEqual(missing.citedFacts, []);
+  const lunch = await runProfileQa({ question: "When does Mom have lunch?", facts: passport, names }, deps);
+  assert.equal(lunch.notFound, true);
+  const glasses = await runProfileQa({ question: "Where are Rosa's spare glasses?", facts: passport, names }, deps);
+  assert.deepEqual(glasses.citedFacts.map((fact) => fact.id), ["f-glasses"]);
+  const breakfast = await runProfileQa({ question: "What time is Rosa's breakfast?", facts: passport, names }, deps);
+  assert.deepEqual(breakfast.citedFacts.map((fact) => fact.id), ["f-breakfast"]);
+});
+
+test("the medical guard catches emergencies and judgment calls it used to miss", () => {
+  for (const question of [
+    "She hit her head on the table",
+    "Is this a heart attack?",
+    "I think she is having an allergic reaction",
+    "Her arm is bleeding a lot",
+    "Should I call an ambulance?",
+    "Should I take her to the ER?",
+    "Do we need the emergency room?",
+  ]) {
+    assert.equal(classifyQuestion(question), "emergency", question);
+  }
+  for (const question of [
+    "How many pills can she take at once?",
+    "What should her blood sugar be?",
+    "Her blood pressure seems high",
+    "She has a headache again",
+    "Does she need to see a doctor?",
+    "Should she go to the hospital?",
+    "Is her dementia getting worse?",
+    "Is she allergic to penicillin?",
+    "Can she have a glass of wine with her medication?",
+  ]) {
+    assert.equal(classifyQuestion(question), "medical", question);
+  }
+  for (const question of ["Where are her spare glasses?", "Who is her doctor?", "What time is breakfast?", "Where does her daughter live?"]) {
+    assert.equal(classifyQuestion(question), "profile", question);
+  }
+});
+
+test("Gemini embeddings tell the provider a question from a stored fact", async () => {
+  const tasks: unknown[] = [];
+  const fetchFake = async (_url: unknown, init?: { body?: unknown }) => {
+    const body = JSON.parse(String(init?.body)) as { requests: { taskType: string }[] };
+    tasks.push(...body.requests.map((request) => request.taskType));
+    return new Response(JSON.stringify({ embeddings: body.requests.map(() => ({ values: new Array(1024).fill(0.1) })) }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = fetchFake as typeof fetch;
+  try {
+    const embedder = createEmbedder("gemini", { GEMINI_API_KEY: "test-key", GEMINI_EMBED_MODEL: "gemini-embedding-001" });
+    assert.ok(embedder);
+    await embedder.embed(["Her spare glasses are in the bedroom drawer."]);
+    await embedder.embed(["Where are her glasses?"], "query");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.deepEqual(tasks, ["RETRIEVAL_DOCUMENT", "RETRIEVAL_QUERY"]);
+});
+
+test("an unconfigured Gemini embedder resolves to null instead of throwing", () => {
+  const saved = { mode: process.env.RR_EMBED, key: process.env.GEMINI_API_KEY, model: process.env.GEMINI_EMBED_MODEL };
+  process.env.RR_EMBED = "gemini";
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_EMBED_MODEL;
+  try {
+    assert.throws(() => createEmbedder("gemini", process.env));
+    assert.equal(resolveEmbedder(), null);
+  } finally {
+    for (const [name, value] of [["RR_EMBED", saved.mode], ["GEMINI_API_KEY", saved.key], ["GEMINI_EMBED_MODEL", saved.model]] as const) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
 });

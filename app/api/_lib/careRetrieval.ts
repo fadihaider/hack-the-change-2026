@@ -6,7 +6,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { p, type SqlRunner } from "../../../lib/db.ts";
 import type { CareCategory } from "../../../lib/ai/careCompiler.ts";
-import { currentEmbedder, toVectorLiteral, type Embedder } from "../../../lib/ai/embeddings.ts";
+import { resolveEmbedder, toVectorLiteral, type Embedder } from "../../../lib/ai/embeddings.ts";
 import {
   RETRIEVAL_LIMITS,
   selectContext,
@@ -163,7 +163,7 @@ async function vectorSearch(
     }
     if (fresh.size === 0) return null;
     if (!(await reserveEmbed(rt, user, "embed_query", embedder))) return null;
-    const [query] = await embedder.embed([normalizeText(question).slice(0, 500)]);
+    const [query] = await embedder.embed([normalizeText(question).slice(0, 500)], "query");
     if (!query) return null;
     const hits = await database.query<{ id: string; similarity: number }>(VECTOR_SEARCH, [
       p.text("query", toVectorLiteral(query)),
@@ -203,12 +203,13 @@ export async function retrievePassport(
   const scope = await ownerScope(database, user);
   const rows = await loadRows(database, scope);
   const facts = rows.map(toFact);
-  const embedder = options.embedder === undefined ? currentEmbedder() : options.embedder;
   const limits = { ...RETRIEVAL_LIMITS, ...options.limits };
   let vectorHits: VectorHit[] | null = null;
-  // demo AI with a live embedder still needs the paid-provider gate, since embeddings call a paid service
-  if ((options.useVector ?? true) && embedder !== null && rows.length > 0 && paidProvidersAllowed(rt.auth.mode, rt.baseUrl)) {
-    vectorHits = await vectorSearch(rt, user, scope, rows, question, embedder, limits.topK);
+  // demo AI with a live embedder still needs the paid-provider gate, since embeddings call a paid service. the
+  // embedder is resolved only when vectors may run, and an unconfigured provider means keyword ranking, never an error
+  if ((options.useVector ?? true) && rows.length > 0 && paidProvidersAllowed(rt.auth.mode, rt.baseUrl)) {
+    const embedder = options.embedder === undefined ? resolveEmbedder() : options.embedder;
+    if (embedder !== null) vectorHits = await vectorSearch(rt, user, scope, rows, question, embedder, limits.topK);
   }
   const selection = selectContext({ question, facts, names: scope.names, vectorHits, limits });
   return {

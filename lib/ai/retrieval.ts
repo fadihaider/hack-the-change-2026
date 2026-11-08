@@ -41,21 +41,33 @@ const STOPWORDS = new Set([
   "if", "so", "then", "than", "just", "also", "very", "really", "keep", "kept",
 ]);
 
-// words that say someone likes something but not what; they rank facts but never anchor a demo exact-fact answer
+// generic words (liking, eating, naming) that say what kind of thing is asked but not which; they rank facts but
+// never anchor a demo exact-fact answer
 const WEAK_WORDS = new Set([
   "like", "likes", "love", "loves", "enjoy", "enjoys", "favourite", "favorite", "favourites", "favorites", "prefer",
   "prefers", "preference", "preferences", "want", "wants", "need", "needs", "use", "uses", "day", "time",
+  "eat", "eats", "eating", "ate", "food", "foods", "meal", "meals", "name", "names",
 ]);
+
+// plurals that name something other than their singular; stem() keeps them whole ("glasses" is not "glass")
+const UNSTEMMED = new Set(["glasses", "eyeglasses"]);
 
 const NUMBER_WORDS: Record<string, string> = {
   one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10",
   eleven: "11", twelve: "12",
 };
 
-// each group is one idea; any member in the question matches any member in a fact, below an exact word match
+// generic eating words; each meal name links to these but not to another meal, so "lunch" never matches "breakfast"
+const EATING = ["eat", "eats", "eating", "ate", "meal", "meals", "food", "foods"];
+
+// each group is one idea; any member in the question matches any member in a fact, below an exact word match.
+// a group match only ranks: the demo lookup also needs an exact shared word or a TRUE_SYNONYM_GROUPS match
 const SYNONYM_GROUPS: readonly (readonly string[])[] = [
-  ["glasses", "glass", "spectacles", "spectacle", "eyeglasses", "eyeglass", "specs", "readers"],
-  ["breakfast", "eat", "eats", "eating", "ate", "meal", "meals", "food", "lunch", "dinner", "supper", "snack"],
+  ["glasses", "spectacles", "spectacle", "eyeglasses", "eyeglass", "specs", "readers"],
+  ["breakfast", ...EATING],
+  ["lunch", ...EATING],
+  ["dinner", "supper", ...EATING],
+  ["snack", "snacks", ...EATING],
   ["breakfast", "morning", "mornings", "wake", "wakes", "waking"],
   ["radio", "music", "song", "songs", "listen", "listens", "listening", "station"],
   ["hear", "hears", "hearing", "deaf", "ear", "ears", "loud", "louder", "aid", "aids"],
@@ -75,10 +87,19 @@ const SYNONYM_GROUPS: readonly (readonly string[])[] = [
   ["like", "likes", "love", "loves", "enjoy", "enjoys", "favourite", "favorite", "prefer", "prefers", "preference"],
 ];
 
-/** word -> group ids; built once */
-const GROUP_OF = (() => {
+// words that name the same thing, so one may stand in for an exact shared word when the demo lookup picks an answer
+const TRUE_SYNONYM_GROUPS: readonly (readonly string[])[] = [
+  ["glasses", "spectacles", "spectacle", "eyeglasses", "eyeglass", "specs"],
+  ["tv", "television"],
+  ["medication", "medications", "medicine", "medicines", "meds"],
+  ["dinner", "supper"],
+  ["neighbour", "neighbor", "neighbours", "neighbors"],
+];
+
+/** word -> group ids for one group list; built once */
+function groupIndex(groups: readonly (readonly string[])[]): Map<string, number[]> {
   const map = new Map<string, number[]>();
-  SYNONYM_GROUPS.forEach((group, index) => {
+  groups.forEach((group, index) => {
     for (const word of group) {
       const key = stem(word);
       for (const form of new Set([word, key])) {
@@ -89,7 +110,10 @@ const GROUP_OF = (() => {
     }
   });
   return map;
-})();
+}
+
+const GROUP_OF = groupIndex(SYNONYM_GROUPS);
+const TRUE_SYNONYM_OF = groupIndex(TRUE_SYNONYM_GROUPS);
 
 // question words that hint at a category; a cue only reorders, it never makes a fact match on its own
 const CATEGORY_CUES: Record<string, readonly string[]> = {
@@ -107,7 +131,7 @@ const CATEGORY_CUES: Record<string, readonly string[]> = {
 
 /** light suffix stripping, applied the same way to questions and facts */
 export function stem(word: string): string {
-  if (/^\d/.test(word)) return word;
+  if (/^\d/.test(word) || UNSTEMMED.has(word)) return word;
   if (word.length > 4 && word.endsWith("ies")) return `${word.slice(0, -3)}y`;
   if (word.length > 4 && /(?:ss|x|z|ch|sh)es$/.test(word)) return word.slice(0, -2);
   if (word.length > 3 && word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us")) return word.slice(0, -1);
@@ -138,13 +162,13 @@ export function tokenize(text: string, ignore: ReadonlySet<string> = new Set()):
   return words(text).filter((word) => !STOPWORDS.has(word) && !ignore.has(word));
 }
 
-/** "w:<stem>" for every word plus "g:<n>" for every synonym group it belongs to */
-function terms(tokens: readonly string[]): Set<string> {
+/** "w:<stem>" for every word plus "g:<n>" for every group of the given index it belongs to */
+function terms(tokens: readonly string[], groups: ReadonlyMap<string, number[]> = GROUP_OF): Set<string> {
   const out = new Set<string>();
   for (const token of tokens) {
     const key = stem(token);
     out.add(`w:${key}`);
-    for (const id of [...(GROUP_OF.get(token) ?? []), ...(GROUP_OF.get(key) ?? [])]) out.add(`g:${id}`);
+    for (const id of [...(groups.get(token) ?? []), ...(groups.get(key) ?? [])]) out.add(`g:${id}`);
   }
   return out;
 }
@@ -266,16 +290,20 @@ export function selectContext<T extends RankableFact>(input: {
 }
 
 /**
- * exact-fact lookup without a model (demo rules and the medical path): facts sharing a word or synonym with the
- * question, best first, keeping only those close to the best score
+ * exact-fact lookup without a model (demo rules and the medical path): facts sharing an exact content word or a true
+ * synonym with the question, best first, keeping only those close to the best score. pass the recipient's names so
+ * they never count as a shared word
  */
 export function keywordMatches<T extends RankableFact>(question: string, facts: readonly T[], max = 3, names: readonly string[] = []): T[] {
-  // a generic liking word alone ("favourite", "likes", "prefers") is not enough to call a fact an answer:
-  // "what is her favourite tv show?" must stay Not in profile rather than cite "she likes the radio"
+  // a fact counts as an answer only when it shares an exact content word, or a true synonym ("spectacles" for
+  // "glasses"), with the question. the recipient's name, a generic word ("favourite", "eat", "name") or a loose
+  // synonym ("lunch" for "breakfast", "glass" for "glasses") alone is not enough: "what is her favourite tv show?"
+  // must stay Not in profile rather than cite "she likes the radio". loose synonyms still rank
   const ignore = ignoreSet(names);
-  const anchors = terms(tokenize(question, ignore).filter((token) => !WEAK_WORDS.has(token) && !WEAK_WORDS.has(stem(token))));
+  const strong = (token: string) => !WEAK_WORDS.has(token) && !WEAK_WORDS.has(stem(token));
+  const anchors = terms(tokenize(question, ignore).filter(strong), TRUE_SYNONYM_OF);
   const anchored = (fact: T) => {
-    const factTerms = terms(tokenize(fact.textExact, ignore).filter((token) => !WEAK_WORDS.has(token) && !WEAK_WORDS.has(stem(token))));
+    const factTerms = terms(tokenize(fact.textExact, ignore).filter(strong), TRUE_SYNONYM_OF);
     for (const term of anchors) if (factTerms.has(term)) return true;
     return false;
   };

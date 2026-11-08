@@ -157,6 +157,20 @@ test("unknown citations cannot become answers or fact disclosures", async () => 
   assert.equal(f.calls.some((call) => call.name === "openQuestion"), false);
 });
 
+test("medical and emergency voice questions get the fixed 811/911 pointer with no passport read or model call", async () => {
+  for (const [text, start] of [
+    ["Should I give her more pain medicine?", "ReliefReady can’t give medical advice."],
+    ["She has chest pain and cannot breathe", "If this is an emergency, call 911 now."],
+  ] as const) {
+    const f = fixture();
+    const reply = await f.workflow.execute(question({ source: textSource(text) }), context);
+    assert.equal(reply.status, "answered");
+    assert.ok(reply.text.startsWith(start), text);
+    assert.deepEqual("citations" in reply ? reply.citations : null, []);
+    assert.ok(!f.calls.some((call) => ["loadFacts", "answer", "openQuestion"].includes(call.name)), text);
+  }
+});
+
 test("not-found or empty citations produce literal fallback and a scoped open question", async () => {
   for (const result of [{ answer: "Invented answer", citedFactIds: [], notFound: false }, { answer: "Invented answer", citedFactIds: ["fact-1"], notFound: true }]) {
     const f = fixture({ answerQuestion: async () => result });
