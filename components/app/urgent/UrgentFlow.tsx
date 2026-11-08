@@ -185,9 +185,12 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
   const [motion, setMotion] = useState<"forward" | "back" | null>(null);
   // arriving from Start counts as a move: the first step's heading takes the focus once it mounts
   const [moved, setMoved] = useState(arrivedFromStart);
-  // only for the render-time "choose again" path from a link; "Change the plan" is saved on the server
+  // the first render of the "choose again" path from a link, until the server has saved the reopened step too
   const [reopened, setReopened] = useState<Record<string, boolean>>({});
-  // who hears from Alex for a commitment with several contacts; defaults to everyone the server matched
+  // a step a link reopened on screen; the effect below saves it on the server so a reload keeps it open
+  const [linkReopen, setLinkReopen] = useState<string | null>(null);
+  // who hears from Alex for a commitment with several contacts; defaults to everyone the server matched, minus
+  // anyone who already said yes or is still waiting to reply
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [receipt, setReceipt] = useState<ReceiptView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -340,6 +343,7 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     setLinkProblem(null);
     if (target && c && CHOOSE_AGAIN.has(target.state)) {
       setReopened((prev) => ({ ...prev, [c.id]: true }));
+      setLinkReopen(c.id);
       setIndex(commitments.indexOf(c));
       setReceipt({ text: `${w.outcomeLine(target)} Choose what to do now.`, icon: "check" });
     } else if (target && REVIEWABLE.has(target.state)) {
@@ -405,13 +409,46 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     patchCommitment(commitmentId, { decision, reopened: false }, requests);
   }
 
+  // a link that reopened a step on screen saves it on the server too. the choices wait until it has, so a decision
+  // made meanwhile can't be undone by a late reopen
+  useEffect(() => {
+    if (!linkReopen) return;
+    const commitmentId = linkReopen;
+    let current = true;
+    let settled = false;
+    lock.current = true;
+    setBusy(`${commitmentId}:reopen`);
+    live
+      .reopen(commitmentId)
+      .then(
+        () => {
+          if (current) patchCommitment(commitmentId, { reopened: true });
+        },
+        (caught: unknown) => {
+          if (!current) return;
+          setStepError({ at: commitmentId, message: `This step is open here but wasn’t saved. ${liveErrorMessage(caught)}` });
+        },
+      )
+      .finally(() => {
+        settled = true;
+        if (!current) return;
+        lock.current = false;
+        setBusy(null);
+        setLinkReopen(null);
+      });
+    return () => {
+      current = false;
+      // a run cut short (strict mode, or leaving) gives the lock back; a finished one already did
+      if (!settled) lock.current = false;
+    };
+  }, [linkReopen, live]);
+
   /** the contacts the next message goes to: Alex's ticks when there are several, else the server's match */
   function recipientsOf(c: CommitmentView): string[] {
     const known = new Set(c.contacts.map((contact) => contact.contactId));
     const chosen = picked[c.id]?.filter((id) => known.has(id));
     if (chosen) return chosen;
-    if (c.suggestedContactIds.length > 0) return c.suggestedContactIds;
-    return c.suggestedContactId ? [c.suggestedContactId] : [];
+    return w.defaultRecipients(c, requestsOf(c));
   }
 
   where.current = index;
@@ -460,6 +497,12 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
       const made = result.requests.length > 0 ? result.requests : result.request ? [result.request] : [];
       saveDecision(c.id, result.commitment.decision, made);
       setReopened((prev) => ({ ...prev, [c.id]: false }));
+      // ticks belong to this plan; changing it later starts again from who still needs to hear
+      setPicked((prev) => {
+        const next = { ...prev };
+        delete next[c.id];
+        return next;
+      });
 
       if (made.length > 0) {
         for (const request of made) upsert(request);
@@ -874,8 +917,8 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     if (status.kind === "asked") {
       const lead = status.lead;
       const who = w.shortName(lead.recipient.name);
-      // one message per person on a group commitment; each is read and sent on its own
-      const active = status.requests.filter((r) => r.state !== "cancelled" && r.action === lead.action);
+      // one message per person on a group commitment, the newest for each; older answers sit under messages so far
+      const active = w.newestPerPerson(status.requests).latest.filter((r) => r.action === lead.action);
       const several = active.length > 1;
       const reviewable = several ? active.some((r) => REVIEWABLE.has(r.state)) : REVIEWABLE.has(lead.state);
       const changePlan = (

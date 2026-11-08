@@ -304,7 +304,8 @@ export function outcomeLineMany(requests: RequestView[]) {
     (r) => r.state === "draft" || r.state === "awaiting_approval" || r.state === "approved" ||
       (r.state === "needs_review" && !isProposal(r)),
   );
-  const names = joinNames(requests.map((r) => shortName(r.recipient.name)));
+  // one name per person, even if a re-ask left two of their messages in the list
+  const names = joinNames([...new Set(requests.map((r) => shortName(r.recipient.name)))]);
   if (ready.length === requests.length) return `Your messages to ${names} are ready for your OK.`;
   if (ready.length === 0) return `You wrote to ${names}.`;
   return `You wrote to ${names}. ${ready.length === 1 ? "One message is" : `${ready.length} messages are`} ready for your OK.`;
@@ -314,6 +315,48 @@ export function outcomeLineMany(requests: RequestView[]) {
 export function changedAt(r: RequestView) {
   const row = r.evidence.find((e) => e.toState === r.state) ?? r.evidence[0];
   return row?.at ?? null;
+}
+
+/**
+ * each person's newest message that wasn't withdrawn, and everything older, both newest first. a re-ask leaves the
+ * earlier answer in the list; only the newest one says where that person is now
+ */
+export function newestPerPerson(requests: RequestView[]): { latest: RequestView[]; older: RequestView[] } {
+  const sorted = requests
+    .filter((r) => r.state !== "cancelled")
+    .sort((a, b) => Date.parse(changedAt(b) ?? "") - Date.parse(changedAt(a) ?? ""));
+  const seen = new Set<string>();
+  const latest: RequestView[] = [];
+  const older: RequestView[] = [];
+  for (const r of sorted) {
+    if (seen.has(r.recipient.contactId)) {
+      older.push(r);
+      continue;
+    }
+    seen.add(r.recipient.contactId);
+    latest.push(r);
+  }
+  return { latest, older };
+}
+
+/** a yes, or a message already on its way: a new plan doesn't write to that person again unless Alex ticks them */
+const SETTLED = new Set<RequestView["state"]>(["accepted", "completed", "requested", "sending"]);
+
+/**
+ * who a new plan writes to when Alex hasn't ticked anyone: the server's match, minus anyone in a group whose newest
+ * message on this commitment already said yes or is waiting for a reply
+ */
+export function defaultRecipients(c: CommitmentView, requests: RequestView[]): string[] {
+  const suggested = c.suggestedContactIds.length > 0
+    ? c.suggestedContactIds
+    : c.suggestedContactId
+      ? [c.suggestedContactId]
+      : [];
+  if (c.contacts.length < 2) return suggested;
+  const settled = new Set(
+    newestPerPerson(requests).latest.filter((r) => SETTLED.has(r.state)).map((r) => r.recipient.contactId),
+  );
+  return suggested.filter((id) => !settled.has(id));
 }
 
 /** "“hip” and “surgery”" */

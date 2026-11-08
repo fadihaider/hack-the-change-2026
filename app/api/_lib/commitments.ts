@@ -532,10 +532,13 @@ const DECIDE_COMMITMENT = `SELECT c.id::text AS id, c.title, to_json(c.starts_at
 const SAVE_DECISION = `UPDATE commitment SET decision = :decision, reopened_at = NULL
   WHERE id = CAST(:id AS uuid) AND user_id = CAST(:user_id AS uuid)`;
 
+// an open request for this person, or a yes to the same ask: either comes back as it is, so someone who already
+// accepted is never written to again for the same thing
 const OPEN_REQUEST = `SELECT id::text AS id FROM request
   WHERE user_id = CAST(:user_id AS uuid) AND commitment_id = CAST(:commitment_id AS uuid)
     AND contact_id = CAST(:contact_id AS uuid)
-    AND state IN ('draft','awaiting_approval','approved','sending','requested','needs_review')
+    AND (state IN ('draft','awaiting_approval','approved','sending','requested','needs_review')
+      OR (state IN ('accepted','completed') AND action = :action))
   ORDER BY updated_at DESC LIMIT 1`;
 
 const COMMITMENT_DEPENDENCIES = `SELECT to_ref, confirmed FROM dependency
@@ -639,9 +642,11 @@ export async function decideCommitment(rt: Runtime, user: SessionUser, input: De
   // the care recipient's own commitments are kept and go to the care timeline, never to a request (A2 guards)
   const decision: CommitmentDecision = isCareRecipientEvent({ title, attendees }, aliases) ? "keep" : input.decision;
 
-  await database.execute(SAVE_DECISION, [p.text("decision", decision), p.uuid("id", row.id), p.uuid("user_id", user.id)]);
+  const saveDecision = () =>
+    database.execute(SAVE_DECISION, [p.text("decision", decision), p.uuid("id", row.id), p.uuid("user_id", user.id)]);
   const saved = { id: row.id, decision };
   if (!createsRequest(decision)) {
+    await saveDecision();
     return { commitment: saved, request: null, existing: false, editFlags: [], approvalBlocked: false, requests: [], drafts: [] };
   }
 
@@ -677,6 +682,7 @@ export async function decideCommitment(rt: Runtime, user: SessionUser, input: De
       p.uuid("user_id", user.id),
       p.uuid("commitment_id", row.id),
       p.uuid("contact_id", contact.id),
+      p.text("action", decision),
     ]);
     if (open[0]) {
       const request = await rt.queue.read(user.id, open[0].id);
@@ -691,6 +697,9 @@ export async function decideCommitment(rt: Runtime, user: SessionUser, input: De
     if (!("contact" in slot)) continue;
     written.set(slot.contact.id, await draftFor(rt, user, row, slot.contact, decision, slot.contact.tier, input.note ?? null, extra));
   }
+  // only now is the decision saved and a reopened step closed: a bad contact, a refused or failed draft or a rate
+  // limit above leaves the step as it was
+  await saveDecision();
   const requests: RequestView[] = [];
   const drafts: DraftOutcome[] = [];
   for (const slot of slots) {
