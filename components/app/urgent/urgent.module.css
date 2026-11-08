@@ -490,3 +490,127 @@
     animation: none;
   }
 }
+
+/* who hears from you: one native checkbox per contact on a group commitment */
+.pick {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.pickTitle {
+  margin: 0 0 2px;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.pickHint {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.pickRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+  cursor: pointer;
+}
+
+.pickRow:has(input:checked) {
+  border-color: rgb(14 124 134 / 45%);
+  background: var(--rr-teal-tint);
+}
+
+.pickBox,
+.tierRadio {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--rr-teal);
+}
+
+.pickName {
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.pickGroup {
+  font-size: 14px;
+  color: var(--rr-muted);
+}
+
+/* how much to share: three native radios, the group's usual tier marked */
+.tierPick {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.tierOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+  cursor: pointer;
+}
+
+.tierOption:has(input:checked) {
+  border-color: rgb(14 124 134 / 45%);
+  background: var(--rr-teal-tint);
+}
+
+.tierOption:has(input:disabled) {
+  cursor: default;
+}
+
+.tierOption .tierRadio {
+  margin-top: 2px;
+}
+
+.tierUsual {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rr-teal-ink);
+}
+
+.tierAsk {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-warn-tint);
+  color: var(--rr-warn-ink);
+}
+
+.tierAskText {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.tierAskActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

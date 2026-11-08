@@ -1,12 +1,13 @@
 "use client";
 // the letter: read, edit and send one message. nothing goes out without the send button that names the person.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Info, Send, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Info, Send, ShieldAlert } from "lucide-react";
 import { liveErrorMessage } from "@/lib/frontend/live-api.ts";
 import { RequestApiError, type RequestView } from "@/lib/frontend/request-api.ts";
 import { useApis } from "../session.tsx";
 import { Button, ErrorNote, Sheet, SheetTitle, StatePill, STATE_LABEL, useAnnounce } from "../ui.tsx";
-import { TIER_HINT, TIER_LABEL, editFlagNote, quoted, removeTerms, shortName } from "./words.ts";
+import { TierPicker } from "./TierPicker.tsx";
+import { editFlagNote, isProposal, quoted, removeTerms, shortName, tierLabel, type Tier } from "./words.ts";
 import s from "./urgent.module.css";
 
 export type SendOutcome = { state: "requested"; messageId: string } | { state: "failed"; errorCode: string };
@@ -29,10 +30,14 @@ type Props = {
   onSent: (request: RequestView, outcome: SendOutcome) => void;
   /** reads the request again after a stale approval */
   reload: (requestId: string) => Promise<RequestView | null>;
+  /** the care recipient's alias ("Mom"), for the tier names */
+  careAlias?: string | null;
+  /** a rewrite came back with new guard flags for this request */
+  onFlags?: (requestId: string, flags: string[]) => void;
 };
 
 type Base = { id: string; revision: string; subject: string; body: string };
-type Busy = "send" | "anyway" | "remove" | null;
+type Busy = "send" | "anyway" | "remove" | "tier" | null;
 
 const EDITABLE = new Set<RequestView["state"]>(["draft", "awaiting_approval", "needs_review"]);
 
@@ -93,6 +98,8 @@ export function LetterSheet({
   onUpdate,
   onSent,
   reload,
+  careAlias = null,
+  onFlags,
 }: Props) {
   const { requests: api } = useApis();
   const announce = useAnnounce();
@@ -106,6 +113,8 @@ export function LetterSheet({
   const [error, setError] = useState<string | null>(null);
   // terms the server named when it refused an approval
   const [refused, setRefused] = useState<string[]>([]);
+  // a tier Alex picked while typed words are unsaved: rewrite at that level, or keep the words
+  const [askTier, setAskTier] = useState<Tier | null>(null);
   // one action at a time, even when a double click lands before the next render
   const lock = useRef(false);
   const subjectRef = useRef<HTMLTextAreaElement>(null);
@@ -130,6 +139,7 @@ export function LetterSheet({
     if (open) {
       setError(null);
       setRefused([]);
+      setAskTier(null);
     }
   }
 
@@ -147,6 +157,7 @@ export function LetterSheet({
       }
       setError(null);
       setRefused([]);
+      setAskTier(null);
     } else if (base.revision !== request.revision && !dirty) {
       load(request);
     }
@@ -349,6 +360,66 @@ export function LetterSheet({
     }
   }
 
+  /**
+   * a different tier for this one message. with nothing typed, the message is written again at that level; with typed
+   * words Alex chooses first. either way it goes back for a fresh approval, so the send button is needed again
+   */
+  function pickTier(next: Tier) {
+    if (busy || lock.current || !editable || next === current.disclosureTier) return;
+    setError(null);
+    if (dirty) {
+      setAskTier(next);
+      announce("You’ve changed the words. Choose whether to write it again or keep your words.");
+      return;
+    }
+    void changeTier(next, !isProposal(current));
+  }
+
+  async function changeTier(next: Tier, rewrite: boolean) {
+    if (busy || lock.current) return;
+    lock.current = true;
+    setBusy("tier");
+    setAskTier(null);
+    setError(null);
+    const label = tierLabel(next, careAlias);
+    let note = "Your words are kept.";
+    try {
+      let saved: RequestView | null = null;
+      if (rewrite) {
+        try {
+          const redrafted = await api.redraft(current.id, next);
+          saved = redrafted.request;
+          onFlags?.(saved.id, redrafted.editFlags);
+          note = "It was written again at this level.";
+        } catch (caught) {
+          // a changed or missing request stops here; any other failure keeps Alex's words at the new level
+          if (caught instanceof RequestApiError && (caught.status === 409 || caught.status === 404)) throw caught;
+          note = "It couldn’t be written again, so your words are kept.";
+        }
+      }
+      if (!saved) {
+        const changes = dirty ? { subject: subject.replace(/\s*\n\s*/g, " "), body } : {};
+        saved = (await api.edit(current.id, { ...changes, disclosureTier: next })).request;
+      }
+      typed.delete(saved.id);
+      onUpdate(saved);
+      load(saved);
+      setRefused([]);
+      announce(`Now set to “${label}”. ${note} Read the message again before you send.`);
+    } catch (caught) {
+      if (caught instanceof RequestApiError && caught.status === 409) {
+        const fresh = await reload(current.id);
+        if (fresh) load(fresh);
+        setError("This message changed somewhere else. Review it again.");
+      } else {
+        setError(liveErrorMessage(caught));
+      }
+    } finally {
+      lock.current = false;
+      setBusy(null);
+    }
+  }
+
   // every keystroke is kept for this tab until it is saved or sent
   function keep(next: { subject?: string; body?: string }) {
     typed.set({
@@ -425,15 +496,38 @@ export function LetterSheet({
       </div>
 
       <div className={s.privacy}>
-        <p className={s.privacyTitle}>How much to share</p>
-        <div className={s.tierChosen}>
-          <ShieldCheck size={20} aria-hidden="true" />
-          <span className={s.tierText}>
-            <span className={s.tierName}>{TIER_LABEL[current.disclosureTier]}</span>
-            <span className={s.tierHint}>{TIER_HINT[current.disclosureTier]}</span>
-          </span>
-        </div>
-        <p className={s.tierNote}>This is set for {name}’s contact group, so it can’t be changed here.</p>
+        <TierPicker
+          value={askTier ?? current.disclosureTier}
+          groupTier={current.defaultDisclosureTier}
+          alias={careAlias}
+          disabled={!editable || busy !== null}
+          onChange={pickTier}
+        />
+        {askTier && (
+          <div className={s.tierAsk} role="group" aria-labelledby={`${titleId}-tier`}>
+            <p id={`${titleId}-tier`} className={s.tierAskText}>
+              You’ve changed the words. Write it again as “{tierLabel(askTier, careAlias)}”, or keep your words?
+            </p>
+            <div className={s.tierAskActions}>
+              <Button variant="primary" onClick={() => void changeTier(askTier, true)}>
+                Write it again
+              </Button>
+              <Button variant="secondary" onClick={() => void changeTier(askTier, false)}>
+                Keep my words
+              </Button>
+              <Button variant="quiet" onClick={() => setAskTier(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+        <p className={s.tierNote} aria-live="polite">
+          {busy === "tier"
+            ? "Changing how much it shares"
+            : editable
+              ? "Changing this needs your OK again before it goes."
+              : "Shared at this level when you approved it."}
+        </p>
       </div>
 
       {error && (
@@ -485,7 +579,9 @@ export function LetterSheet({
               <Info size={18} aria-hidden="true" />
               <span>
                 {current.disclosureTier === "detailed"
-                  ? `It mentions ${quoted(terms)}. ${name}’s group is set to hear more detail, so it can go as written.`
+                  ? current.defaultDisclosureTier !== undefined && current.defaultDisclosureTier !== "detailed"
+                    ? `It mentions ${quoted(terms)}. You chose to share more detail with ${name}, so it can go as written.`
+                    : `It mentions ${quoted(terms)}. ${name}’s group is set to hear more detail, so it can go as written.`
                   : `It mentions ${quoted(terms)}. You chose to send it anyway.`}
               </span>
             </p>

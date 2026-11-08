@@ -49,13 +49,28 @@ const BASE_PATTERNS = BASE_HEALTH_TERMS.map((term) => ({ term, regex: pattern(te
  * medical_instruction facts and the A1 crisis statement (for example "hip", "replacement"). Returns each term once.
  */
 export function findHealthTerms(subject: string, body: string, extraTerms: readonly string[] = []): string[] {
-  const text = `${subject}\n${body}`.normalize("NFKC");
-  const extras = extraTerms
+  return matchTerms(subject, body, [...BASE_PATTERNS, ...extraPatterns(extraTerms)]);
+}
+
+/**
+ * only the per-request extra terms (no base list), for a checker that already covers the base list, so the server
+ * check at edit, approve and send can add the words the drafter guarded against
+ */
+export function findExtraHealthTerms(subject: string, body: string, extraTerms: readonly string[]): string[] {
+  return matchTerms(subject, body, extraPatterns(extraTerms));
+}
+
+function extraPatterns(extraTerms: readonly string[]): { term: string; regex: RegExp }[] {
+  return extraTerms
     .map((term) => term.trim().toLowerCase())
     .filter((term) => term.length >= 3)
     .map((term) => ({ term, regex: pattern(term) }));
+}
+
+function matchTerms(subject: string, body: string, patterns: { term: string; regex: RegExp }[]): string[] {
+  const text = `${subject}\n${body}`.normalize("NFKC");
   const found = new Set<string>();
-  for (const { term, regex } of [...BASE_PATTERNS, ...extras]) {
+  for (const { term, regex } of patterns) {
     if (regex.test(text)) {
       found.add(term);
     }

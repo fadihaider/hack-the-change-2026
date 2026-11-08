@@ -148,3 +148,46 @@ test("request views require the server-issued preview revision", () => {
     false,
   );
 });
+
+const view = {
+  id: "r1",
+  revision,
+  state: "awaiting_approval",
+  action: "notify",
+  recipient: { contactId: "c1", name: "Demo", email: "demo@example.com" },
+  subject: "Availability",
+  body: "Family responsibilities",
+  disclosureTier: "minimal",
+  defaultDisclosureTier: "general",
+  healthTermsFound: [],
+  healthOverride: false,
+  respondBy: null,
+  proposedAt: null,
+  proposedNote: null,
+  approval: null,
+  evidence: [],
+};
+
+test("a tier change goes through edit as the owner's choice, and the group's usual tier is optional", async () => {
+  const api = createRequestApi(async (url, options) => {
+    assert.equal(url, "/api/requests/edit");
+    assert.deepEqual(JSON.parse(String(options?.body)), { requestId: "r1", disclosureTier: "minimal" });
+    return Response.json({ request: view });
+  });
+  const edited = await api.edit("r1", { disclosureTier: "minimal" });
+  assert.equal(edited.request.defaultDisclosureTier, "general");
+  assert.equal(requestViewSchema.safeParse({ ...view, defaultDisclosureTier: undefined }).success, true);
+  assert.equal(requestViewSchema.safeParse({ ...view, defaultDisclosureTier: "all" }).success, false);
+});
+
+test("a redraft posts only the id and the tier, and returns the new draft with its guard flags", async () => {
+  const api = createRequestApi(async (url, options) => {
+    assert.equal(url, "/api/requests/redraft");
+    assert.equal(options?.method, "POST");
+    assert.deepEqual(JSON.parse(String(options?.body)), { requestId: "r1", disclosureTier: "detailed" });
+    return Response.json({ request: { ...view, disclosureTier: "detailed" }, editFlags: ["url"], approvalBlocked: false });
+  });
+  const result = await api.redraft("r1", "detailed");
+  assert.equal(result.request.disclosureTier, "detailed");
+  assert.deepEqual(result.editFlags, ["url"]);
+});

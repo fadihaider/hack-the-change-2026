@@ -1,7 +1,7 @@
 "use client";
 // urgent: clear the care week one commitment at a time (variant B), then see who you asked and find help nearby
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarPlus, Check, Clock, LoaderCircle, MapPin, RefreshCw, Send, Users } from "lucide-react";
+import { CalendarPlus, CalendarX2, Check, Clock, LoaderCircle, MapPin, RefreshCw, Send, Users } from "lucide-react";
 import {
   liveErrorMessage,
   type CommitmentView,
@@ -90,6 +90,17 @@ function writePlace(episodeId: string, place: Place) {
   }
 }
 
+/** true right after Start sent Alex here (/urgent?from=intake or ?from=start), so the first heading takes the focus */
+function arrivedFromStart(): boolean {
+  try {
+    const from = new URLSearchParams(window.location.search).get("from");
+    return from === "intake" || from === "start";
+  } catch {
+    // no window or a blocked location: no focus move, which is the old behaviour
+    return false;
+  }
+}
+
 /** requests that cannot be reviewed again; their commitment needs a new choice */
 const CHOOSE_AGAIN = new Set<RequestState>(["failed", "expired", "rejected"]);
 type ReceiptView = { text: string; icon: ReceiptIcon };
@@ -172,8 +183,12 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
   const [listError, setListError] = useState<string | null>(null);
   const [index, setIndex] = useState<number | null>(null);
   const [motion, setMotion] = useState<"forward" | "back" | null>(null);
-  const [moved, setMoved] = useState(false);
+  // arriving from Start counts as a move: the first step's heading takes the focus once it mounts
+  const [moved, setMoved] = useState(arrivedFromStart);
+  // only for the render-time "choose again" path from a link; "Change the plan" is saved on the server
   const [reopened, setReopened] = useState<Record<string, boolean>>({});
+  // who hears from Alex for a commitment with several contacts; defaults to everyone the server matched
+  const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [receipt, setReceipt] = useState<ReceiptView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [stepError, setStepError] = useState<{ at: string; message: string } | null>(null);
@@ -188,6 +203,18 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
   const lock = useRef(false);
   // the step on screen now; a slow save only moves Alex on if Alex is still on the step it was made from
   const where = useRef<number | null>(null);
+
+  // the arrival flag did its job; a reload starts like any other visit
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has("from")) return;
+      url.searchParams.delete("from");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+    } catch {
+      // history blocked: a reload moves the focus to the heading again, which is harmless
+    }
+  }, []);
 
   // one impact scan per care week per tab; a second mount while it runs shares the same call
   useEffect(() => {
@@ -264,10 +291,7 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
 
   const commitments = useMemo(() => (impact ? impact.commitments.slice().sort(byStart) : []), [impact]);
   const byId = useMemo(() => new Map((all ?? []).map((r) => [r.id, r])), [all]);
-  const dir = useMemo(
-    () => w.buildDirectory(commitments, all ?? [], session.user.email),
-    [commitments, all, session.user.email],
-  );
+  const dir = useMemo(() => w.buildDirectory(commitments, all ?? []), [commitments, all]);
   const total = commitments.length;
 
   function requestsOf(c: CommitmentView): RequestView[] {
@@ -279,7 +303,7 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
 
   function statusOf(c: CommitmentView): Status {
     const list = requestsOf(c);
-    if (reopened[c.id]) return { kind: "open", requests: list };
+    if (c.reopened || reopened[c.id]) return { kind: "open", requests: list };
     if (c.decision === "keep" || c.decision === "defer") return { kind: "decided", decision: c.decision, requests: list };
     const active = list.filter((r) => r.state !== "cancelled");
     if (active.length > 0) return { kind: "asked", requests: list, lead: active[0] };
@@ -354,26 +378,40 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     });
   }
 
-  function saveDecision(commitmentId: string, decision: Decision, request: RequestView | null) {
+  /** the server's answer for one commitment goes into the screen and the tab's copy of the scan */
+  function patchCommitment(
+    commitmentId: string,
+    patch: Partial<Pick<CommitmentView, "decision" | "reopened">>,
+    requests: RequestView[] = [],
+  ) {
     setImpact((prev) => {
       if (!prev) return prev;
       const next: ImpactView = {
         ...prev,
         commitments: prev.commitments.map((k) => {
           if (k.id !== commitmentId) return k;
-          const linked = request && !k.requests.some((link) => link.id === request.id);
-          return {
-            ...k,
-            decision,
-            requests: linked
-              ? [{ id: request.id, state: request.state, contactId: request.recipient.contactId }, ...k.requests]
-              : k.requests,
-          };
+          const added = requests
+            .filter((request) => !k.requests.some((link) => link.id === request.id))
+            .map((request) => ({ id: request.id, state: request.state, contactId: request.recipient.contactId }));
+          return { ...k, ...patch, requests: [...added, ...k.requests] };
         }),
       };
       memory.impact.set(episodeId, next);
       return next;
     });
+  }
+
+  function saveDecision(commitmentId: string, decision: Decision, requests: RequestView[]) {
+    patchCommitment(commitmentId, { decision, reopened: false }, requests);
+  }
+
+  /** the contacts the next message goes to: Alex's ticks when there are several, else the server's match */
+  function recipientsOf(c: CommitmentView): string[] {
+    const known = new Set(c.contacts.map((contact) => contact.contactId));
+    const chosen = picked[c.id]?.filter((id) => known.has(id));
+    if (chosen) return chosen;
+    if (c.suggestedContactIds.length > 0) return c.suggestedContactIds;
+    return c.suggestedContactId ? [c.suggestedContactId] : [];
   }
 
   where.current = index;
@@ -403,25 +441,42 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     setBusy(`${c.id}:${decision}`);
     setStepError(null);
     try {
-      // a new plan withdraws messages for this commitment that were never sent
+      const to = w.isMessageDecision(decision) ? recipientsOf(c) : [];
+      if (w.isMessageDecision(decision) && c.contacts.length > 1 && to.length === 0) {
+        setStepError({ at: c.id, message: "Choose at least one person to hear from you." });
+        return;
+      }
+      // a new plan withdraws messages for this commitment that were never sent, and any to people no longer chosen
       const unsent = requestsOf(c).filter((r) => r.state === "awaiting_approval" || r.state === "needs_review");
-      const withdraw = w.isMessageDecision(decision) ? unsent.filter((r) => r.action !== decision) : unsent;
+      const withdraw = w.isMessageDecision(decision)
+        ? unsent.filter((r) => r.action !== decision || (to.length > 0 && !to.includes(r.recipient.contactId)))
+        : unsent;
       for (const r of withdraw) upsert((await requestApi.cancel(r.id)).request);
-      const contactId = c.suggestedContactId ?? undefined;
-      const result = await live.decide({ commitmentId: c.id, decision, ...(contactId ? { contactId } : {}) });
-      saveDecision(c.id, result.commitment.decision, result.request);
+      const result = await live.decide({
+        commitmentId: c.id,
+        decision,
+        ...(to.length > 1 ? { contactIds: to } : to.length === 1 ? { contactId: to[0] } : {}),
+      });
+      const made = result.requests.length > 0 ? result.requests : result.request ? [result.request] : [];
+      saveDecision(c.id, result.commitment.decision, made);
       setReopened((prev) => ({ ...prev, [c.id]: false }));
 
-      const request = result.request;
-      if (request) {
-        upsert(request);
-        if (result.editFlags.length > 0) memory.flags.set(request.id, result.editFlags);
-        if (REVIEWABLE.has(request.state)) {
+      if (made.length > 0) {
+        for (const request of made) upsert(request);
+        for (const draft of result.drafts) {
+          if (draft.editFlags.length > 0) memory.flags.set(draft.requestId, draft.editFlags);
+        }
+        if (result.drafts.length === 0 && result.request && result.editFlags.length > 0) {
+          memory.flags.set(result.request.id, result.editFlags);
+        }
+        // each message opens on its own; the first one to review comes first
+        const first = made.find((request) => REVIEWABLE.has(request.state));
+        if (first) {
           setReceipt(null);
-          setSheetId(request.id);
+          setSheetId(first.id);
           return;
         }
-        say(`${w.outcomeLine(request)} No new message was written.`);
+        say(`${made.map((request) => w.outcomeLine(request)).join(" ")} No new message was written.`);
         return;
       }
       const ref = w.refTitle(c, care);
@@ -449,7 +504,7 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
       setAdded(new Set(memory.timeline));
       if (c.decision !== "keep") {
         const kept = await live.decide({ commitmentId: c.id, decision: "keep" });
-        saveDecision(c.id, kept.commitment.decision, null);
+        saveDecision(c.id, kept.commitment.decision, []);
       }
       say(
         result.created ? `Added to ${carePossessive} timeline in Care.` : `It was already on ${carePossessive} timeline.`,
@@ -485,19 +540,50 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     }
   }
 
-  function reopen(c: CommitmentView) {
-    setMoved(true);
-    setReceipt(null);
+  /** "Change the plan": saved on the server, so the step stays open after a reload; no message changes here */
+  async function reopen(c: CommitmentView) {
+    if (busy || lock.current) return;
+    lock.current = true;
+    setBusy(`${c.id}:reopen`);
     setStepError(null);
-    setReopened((prev) => ({ ...prev, [c.id]: true }));
+    try {
+      await live.reopen(c.id);
+      setMoved(true);
+      setReceipt(null);
+      patchCommitment(c.id, { reopened: true });
+    } catch (caught) {
+      setStepError({ at: c.id, message: liveErrorMessage(caught) });
+    } finally {
+      lock.current = false;
+      setBusy(null);
+    }
   }
 
-  function chooseAgain(c: CommitmentView) {
+  async function chooseAgain(c: CommitmentView) {
     const at = commitments.indexOf(c);
-    if (at < 0) return;
-    setReceipt(null);
-    setReopened((prev) => ({ ...prev, [c.id]: true }));
-    go(at, "back");
+    if (at < 0 || busy || lock.current) return;
+    lock.current = true;
+    setBusy(`${c.id}:reopen`);
+    setStepError(null);
+    try {
+      await live.reopen(c.id);
+      patchCommitment(c.id, { reopened: true });
+      setReceipt(null);
+      go(at, "back");
+    } catch (caught) {
+      setStepError({ at: "summary", message: liveErrorMessage(caught) });
+    } finally {
+      lock.current = false;
+      setBusy(null);
+    }
+  }
+
+  function togglePick(c: CommitmentView, contactId: string, on: boolean) {
+    const now = recipientsOf(c);
+    const next = on ? [...now.filter((id) => id !== contactId), contactId] : now.filter((id) => id !== contactId);
+    // keep the server's order, so the first message is always the same person
+    const order = c.contacts.map((contact) => contact.contactId);
+    setPicked((prev) => ({ ...prev, [c.id]: order.filter((id) => next.includes(id)) }));
   }
 
   function sent(request: RequestView, outcome: SendOutcome) {
@@ -513,6 +599,14 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
         at: fromStep && c ? c.id : "summary",
         message: `The message to ${who} didn’t send, and it won’t retry on its own. Choose again to write a new one.`,
       });
+      return;
+    }
+    // a group commitment: the next person's message waits on this step for its own read and send
+    const waiting = c
+      ? requestsOf(c).filter((r) => r.id !== request.id && REVIEWABLE.has(r.state) && !w.isProposal(r))
+      : [];
+    if (fromStep && waiting.length > 0) {
+      say(`Sent to ${who}. ${w.possessive(w.shortName(waiting[0].recipient.name))} message is next.`, "send");
       return;
     }
     say(`Sent to ${who}. Waiting for a reply.`, "send");
@@ -558,6 +652,11 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
       onUpdate={upsert}
       onSent={sent}
       reload={reloadOne}
+      careAlias={care.alias}
+      onFlags={(id, flags) => {
+        if (flags.length > 0) memory.flags.set(id, flags);
+        else memory.flags.delete(id);
+      }}
     />
   );
 
@@ -634,12 +733,20 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
 
   function meta(c: CommitmentView) {
     const people = w.withNames(c, dir);
+    // the code rule's own reason (AC1), never the model's
+    const conflict = c.ruleConflicts[0] ?? c.conflictReason;
     return (
       <ul className={s.meta}>
         <li className={s.metaItem}>
           <Clock size={16} aria-hidden="true" />
           <span className={s.time}>{w.whenLine(c)}</span>
         </li>
+        {conflict && (
+          <li className={s.metaItem}>
+            <CalendarX2 size={16} aria-hidden="true" />
+            <span>{conflict}</span>
+          </li>
+        )}
         {c.location && (
           <li className={s.metaItem}>
             <MapPin size={16} aria-hidden="true" />
@@ -747,7 +854,13 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
               </Button>
             )}
             {!c.forCareRecipient && (
-              <Button variant="quiet" onClick={() => reopen(c)}>
+              <Button
+                variant="quiet"
+                busy={busy === `${c.id}:reopen`}
+                busyLabel="Opening"
+                disabled={busy !== null && busy !== `${c.id}:reopen`}
+                onClick={() => void reopen(c)}
+              >
                 Change the plan
               </Button>
             )}
@@ -761,17 +874,37 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     if (status.kind === "asked") {
       const lead = status.lead;
       const who = w.shortName(lead.recipient.name);
-      const reviewable = REVIEWABLE.has(lead.state);
+      // one message per person on a group commitment; each is read and sent on its own
+      const active = status.requests.filter((r) => r.state !== "cancelled" && r.action === lead.action);
+      const several = active.length > 1;
+      const reviewable = several ? active.some((r) => REVIEWABLE.has(r.state)) : REVIEWABLE.has(lead.state);
+      const changePlan = (
+        <Button
+          variant="quiet"
+          busy={busy === `${c.id}:reopen`}
+          busyLabel="Opening"
+          disabled={busy !== null && busy !== `${c.id}:reopen`}
+          onClick={() => void reopen(c)}
+        >
+          Change the plan
+        </Button>
+      );
       return (
         <div key={key}>
           {receiptView}
           {meta(c)}
           <Question lead={fact} autoFocusOnMount={moved}>
-            {w.outcomeLine(lead)}
+            {several ? w.outcomeLineMany(active) : w.outcomeLine(lead)}
           </Question>
-          {proposalView(lead)}
+          {several ? (
+            <ul className={s.reqList} role="list">
+              {active.map((r) => requestRow(r, null))}
+            </ul>
+          ) : (
+            proposalView(lead)
+          )}
           <Actions>
-            {reviewable && (
+            {reviewable && !several && (
               <Button variant="primary" onClick={() => setSheetId(lead.id)}>
                 {w.isProposal(lead) ? `Write back to ${who}` : "Review and send"}
               </Button>
@@ -779,12 +912,10 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
             <Button variant={reviewable ? "secondary" : "primary"} onClick={() => next(at)}>
               {nextLabel(at)}
             </Button>
-            <Button variant="quiet" onClick={() => reopen(c)}>
-              Change the plan
-            </Button>
+            {changePlan}
           </Actions>
           {errorFor(c.id)}
-          {messagesSoFar(c, status.requests)}
+          {messagesSoFar(c, several ? status.requests.filter((r) => !active.includes(r)) : status.requests)}
         </div>
       );
     }
@@ -827,8 +958,13 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     // open: the suggested decision first, the sensible others beside it, keeping it last
     // a saved message decision leads; after keeping or deferring, changing the plan starts from the suggestion again
     const suggested = w.isMessageDecision(c.decision) ? c.decision : c.suggestedAction;
-    const person = c.suggestedContactId ? dir.get(c.suggestedContactId) : undefined;
-    const who = person ? w.shortName(person.name) : "them";
+    // names as the server saved them; with several contacts, the ones Alex ticked
+    const to = recipientsOf(c);
+    const names = to
+      .map((id) => dir.get(id))
+      .filter((person): person is w.Person => Boolean(person))
+      .map((person) => w.shortName(person.name));
+    const who = names.length > 0 ? w.joinNames(names) : "them";
     let primary: Decision = w.isMessageDecision(suggested) ? suggested : "notify";
     let ask = w.isMessageDecision(primary) ? w.askLine(primary, who) : "";
     let others: Decision[] = w.isMessageDecision(primary) ? w.ALTERNATIVES[primary] : [];
@@ -864,9 +1000,38 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
         <Question lead={fact} autoFocusOnMount={moved}>
           {ask}
         </Question>
+        {c.contacts.length > 1 && (
+          <fieldset className={s.pick}>
+            <legend className={s.pickTitle}>Who hears from you</legend>
+            <p className={s.pickHint}>Each person gets their own message. You’ll read and send each one.</p>
+            {c.contacts.map((contact) => {
+              const id = `ur-pick-${c.id}-${contact.contactId}`;
+              return (
+                <label key={contact.contactId} htmlFor={id} className={s.pickRow}>
+                  <input
+                    id={id}
+                    type="checkbox"
+                    className={s.pickBox}
+                    checked={to.includes(contact.contactId)}
+                    disabled={busy !== null}
+                    onChange={(event) => togglePick(c, contact.contactId, event.target.checked)}
+                  />
+                  <span className={s.pickName}>{contact.name}</span>
+                  <span className={s.pickGroup}>{contact.group}</span>
+                </label>
+              );
+            })}
+          </fieldset>
+        )}
         <Actions>
           {button(primary, "primary")}
-          {w.isMessageDecision(primary) && <Note>You’ll read the message before anything is sent.</Note>}
+          {w.isMessageDecision(primary) && (
+            <Note>
+              {to.length > 1
+                ? "You’ll read each message before anything is sent."
+                : "You’ll read the message before anything is sent."}
+            </Note>
+          )}
           <Choices>{others.map((decision) => button(decision, "secondary"))}</Choices>
           {button(quiet, "quiet")}
         </Actions>
@@ -910,6 +1075,52 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     );
   }
 
+  /** one message with its own review button; c is set where "Choose again" belongs (the summary) */
+  function requestRow(r: RequestView, c: CommitmentView | null) {
+    const who = w.shortName(r.recipient.name);
+    const reviewable = REVIEWABLE.has(r.state);
+    const again = c && (r.state === "failed" || r.state === "expired" || r.state === "rejected");
+    return (
+      <li key={r.id} className={`${s.reqRow} ${s.reqRowLarge}`}>
+        <span className={s.reqWho}>
+          <Avatar name={r.recipient.name} size="sm" />
+          <span className={s.reqName}>{r.recipient.name}</span>
+        </span>
+        <span className={s.reqPill}>
+          <StatePill state={r.state} />
+        </span>
+        <span className={s.reqSubject}>{r.subject}</span>
+        {rowTime(r)}
+        {w.isProposal(r) && <div className={s.reqExtra}>{proposalView(r)}</div>}
+        {(reviewable || again) && (
+          <span className={s.rowActions}>
+            {reviewable && (
+              <Button
+                variant="secondary"
+                className={s.rowButton}
+                aria-label={w.isProposal(r) ? undefined : `Review and send to ${who}`}
+                onClick={() => setSheetId(r.id)}
+              >
+                {w.isProposal(r) ? `Write back to ${who}` : "Review and send"}
+              </Button>
+            )}
+            {again && (
+              <Button
+                variant="quiet"
+                className={s.rowButton}
+                busy={busy === `${c.id}:reopen`}
+                busyLabel="Opening"
+                onClick={() => void chooseAgain(c)}
+              >
+                Choose again
+              </Button>
+            )}
+          </span>
+        )}
+      </li>
+    );
+  }
+
   function summaryView() {
     const visible = episodeRequests.filter((r) => r.state !== "cancelled");
     const waiting = visible.some((r) => r.state === "requested");
@@ -937,40 +1148,7 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
               </h2>
               {group.hint && <p className={s.groupHint}>{group.hint}</p>}
               <ul className={s.reqList} role="list">
-                {rows.map((r) => {
-                  const c = commitmentOf(r.id);
-                  const who = w.shortName(r.recipient.name);
-                  const reviewable = REVIEWABLE.has(r.state);
-                  const again = c && (r.state === "failed" || r.state === "expired" || r.state === "rejected");
-                  return (
-                    <li key={r.id} className={`${s.reqRow} ${s.reqRowLarge}`}>
-                      <span className={s.reqWho}>
-                        <Avatar name={r.recipient.name} size="sm" />
-                        <span className={s.reqName}>{r.recipient.name}</span>
-                      </span>
-                      <span className={s.reqPill}>
-                        <StatePill state={r.state} />
-                      </span>
-                      <span className={s.reqSubject}>{r.subject}</span>
-                      {rowTime(r)}
-                      {w.isProposal(r) && <div className={s.reqExtra}>{proposalView(r)}</div>}
-                      {(reviewable || again) && (
-                        <span className={s.rowActions}>
-                          {reviewable && (
-                            <Button variant="secondary" className={s.rowButton} onClick={() => setSheetId(r.id)}>
-                              {w.isProposal(r) ? `Write back to ${who}` : "Review and send"}
-                            </Button>
-                          )}
-                          {again && (
-                            <Button variant="quiet" className={s.rowButton} onClick={() => chooseAgain(c)}>
-                              Choose again
-                            </Button>
-                          )}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
+                {rows.map((r) => requestRow(r, commitmentOf(r.id)))}
               </ul>
             </section>
           );

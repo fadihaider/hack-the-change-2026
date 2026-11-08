@@ -34,3 +34,11 @@ ALTER TABLE care_fact ADD CONSTRAINT care_fact_category_check CHECK (category IN
 ALTER TABLE care_fact ADD COLUMN IF NOT EXISTS embedding_model text;
 ALTER TABLE care_fact ADD COLUMN IF NOT EXISTS embedded_hash text;
 CREATE INDEX IF NOT EXISTS care_fact_recipient_status ON care_fact (care_recipient_id, status, created_at);
+
+-- urgent repairs (PRD section 12): begin
+-- "Change the plan" reopens a step on the server, so a reload still shows it open; any new decision clears it
+ALTER TABLE commitment ADD COLUMN IF NOT EXISTS reopened_at timestamptz;
+-- per-request words that also count as health terms (intake reason, approved medical_instruction facts), checked at
+-- edit, approve and send; never sent to the browser
+ALTER TABLE request ADD COLUMN IF NOT EXISTS extra_health_terms text[] NOT NULL DEFAULT '{}';
+-- urgent repairs: end
