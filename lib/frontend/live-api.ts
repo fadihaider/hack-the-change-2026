@@ -578,6 +578,7 @@ export function modeLabels(mode: LiveMode): string[] {
     demo: "Demo AI provider (offline rules)",
     anthropic: "Claude API",
     bedrock: "Claude on Amazon Bedrock",
+    gemini: "Gemini API",
   };
   const mail: Record<string, string> = {
     outbox: "Local outbox, no real email",

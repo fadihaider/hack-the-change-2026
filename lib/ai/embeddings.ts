@@ -3,7 +3,9 @@
 // kept free of server-only so pure tests can load it; the AWS SDK is imported lazily, only when bedrock is picked.
 // care-fact text leaves the app only when bedrock is switched on; no data-residency claim is made either way.
 
-export type EmbeddingMode = "off" | "bedrock";
+import { createGeminiEmbedder } from "./gemini.ts";
+
+export type EmbeddingMode = "off" | "bedrock" | "gemini";
 type Env = Readonly<Record<string, string | undefined>>;
 
 export const EMBEDDING_DIMENSIONS = 1024;
@@ -20,7 +22,7 @@ export interface Embedder {
 /** RR_EMBED, defaulting to off; an unknown value also means off, so a typo never sends care text anywhere */
 export function embeddingMode(env: Env = process.env): EmbeddingMode {
   const value = (env.RR_EMBED ?? "").trim().toLowerCase();
-  return value === "bedrock" ? "bedrock" : "off";
+  return value === "bedrock" || value === "gemini" ? value : "off";
 }
 
 /** an error safe to log: status and code only, never the provider message or the text sent */
@@ -105,6 +107,11 @@ export function titanEmbedder(options: { region: string; modelId?: string; clien
 
 /** the embedder for a mode, or null when embeddings are off */
 export function createEmbedder(mode: EmbeddingMode, env: Env = process.env): Embedder | null {
+  if (mode === "gemini") {
+    // unverified until a real key is tried; GEMINI_API_KEY and GEMINI_EMBED_MODEL are required (lib/ai/gemini.ts)
+    const gemini = createGeminiEmbedder({ env });
+    return { model: gemini.model, dims: EMBEDDING_DIMENSIONS, embed: (texts) => gemini.embed(texts) };
+  }
   if (mode === "bedrock") {
     return titanEmbedder({
       region: env.EMBED_REGION || env.BEDROCK_REGION || "us-east-2",
