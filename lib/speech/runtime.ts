@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { elevenLabsClient } from "../elevenlabs.ts";
+import { paidDemoOptIn } from "../mvp/auth.ts";
 import { reserveCall } from "../rateLimit.ts";
 import { requireSameOrigin, WorkflowError } from "../requests/workflow.ts";
 import { createElevenLabsSdkClient, PROVISION_REQUEST_OPTIONS } from "../voice-agent/client.ts";
@@ -124,14 +125,14 @@ export function createSpeechRuntimeFromApp(runtime: SpeechAppRuntime) {
   const base = new URL(runtime.baseUrl);
   const loopbackHttp = base.protocol === "http:" && ["localhost", "127.0.0.1"].includes(base.hostname);
   if ((base.protocol !== "https:" && !loopbackHttp) || base.username || base.password) throw new Error("invalid_app_base_url");
-  const localDemo = runtime.auth.mode === "demo" && loopbackHttp;
+  const localDemo = runtime.auth.mode === "demo" && (loopbackHttp || paidDemoOptIn());
   return createSpeechRuntime({
     baseUrl: runtime.baseUrl,
     database: runtime.stores.database,
     agentId: process.env.ELEVENLABS_AGENT_ID || HOSTED_VOICE_AGENT_ID,
     agentModel: "gpt-oss-120b",
     authenticate: async (request) => {
-      // A seeded demo identity must never authorize paid providers on a deployed origin.
+      // A seeded demo identity must never authorize paid providers on a deployed origin, unless RR_ALLOW_PAID_DEMO=on.
       if (runtime.auth.mode !== "google" && !localDemo) return null;
       const userId = await runtime.auth.currentUserId(request);
       return userId ? { userId } : null;

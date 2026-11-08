@@ -32,6 +32,6 @@ export function speechMode(
   if (!speechConfigured(env)) return "off";
   const auth: AuthMode = runtime?.auth ?? (env.RR_AUTH === "google" ? "google" : "demo");
   const baseUrl = runtime?.baseUrl ?? (env.APP_BASE_URL || "http://localhost:3000");
-  if (!paidProvidersAllowed(auth, baseUrl) || !speechBaseAccepted(baseUrl)) return "off";
+  if (!paidProvidersAllowed(auth, baseUrl, env) || !speechBaseAccepted(baseUrl)) return "off";
   return "elevenlabs";
 }
