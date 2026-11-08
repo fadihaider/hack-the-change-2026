@@ -6,9 +6,8 @@ import XCTest
 /// then Recover with the clock moved three days from Settings.
 /// DEMO_SERVER (TEST_RUNNER_DEMO_SERVER to xcodebuild) names the server and must be set, or the test skips; the
 /// server must have no care week yet (ios/scripts/demo-server.sh --reset). DEMO_SHOTS, when set, also saves each
-/// step's screenshot there as demo-NN-<step>.png. when the demo sentence's week misses the seeded calendar (the seed sits on
-/// the seven days after today, so "on Sunday" only lines up on a Saturday), the walk replaces the week from Settings
-/// with one that starts today, so the six clashes show
+/// step's screenshot there as demo-NN-<step>.png. the seeded calendar follows the care week (lib/mvp/calendar.ts), so
+/// the demo sentence's week must show the six clashes on any day it is said
 final class DemoWalkthroughTests: XCTestCase {
     private var app: XCUIApplication!
     private var server: String = ""
@@ -82,32 +81,13 @@ final class DemoWalkthroughTests: XCTestCase {
         waitSelected(urgent)
         XCTAssertTrue(element("screen.urgent").waitForExistence(timeout: 10))
 
-        // the scan: the clashes, or "No one needs a message."
+        // the scan: the clashes. "No one needs a message." here means the demo is a dead end
         let steps = element("urgent.progress")
         let clear = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'No one needs a message.'")).firstMatch
         let scanned = Date().addingTimeInterval(120)
         while Date() < scanned, !(steps.exists || clear.exists) { _ = steps.waitForExistence(timeout: 1) }
         shot("urgent-landed")
-        guard clear.exists else { return }
-
-        // the seeded calendar sits on the seven days after today, so "on Sunday" said on a Sunday (next Sunday)
-        // or later in the week misses some or all of them. replace the week with one that starts today
-        note("the demo sentence's week has no clashes; replacing it with a week that starts today")
-        app.tabBars.buttons["More"].tap()
-        app.buttons["more.settings"].tap()
-        let newWeek = app.buttons["settings.newWeek"]
-        reveal(newWeek)
-        newWeek.tap()
-        tap(app.buttons["start.newWeek"])
-        let field2 = element("start.statementField")
-        XCTAssertTrue(field2.waitForExistence(timeout: 10))
-        field2.tap()
-        field2.typeText("My mom Rosa has hip surgery today and I\u{2019}m caring for her until Saturday.")
-        if done.waitForExistence(timeout: 3) { done.tap() }
-        shot("start-new-week-today")
-        app.buttons["start.check"].firstMatch.tap()
-        XCTAssertTrue(element("start.write").waitForNonExistence(timeout: 90), "the new week never saved")
-        waitSelected(urgent)
+        XCTAssertFalse(clear.exists, "the demo sentence's week has no clashes, so Urgent is a dead end")
     }
 
     // MARK: - 2. urgent
