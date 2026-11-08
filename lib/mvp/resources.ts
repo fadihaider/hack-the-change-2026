@@ -1040,12 +1040,18 @@ interface TypeSearch {
   max_rows: number;
 }
 
+/** the distance a type is counted within for a chosen radius, e.g. transit stops only within 800 m */
+export function countingRadiusM(type: ServiceType, radiusM: number): number {
+  const spec: ServiceTypeSpec = SERVICE_TYPES[type];
+  return spec.maxRadiusM === undefined ? radiusM : Math.min(radiusM, spec.maxRadiusM);
+}
+
 function typeSearches(options: NearbyOptions): TypeSearch[] {
   const perType = Math.max(1, Math.trunc(options.perType));
   const searches: TypeSearch[] = [];
   for (const type of new Set(options.types)) {
     const spec: ServiceTypeSpec = SERVICE_TYPES[type];
-    const within = spec.maxRadiusM === undefined ? options.radiusM : Math.min(options.radiusM, spec.maxRadiusM);
+    const within = countingRadiusM(type, options.radiusM);
     const search = spec.minRadiusM === undefined ? within : Math.max(within, spec.minRadiusM);
     const maxRows = spec.maxPerType === undefined ? perType : Math.min(perType, spec.maxPerType);
     for (const kind of spec.kinds) searches.push({ type, kind, search_m: search, within_m: within, max_rows: maxRows });

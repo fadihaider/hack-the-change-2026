@@ -125,30 +125,92 @@ export function orderResources(
   return ordered.filter((resource) => (seen.has(resource.id) ? false : (seen.add(resource.id), true)));
 }
 
-/** one plain sentence about what is within the chosen distance, from the server's counts */
-export function summaryText(data: Pick<NearbyView, "counts" | "radiusKm">, stepFreeOnly: boolean): string {
-  const within = `Within ${data.radiusKm} km in a straight line`;
-  const parts = data.counts.map((count) => {
+/**
+ * cards on the first page: at least one of each kind, so the closest of each kind (including a nearest hospital
+ * outside the chosen distance, which the limits mention) is never hidden behind "Show more"
+ */
+export function firstPageSize(resources: readonly Pick<NearbyResourceView, "type">[], initialVisible: number): number {
+  return Math.max(initialVisible, new Set(resources.map((resource) => resource.type)).size);
+}
+
+/** "800 m" or "2 km" for a counting distance */
+export function radiusText(km: number): string {
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${Number(km.toFixed(1))} km`;
+}
+
+type CountLike = Pick<NearbyView["counts"][number], "type" | "label" | "withinRadius"> & { withinKm?: number };
+
+/** the distance a count really covers: the server's withinKm when it is shorter (transit, 800 m), else the chosen one */
+function countingKm(count: { withinKm?: number } | undefined, radiusKm: number): number {
+  const km = count?.withinKm;
+  return km !== undefined && Number.isFinite(km) && km > 0 && km < radiusKm ? km : radiusKm;
+}
+
+/** group items by the distance they are counted within, the chosen distance first */
+function byCountingKm<T>(items: readonly T[], radiusKm: number, kmOf: (item: T) => number): [number, T[]][] {
+  const groups = new Map<number, T[]>([[radiusKm, []]]);
+  for (const item of items) {
+    const km = kmOf(item);
+    const list = groups.get(km) ?? [];
+    list.push(item);
+    groups.set(km, list);
+  }
+  return [...groups].filter(([, list]) => list.length > 0);
+}
+
+/**
+ * plain sentences about what is within the chosen distance, from the server's counts. a kind counted within a
+ * shorter distance (transit stops, 800 m) gets its own sentence with that distance, never the chosen one.
+ */
+export function summaryText(
+  data: { counts: readonly CountLike[]; radiusKm: number },
+  stepFreeOnly: boolean,
+): string {
+  const access = stepFreeOnly ? " with step-free access listed by the source" : "";
+  const part = (count: CountLike) => {
     const words = TYPE_WORDS[count.type];
     const many = words?.many ?? count.label.toLowerCase();
     if (count.withinRadius === 0) return `no ${many}`;
     return `${count.withinRadius} ${count.withinRadius === 1 ? (words?.one ?? many) : many}`;
-  });
-  const access = stepFreeOnly ? " with step-free access listed by the source" : "";
-  if (parts.length === 0) return `${within}: nothing on these lists${access}.`;
-  return `${within}${access}: ${joinWords(parts)}.`;
+  };
+  const groups = byCountingKm(data.counts, data.radiusKm, (count) => countingKm(count, data.radiusKm));
+  if (groups.length === 0) return `Within ${radiusText(data.radiusKm)} in a straight line: nothing on these lists${access}.`;
+  return groups
+    .map(([km, counts]) => `Within ${radiusText(km)} in a straight line${access}: ${joinWords(counts.map(part))}.`)
+    .join(" ");
 }
 
-/** the empty-state sentence: never a placeholder point, always a next step */
-export function emptyText(types: readonly NearbyType[], radiusKm: number, stepFreeOnly: boolean): string {
-  const kinds = joinWords(
-    types.map((type) => TYPE_WORDS[type]?.many ?? type),
-    "or",
+/**
+ * the empty-state sentence: never a placeholder point, always a next step. counts (from the response) give the real
+ * counting distance per kind, so transit stops say 800 m, and a longer distance is only offered when it would help.
+ */
+export function emptyText(
+  types: readonly NearbyType[],
+  radiusKm: number,
+  stepFreeOnly: boolean,
+  counts: readonly Pick<CountLike, "type" | "withinKm">[] = [],
+): string {
+  const groups = byCountingKm(types, radiusKm, (type) =>
+    countingKm(
+      counts.find((count) => count.type === type),
+      radiusKm,
+    ),
   );
+  const what = groups
+    .map(([km, list], index) => {
+      const kinds = joinWords(
+        list.map((type) => TYPE_WORDS[type]?.many ?? type),
+        "or",
+      );
+      return `${index === 0 ? "No" : "and no"} ${kinds} within ${radiusText(km)}`;
+    })
+    .join(", ");
   if (stepFreeOnly) {
-    return `No ${kinds} within ${radiusKm} km have step-free access listed by the source. Unknown isn’t the same as not accessible, so try turning this off.`;
+    return `${what} have step-free access listed by the source. Unknown isn’t the same as not accessible, so try turning this off.`;
   }
-  return `No ${kinds} within ${radiusKm} km in these public lists. Try a longer distance.`;
+  // a longer distance only helps a kind counted at the chosen distance, and only below the longest choice
+  const longer = radiusKm < Math.max(...RADIUS_CHOICES) && groups.some(([km]) => km >= radiusKm);
+  return `${what} in these public lists. ${longer ? "Try a longer distance." : "Try another kind of place."}`;
 }
 
 // ---------------------------------------------------------------- flat map geometry
@@ -243,4 +305,174 @@ export function scaleBarKm(projection: Projection): number {
   const target = projection.width / 5 / projection.pxPerKm;
   const steps = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 20];
   return steps.reduce((best, step) => (Math.abs(step - target) < Math.abs(best - target) ? step : best), steps[0]);
+}
+
+/**
+ * the map box: the home point, the places inside the chosen distance and the whole distance circle. places outside
+ * the distance (a far hospital) are left out, so they can't zoom the map out and stack the nearby markers.
+ */
+export function mapBounds(
+  origin: { lat: number; lon: number },
+  radiusKm: number,
+  resources: readonly Pick<NearbyResourceView, "lat" | "lon" | "withinRadius">[],
+): Bounds | null {
+  const points: { lat: number; lon: number }[] = [origin, ...resources.filter((resource) => resource.withinRadius)];
+  if (finitePoint(origin) && Number.isFinite(radiusKm) && radiusKm > 0) {
+    const dLat = radiusKm / KM_PER_DEGREE_LAT;
+    const dLon = radiusKm / (KM_PER_DEGREE_LAT * Math.max(0.1, Math.cos((origin.lat * Math.PI) / 180)));
+    points.push(
+      { lat: origin.lat + dLat, lon: origin.lon },
+      { lat: origin.lat - dLat, lon: origin.lon },
+      { lat: origin.lat, lon: origin.lon + dLon },
+      { lat: origin.lat, lon: origin.lon - dLon },
+    );
+  }
+  return boundsAround(points, { padRatio: 0.04 });
+}
+
+export type MarkerSizes = {
+  /** the drawn dot */
+  markerR: number;
+  /** the largest click target */
+  hitR: number;
+  /** half the home glyph, so no marker covers it */
+  homeR: number;
+  /** clear space kept between markers */
+  gap: number;
+  /** how far in from the map edge a marker for a place beyond the map sits, with room for its arrow */
+  edge: number;
+};
+
+export type PlacedMarker = {
+  /** where the marker is drawn */
+  x: number;
+  y: number;
+  /** the place's real projected point, which may be off the map */
+  trueX: number;
+  trueY: number;
+  /** the real point is beyond the map, so the marker sits at the edge in its direction with an arrow */
+  clamped: boolean;
+  /** drawn away from its real point so it doesn't cover another marker; a line leads to the real point */
+  moved: boolean;
+  /** degrees from the drawn marker toward the real point (0 is east, 90 is south on screen) */
+  angle: number;
+  /** a click target that doesn't overlap the next marker's */
+  hitR: number;
+};
+
+const GOLDEN_ANGLE = 2.399963;
+const SETTLE_ROUNDS = 120;
+
+/**
+ * one visible, separate marker per point. a point beyond the map is pulled in along the line from home to the map
+ * edge (clamped). markers that would overlap each other or the home glyph are pushed apart a little (moved), so
+ * every card keeps its own marker to see and press. points keep their order: result n is point n.
+ */
+export function placeMarkers(
+  points: readonly { x: number; y: number }[],
+  home: { x: number; y: number },
+  box: { width: number; height: number },
+  sizes: MarkerSizes,
+): PlacedMarker[] {
+  const keep = sizes.markerR + 6;
+  const inside = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
+  const anchors = points.map((point) => {
+    const minX = sizes.edge;
+    const maxX = box.width - sizes.edge;
+    const minY = sizes.edge;
+    const maxY = box.height - sizes.edge;
+    // a marker this far in is drawn whole, so it can sit on its real point
+    if (point.x >= keep && point.x <= box.width - keep && point.y >= keep && point.y <= box.height - keep) {
+      return { x: point.x, y: point.y, clamped: false };
+    }
+    // walk from home toward the point and stop at the edge, so the marker keeps the real direction
+    const hx = inside(home.x, minX, maxX);
+    const hy = inside(home.y, minY, maxY);
+    const dx = point.x - hx;
+    const dy = point.y - hy;
+    let t = 1;
+    if (dx > 0) t = Math.min(t, (maxX - hx) / dx);
+    if (dx < 0) t = Math.min(t, (minX - hx) / dx);
+    if (dy > 0) t = Math.min(t, (maxY - hy) / dy);
+    if (dy < 0) t = Math.min(t, (minY - hy) / dy);
+    return { x: inside(hx + dx * t, minX, maxX), y: inside(hy + dy * t, minY, maxY), clamped: true };
+  });
+
+  const placed = anchors.map((anchor) => ({ x: anchor.x, y: anchor.y }));
+  const apart = 2 * sizes.markerR + sizes.gap;
+  const fromHome = sizes.markerR + sizes.homeR + sizes.gap;
+  const pin = (index: number) => {
+    const pad = anchors[index].clamped ? sizes.edge : keep;
+    placed[index].x = inside(placed[index].x, pad, box.width - pad);
+    placed[index].y = inside(placed[index].y, pad, box.height - pad);
+  };
+  for (let round = 0; round < SETTLE_ROUNDS; round += 1) {
+    let overlap = false;
+    for (let i = 0; i < placed.length; i += 1) {
+      for (let j = i + 1; j < placed.length; j += 1) {
+        let dx = placed[j].x - placed[i].x;
+        let dy = placed[j].y - placed[i].y;
+        let d = Math.hypot(dx, dy);
+        if (d >= apart - 0.01) continue;
+        overlap = true;
+        if (d < 1e-6) {
+          // the same spot: fan out in a fixed direction so the layout is the same on every render
+          const turn = (i + j) * GOLDEN_ANGLE;
+          dx = Math.cos(turn);
+          dy = Math.sin(turn);
+          d = 1;
+        } else {
+          dx /= d;
+          dy /= d;
+        }
+        const push = (apart - Math.max(d, 0)) / 2 + 0.05;
+        placed[i].x -= dx * push;
+        placed[i].y -= dy * push;
+        placed[j].x += dx * push;
+        placed[j].y += dy * push;
+        pin(i);
+        pin(j);
+      }
+      const hx = placed[i].x - home.x;
+      const hy = placed[i].y - home.y;
+      const hd = Math.hypot(hx, hy);
+      if (hd < fromHome - 0.01) {
+        overlap = true;
+        const turn = i * GOLDEN_ANGLE;
+        const ux = hd < 1e-6 ? Math.cos(turn) : hx / hd;
+        const uy = hd < 1e-6 ? Math.sin(turn) : hy / hd;
+        placed[i].x = home.x + ux * (fromHome + 0.05);
+        placed[i].y = home.y + uy * (fromHome + 0.05);
+        pin(i);
+      }
+    }
+    if (!overlap) break;
+  }
+
+  return placed.map((position, index) => {
+    let nearest = Number.POSITIVE_INFINITY;
+    placed.forEach((other, j) => {
+      if (j !== index) nearest = Math.min(nearest, Math.hypot(other.x - position.x, other.y - position.y));
+    });
+    const trueX = points[index].x;
+    const trueY = points[index].y;
+    return {
+      x: position.x,
+      y: position.y,
+      trueX,
+      trueY,
+      clamped: anchors[index].clamped,
+      moved: !anchors[index].clamped && Math.hypot(position.x - trueX, position.y - trueY) > 1.5,
+      angle: (Math.atan2(trueY - position.y, trueX - position.x) * 180) / Math.PI,
+      hitR: Math.max(sizes.markerR + 3, Math.min(sizes.hitR, nearest / 2)),
+    };
+  });
+}
+
+const COMPASS = ["east", "north-east", "north", "north-west", "west", "south-west", "south", "south-east"] as const;
+
+/** "north-west" for a screen direction (y grows downward) */
+export function compassText(dx: number, dy: number): string {
+  const degrees = (Math.atan2(-dy, dx) * 180) / Math.PI;
+  return COMPASS[((Math.round(degrees / 45) % 8) + 8) % 8];
 }

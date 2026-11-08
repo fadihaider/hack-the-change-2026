@@ -160,7 +160,8 @@ export function HowThisWorks({ basemap }: { basemap: AccessBasemap }) {
             )}
             <li>
               Perturbation ARI {clustering.selected.perturbation_ari.toFixed(3)}: whether the same groups come back when
-              the counts are nudged by 1%, where 1 means identical.
+              the scaled counts get a small random nudge (0.01 standard deviations) and the model is fitted again,
+              where 1 means identical.
             </li>
           </ul>
           <p>

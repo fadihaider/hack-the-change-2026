@@ -7,6 +7,7 @@ import type { NearbyType, NearbyView } from "../frontend/live-api.ts";
 import {
   communityAt,
   communityOutlines,
+  countingRadiusM,
   geocode,
   GUIDE_MESSAGES,
   isInCalgary,
@@ -18,7 +19,7 @@ import {
   type ResourceOptions,
   type ServiceType,
 } from "../mvp/resources.ts";
-import { boundsAround, ringsIntersect, ringsOfGeometry, roundTo, type Bounds } from "./geometry.ts";
+import { boundsAround, KM_PER_DEGREE, ringsIntersect, ringsOfGeometry, roundTo, type Bounds } from "./geometry.ts";
 import { loadAccessSnapshot } from "./snapshot.ts";
 
 export const NEARBY_RADII_KM = [1, 2, 3, 5] as const;
@@ -221,12 +222,23 @@ export async function buildNearby(
   }));
 
   const shown = { lat: roundTo(origin.point.lat, ORIGIN_DIGITS), lon: roundTo(origin.point.lng, ORIGIN_DIGITS) };
-  const bounds = boundsAround([shown, ...resources]);
+  // the inline map always shows the whole chosen distance around home, so the basemap covers that circle too
+  const dLat = query.radiusKm / KM_PER_DEGREE;
+  const dLon = query.radiusKm / (KM_PER_DEGREE * Math.max(0.1, Math.cos((shown.lat * Math.PI) / 180)));
+  const circle = [
+    { lat: shown.lat + dLat, lon: shown.lon },
+    { lat: shown.lat - dLat, lon: shown.lon },
+    { lat: shown.lat, lon: shown.lon + dLon },
+    { lat: shown.lat, lon: shown.lon - dLon },
+  ];
+  const bounds = boundsAround([shown, ...circle, ...resources]);
   const counts = query.types.map((type) => ({
     type,
     label: TYPE_TABLE[type].label,
     shown: resources.filter((resource) => resource.type === type).length,
     withinRadius: result.withinCounts[type],
+    // the real counting distance, which is shorter than the chosen one for transit stops (800 m)
+    withinKm: countingRadiusM(type, query.radiusKm * METERS_PER_KM) / METERS_PER_KM,
   }));
 
   return {
