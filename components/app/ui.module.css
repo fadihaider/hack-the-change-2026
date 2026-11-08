@@ -26,6 +26,11 @@
   padding: 24px var(--rr-gut) 112px;
 }
 
+/* an overview screen, e.g. care: more room on wide screens, the same single column on phones */
+.columnWide {
+  max-width: calc(960px + 2 * var(--rr-gut));
+}
+
 .before {
   margin-bottom: 8px;
 }
@@ -593,6 +598,10 @@
   .column {
     max-width: calc(560px + 2 * var(--rr-gut));
     padding: 28px 0 140px;
+  }
+
+  .columnWide {
+    max-width: calc(960px + 2 * var(--rr-gut));
   }
 
   .before {
