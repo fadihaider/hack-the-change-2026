@@ -78,9 +78,9 @@ private struct VoicePanel: View {
     @Bindable var model: VoiceNoteModel
     var onTypeInstead: () -> Void
     var onClose: () -> Void
-    @State private var player: AVAudioPlayer?
-    @State private var playing = false
+    @State private var player = ListenBackPlayer()
     @State private var slow = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -204,12 +204,17 @@ private struct VoicePanel: View {
             }
         }
         .onChange(of: model.phase) { _, _ in stopPlayback() }
+        .onChange(of: scenePhase) { _, phase in
+            // recording can't go on in the background; keep what was captured and say so
+            if phase == .background { model.stopRecording(.background) }
+        }
     }
 
     private func statusLine(_ take: VoiceTake) -> String {
         if case .stopped(_, let hitLimit) = model.phase, hitLimit {
             return "Recording stopped at the \(VoiceLimits.words(model.maxSeconds)) limit."
         }
+        if let line = model.stoppedBy.line { return "\(line) Recorded \(VoiceLimits.words(take.seconds))." }
         return "Recorded \(VoiceLimits.words(take.seconds))."
     }
 
@@ -234,17 +239,14 @@ private struct VoicePanel: View {
         .accessibilityIdentifier("care.voice.listen")
     }
 
+    private var playing: Bool { player.playing }
+
     private func play(_ take: VoiceTake) {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-        try? AVAudioSession.sharedInstance().setActive(true)
-        player = try? AVAudioPlayer(data: take.audio)
-        playing = player?.play() ?? false
+        player.play(take.audio)
     }
 
     private func stopPlayback() {
-        player?.stop()
-        player = nil
-        playing = false
+        player.stop()
     }
 
     private func leave(_ next: () -> Void) {

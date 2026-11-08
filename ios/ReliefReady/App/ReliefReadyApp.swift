@@ -6,6 +6,8 @@ struct ReliefReadyApp: App {
 
     init() {
         Fonts.registerIfNeeded()
+        // a recording left behind by a crash or a kill mid-recording never outlives the next launch
+        AudioRecorderEngine.sweepLeftovers()
         Self.styleNavigationBars()
         _model = State(initialValue: AppModel())
     }

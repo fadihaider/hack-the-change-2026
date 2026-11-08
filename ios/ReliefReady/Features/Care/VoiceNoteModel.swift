@@ -66,6 +66,15 @@ protocol VoiceRecorderEngine: AnyObject {
     func stop() -> Data?
     /// stops without keeping anything
     func cancel()
+    /// seconds of audio actually captured so far; nil when the engine can't say, so the wall clock is used.
+    /// it stops growing while the system has paused the recording
+    var recordedSeconds: TimeInterval? { get }
+    /// called when the system stops the recording on its own (a call, Siri, another app taking the microphone)
+    var onInterrupted: (() -> Void)? { get set }
+}
+
+extension VoiceRecorderEngine {
+    var recordedSeconds: TimeInterval? { nil }
 }
 
 @Observable
@@ -84,7 +93,25 @@ final class VoiceNoteModel {
         case error(String, VoiceTake?)
     }
 
-    enum StopReason { case user, time }
+    enum StopReason {
+        /// Stop was tapped
+        case user
+        /// the two minute limit
+        case time
+        /// the system took the microphone (a call, Siri, an alarm)
+        case interrupted
+        /// ReliefReady went to the background, which stops recording
+        case background
+
+        /// what the stopped take says about how it ended; nil for a plain Stop
+        var line: String? {
+            switch self {
+            case .user, .time: nil
+            case .interrupted: "Recording stopped when another app used the microphone."
+            case .background: "Recording stopped when you left ReliefReady."
+            }
+        }
+    }
 
     typealias Transcribe = (Data) async throws(APIError) -> Transcript
     /// saves the confirmed words and returns a message to show here, or nil when the screen moved on
@@ -92,6 +119,8 @@ final class VoiceNoteModel {
 
     private(set) var phase: Phase = .idle
     private(set) var elapsed = 0
+    /// how the last recording ended
+    private(set) var stoppedBy: StopReason = .user
     /// the transcript lives outside the phase so no error can wipe it
     var transcript: String?
     private(set) var saveError: String?
@@ -112,6 +141,7 @@ final class VoiceNoteModel {
         self.maxSeconds = maxSeconds
         self.transcribeAudio = transcribe
         self.save = save
+        engine.onInterrupted = { [weak self] in self?.stopRecording(.interrupted) }
     }
 
     var isWorking: Bool {
@@ -165,7 +195,9 @@ final class VoiceNoteModel {
     /// moves the clock and stops at the limit; the ticker calls it, and tests call it with a chosen time
     func tick(now: Date) {
         guard phase == .recording, let startedAt else { return }
-        let seconds = min(maxSeconds, Int(now.timeIntervalSince(startedAt)))
+        // the recorder's own clock, so a pause the system made never counts as recorded time
+        let measured = engine.recordedSeconds ?? now.timeIntervalSince(startedAt)
+        let seconds = min(maxSeconds, Int(measured))
         elapsed = seconds
         if !warned && maxSeconds - seconds <= VoiceLimits.warnBeforeLimit {
             warned = true
@@ -178,9 +210,12 @@ final class VoiceNoteModel {
         guard phase == .recording else { return }
         ticker?.cancel()
         ticker = nil
-        let seconds = startedAt.map { min(maxSeconds, max(1, Int(Date().timeIntervalSince($0).rounded()))) } ?? 1
+        // read before the engine stops: the recorder's clock resets once it has stopped
+        let measured = engine.recordedSeconds ?? startedAt.map { Date().timeIntervalSince($0) } ?? 1
+        let seconds = min(maxSeconds, max(1, Int(measured.rounded())))
         let recorded = reason == .time ? maxSeconds : seconds
         startedAt = nil
+        stoppedBy = reason
         guard let audio = engine.stop(), !audio.isEmpty else {
             phase = .error("Nothing was recorded. Try again closer to the microphone, or type the note instead.", nil)
             return
@@ -189,13 +224,15 @@ final class VoiceNoteModel {
             phase = .error("That recording is too long to send. Record a shorter note, or type it instead.", nil)
             return
         }
-        let hitLimit = reason != .user
+        let hitLimit = reason == .time
         phase = .stopped(VoiceTake(audio: audio, seconds: recorded), hitLimit: hitLimit)
-        say(
-            hitLimit
-                ? "Recording stopped at the \(VoiceLimits.words(maxSeconds)) limit. Listen back, or transcribe it."
-                : "Recording stopped. Listen back, or transcribe it."
-        )
+        if hitLimit {
+            say("Recording stopped at the \(VoiceLimits.words(maxSeconds)) limit. Listen back, or transcribe it.")
+        } else if let line = reason.line {
+            say("\(line) Recorded \(VoiceLimits.words(recorded)). Listen back, or transcribe it.")
+        } else {
+            say("Recording stopped. Listen back, or transcribe it.")
+        }
     }
 
     func transcribe(_ take: VoiceTake) async {
@@ -276,11 +313,40 @@ final class VoiceNoteModel {
 
 // MARK: - the real recorder
 
-/// AVAudioRecorder to an m4a in the temporary folder; the file is deleted as soon as its bytes are read
+/// AVAudioRecorder to an m4a in the temporary folder; the file is deleted as soon as its bytes are read. a file left
+/// behind by a crash or a kill mid-recording is swept at launch and whenever the voice screen opens
 @MainActor
 final class AudioRecorderEngine: NSObject, VoiceRecorderEngine {
+    nonisolated static let filePrefix = "voice-note-"
+
     private var recorder: AVAudioRecorder?
     private var url: URL?
+    /// the recorder's time the last time it was recording; currentTime reads 0 once the system stops it
+    private var lastTime: TimeInterval = 0
+    private var interruptionObserver: NSObjectProtocol?
+    var onInterrupted: (() -> Void)?
+
+    override init() {
+        super.init()
+        Self.sweepLeftovers()
+    }
+
+    /// deletes every leftover recording in a folder (the temporary folder by default); returns how many went
+    @discardableResult
+    nonisolated static func sweepLeftovers(in folder: URL = FileManager.default.temporaryDirectory) -> Int {
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        var removed = 0
+        for file in files where file.lastPathComponent.hasPrefix(filePrefix) && file.pathExtension == "m4a" {
+            if (try? FileManager.default.removeItem(at: file)) != nil { removed += 1 }
+        }
+        return removed
+    }
+
+    var recordedSeconds: TimeInterval? {
+        guard let recorder else { return nil }
+        if recorder.isRecording { lastTime = recorder.currentTime }
+        return lastTime
+    }
 
     func requestPermission() async -> Bool {
         await AVAudioApplication.requestRecordPermission()
@@ -294,8 +360,11 @@ final class AudioRecorderEngine: NSObject, VoiceRecorderEngine {
         } catch {
             throw .micBusy
         }
-        guard session.isInputAvailable else { throw .noMicrophone }
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent("voice-note-\(UUID().uuidString).m4a")
+        guard session.isInputAvailable else {
+            Self.releaseSession()
+            throw .noMicrophone
+        }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(Self.filePrefix)\(UUID().uuidString).m4a")
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: 44_100,
@@ -304,11 +373,15 @@ final class AudioRecorderEngine: NSObject, VoiceRecorderEngine {
         ]
         do {
             let recorder = try AVAudioRecorder(url: file, settings: settings)
+            recorder.delegate = self
             guard recorder.record(forDuration: TimeInterval(VoiceLimits.maxSeconds + 1)) else { throw MicProblem.micBusy }
             self.recorder = recorder
             url = file
+            lastTime = 0
+            observeInterruptions()
         } catch {
             try? FileManager.default.removeItem(at: file)
+            Self.releaseSession()
             throw .micBusy
         }
     }
@@ -327,9 +400,93 @@ final class AudioRecorderEngine: NSObject, VoiceRecorderEngine {
         cleanUp()
     }
 
+    /// a call, Siri or an alarm pauses the recorder and nothing resumes it, so the take ends there
+    private func observeInterruptions() {
+        if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(), queue: .main
+        ) { [weak self] note in
+            let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            guard raw.flatMap(AVAudioSession.InterruptionType.init(rawValue:)) == .began else { return }
+            MainActor.assumeIsolated { self?.interrupted() }
+        }
+    }
+
+    private func interrupted() {
+        guard recorder != nil else { return }
+        _ = recordedSeconds
+        onInterrupted?()
+    }
+
     private func cleanUp() {
+        if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
+        interruptionObserver = nil
         if let url { try? FileManager.default.removeItem(at: url) }
         url = nil
+        lastTime = 0
+        Self.releaseSession()
+    }
+
+    /// lets go of the audio session, so music or a podcast the caregiver paused can carry on
+    static func releaseSession() {
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+    }
+}
+
+extension AudioRecorderEngine: AVAudioRecorderDelegate {
+    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        // a recording that ends badly (the system took the microphone) is reported; the time limit is the model's
+        guard !flag else { return }
+        Task { @MainActor in self.interrupted() }
+    }
+
+    nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: (any Error)?) {
+        Task { @MainActor in self.interrupted() }
+    }
+}
+
+/// "Listen back": plays the take once and lets go of the audio session when it ends, so the button turns back
+/// and other apps' audio resumes
+@Observable
+final class ListenBackPlayer: NSObject {
+    private(set) var playing = false
+    @ObservationIgnored private var player: AVAudioPlayer?
+
+    func play(_ audio: Data) {
+        stop()
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .spokenAudio)
+        try? session.setActive(true)
+        guard let player = try? AVAudioPlayer(data: audio) else {
+            AudioRecorderEngine.releaseSession()
+            return
+        }
+        player.delegate = self
+        self.player = player
+        playing = player.play()
+        if !playing { finished() }
+    }
+
+    func stop() {
+        guard player != nil || playing else { return }
+        player?.stop()
+        finished()
+    }
+
+    fileprivate func finished() {
+        player?.delegate = nil
+        player = nil
+        playing = false
+        AudioRecorderEngine.releaseSession()
+    }
+}
+
+extension ListenBackPlayer: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in self.finished() }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: (any Error)?) {
+        Task { @MainActor in self.finished() }
     }
 }

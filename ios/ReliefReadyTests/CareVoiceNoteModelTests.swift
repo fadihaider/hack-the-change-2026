@@ -10,6 +10,11 @@ final class FakeRecorder: VoiceRecorderEngine {
     var audio: Data? = Data(repeating: 7, count: 2048)
     private(set) var started = 0
     private(set) var cancelled = 0
+    /// the recorder's own clock; nil uses the wall clock, like an engine that can't say
+    var seconds: TimeInterval?
+    var onInterrupted: (() -> Void)?
+
+    var recordedSeconds: TimeInterval? { seconds }
 
     func requestPermission() async -> Bool { allow }
 
@@ -81,6 +86,55 @@ struct CareVoiceNoteModelTests {
         #expect(hitLimit)
         #expect(take.seconds == 120)
         #expect(voice.announcement == "Recording stopped at the 2 minutes limit. Listen back, or transcribe it.")
+    }
+
+    @Test func anInterruptionKeepsWhatWasRecordedAndSaysSo() async {
+        let recorder = FakeRecorder()
+        let voice = model(recorder)
+        await voice.startRecording()
+        // a phone call paused the recorder after 20 seconds; the wall clock went on to 100
+        recorder.seconds = 20
+        voice.tick(now: Date().addingTimeInterval(100))
+        #expect(voice.elapsed == 20)
+        #expect(voice.phase == .recording)
+        recorder.onInterrupted?()
+        guard case .stopped(let take, let hitLimit) = voice.phase else {
+            Issue.record("expected stopped after the interruption, got \(voice.phase)")
+            return
+        }
+        #expect(!hitLimit)
+        #expect(take.seconds == 20)
+        #expect(voice.stoppedBy == .interrupted)
+        #expect(voice.announcement
+            == "Recording stopped when another app used the microphone. Recorded 20 seconds. Listen back, or transcribe it.")
+    }
+
+    @Test func theLimitFollowsTheRecordedAudioNotTheWallClock() async {
+        let recorder = FakeRecorder()
+        let voice = model(recorder)
+        await voice.startRecording()
+        recorder.seconds = 30
+        voice.tick(now: Date().addingTimeInterval(500))
+        #expect(voice.phase == .recording)
+        voice.stopRecording(.background)
+        guard case .stopped(let take, _) = voice.phase else {
+            Issue.record("expected stopped")
+            return
+        }
+        #expect(take.seconds == 30)
+        #expect(voice.stoppedBy.line == "Recording stopped when you left ReliefReady.")
+    }
+
+    @Test func leftoverRecordingsAreSwept() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("sweep-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        for name in ["voice-note-a.m4a", "voice-note-b.m4a", "keep.m4a", "voice-note-c.txt"] {
+            try Data([1, 2, 3]).write(to: folder.appendingPathComponent(name))
+        }
+        #expect(AudioRecorderEngine.sweepLeftovers(in: folder) == 2)
+        let left = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+        #expect(left == ["keep.m4a", "voice-note-c.txt"])
     }
 
     @Test func microphoneProblemsOfferTypingOrAnotherTry() async {
