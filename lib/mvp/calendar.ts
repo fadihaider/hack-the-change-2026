@@ -17,7 +17,7 @@ const ALBERTA_OFFSET_MS = -6 * 60 * 60 * 1000;
 
 interface SeedEvent {
   id: string;
-  /** days after today in Alberta Time, 1 to 7 */
+  /** days after the anchor day in Alberta Time, 1 to 6: the later of today and the care window's first day */
   day: number;
   start: string;
   end: string;
@@ -66,11 +66,16 @@ function albertaToday(now: Date): string {
   return new Date(now.getTime() + ALBERTA_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-/** the 6 demo events placed from tomorrow on, relative to the given real time */
-export function seedCalendarEvents(now: Date = new Date()): CalendarEvent[] {
+/**
+ * the 6 demo events placed on the days after an anchor: today in Alberta Time, or the first day of a later
+ * window. A care week that starts next Sunday ("hip surgery on Sunday") then still holds every demo clash.
+ */
+export function seedCalendarEvents(now: Date = new Date(), windowStart?: Date): CalendarEvent[] {
   const today = albertaToday(now);
+  const first = windowStart === undefined ? today : albertaToday(windowStart);
+  const anchor = first > today ? first : today;
   return SEED_EVENTS.map((event) => {
-    const date = addDays(today, event.day);
+    const date = addDays(anchor, event.day);
     return {
       id: event.id,
       summary: event.summary,
@@ -95,7 +100,7 @@ export function createSeedCalendar(realNow: () => Date = () => new Date()): Cale
   return {
     async listEvents(_userId: string, startsAt: Date, endsAt: Date): Promise<CalendarEvent[]> {
       validWindow(startsAt, endsAt);
-      return seedCalendarEvents(realNow()).filter((event) => {
+      return seedCalendarEvents(realNow(), startsAt).filter((event) => {
         const start = new Date(event.start?.dateTime ?? "").getTime();
         const end = new Date(event.end?.dateTime ?? "").getTime();
         return start < endsAt.getTime() && end > startsAt.getTime();
