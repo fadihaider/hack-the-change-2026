@@ -3,6 +3,7 @@ import SwiftUI
 /// the shell: Start full screen until there is a care episode, then the four tabs
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -19,7 +20,12 @@ struct RootView: View {
                     .pageBackground()
             }
         }
-        .task { await model.refreshSession() }
+        .task { await model.connect() }
+        .onChange(of: scenePhase) { _, phase in
+            // back from Settings or the Local Network prompt: try again without waiting for a tap
+            guard phase == .active, model.session == nil, model.sessionError != nil else { return }
+            Task { await model.refreshSession() }
+        }
     }
 }
 
@@ -54,6 +60,7 @@ struct MainTabs: View {
 /// the session could not load: say why, retry, or change the server address
 struct ConnectionProblemView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     var error: APIError
 
     var body: some View {
@@ -65,6 +72,21 @@ struct ConnectionProblemView: View {
             Text("Trying \(model.config.baseURL.absoluteString)")
                 .font(.rrNote)
                 .foregroundStyle(Theme.muted)
+            #if !targetEnvironment(simulator)
+                if error.code == APIError.network.code {
+                    // a phone reaches the server over the local network, which iOS asks about once
+                    NoteText(
+                        "If you chose Don\u{2019}t Allow when iOS asked about devices on your local network, turn on Local Network for ReliefReady in Settings.",
+                        alignment: .leading
+                    )
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                    }
+                    .font(.rrBodyMedium)
+                    .tint(Theme.teal)
+                    .accessibilityIdentifier("connectionProblem.settings")
+                }
+            #endif
             Card { ServerURLForm() }
         }
         .accessibilityIdentifier("connectionProblem")

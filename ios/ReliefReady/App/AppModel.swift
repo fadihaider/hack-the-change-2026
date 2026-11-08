@@ -10,13 +10,14 @@ final class AppModel {
     private(set) var session: Session?
     /// the last failed session load; cleared by the next success
     private(set) var sessionError: APIError?
-    private(set) var isLoadingSession = false
     /// the tab on screen; features switch tabs through showUrgent rather than setting it directly
     var selectedTab: AppTab
     /// a pending "open Urgent here" from another feature; UrgentView consumes and clears it
     var urgentLink: UrgentLink?
 
     @ObservationIgnored private let urlSession: URLSession
+    /// the newest session load; an older one that answers late (another server, or a slow retry) is dropped
+    @ObservationIgnored private var sessionSequence = 0
 
     init(config: ServerConfig = ServerConfig(), urlSession: URLSession = .shared) {
         self.config = config
@@ -27,13 +28,30 @@ final class AppModel {
 
     /// GET /api/session; keeps the previous session on failure so screens do not flash empty
     func refreshSession() async {
-        isLoadingSession = true
-        defer { isLoadingSession = false }
+        sessionSequence += 1
+        let mine = sessionSequence
+        let client = api
         do {
-            session = try await api.session()
+            let next = try await client.session()
+            guard mine == sessionSequence, client === api else { return }
+            session = next
             sessionError = nil
         } catch {
+            guard mine == sessionSequence, client === api, !error.isCancelled else { return }
             sessionError = error
+        }
+    }
+
+    /// the first load. on a phone the first call brings up the Local Network prompt and can time out while it is
+    /// open, so a network failure is tried again every few seconds for a while before only Try again is left
+    func connect(retryFor: Duration = .seconds(30), every: Duration = .seconds(3)) async {
+        let clock = ContinuousClock()
+        let started = clock.now
+        await refreshSession()
+        while session == nil, sessionError?.code == APIError.network.code, clock.now - started < retryFor {
+            try? await Task.sleep(for: every)
+            guard !Task.isCancelled, session == nil else { return }
+            await refreshSession()
         }
     }
 
