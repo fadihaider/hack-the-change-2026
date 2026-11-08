@@ -44,10 +44,18 @@ import {
   type Tier,
 } from "@/lib/demo/workflow";
 
+import { createLiveApi, type LiveSession } from "@/lib/frontend/live-api.ts";
+
 import First72Guide from "./First72Guide";
 import SupportSidebar from "./SupportSidebar";
 import dynamic from "next/dynamic";
 const LiveRequests = dynamic(() => import("./LiveRequests"));
+const LiveApp = dynamic(() => import("./LiveApp.tsx"));
+
+type LiveStatus =
+  | { status: "checking" }
+  | { status: "ready"; session: LiveSession }
+  | { status: "unavailable" };
 
 type Mode = "urgent" | "care" | "recover" | "guide";
 const dateLabel = (n: number) =>
@@ -106,6 +114,9 @@ function Modal({
 }
 
 export default function ReliefReady() {
+  // live (local) mode is the default when GET /api/session works; otherwise the fictional demo runs as before
+  const [live, setLive] = useState<LiveStatus>({ status: "checking" });
+  const [preferDemo, setPreferDemo] = useState(false);
   const [showLive, setShowLive] = useState(false);
   const [mode, setMode] = useState<Mode>("urgent");
   const [step, setStep] = useState(0);
@@ -168,6 +179,20 @@ export default function ReliefReady() {
     const timer = setInterval(() => setNow((n) => n + 30000), 30000);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    let disposed = false;
+    createLiveApi()
+      .session()
+      .then((session) => {
+        if (!disposed) setLive({ status: "ready", session });
+      })
+      .catch(() => {
+        if (!disposed) setLive({ status: "unavailable" });
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [preferDemo]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 6000);
@@ -312,6 +337,22 @@ export default function ReliefReady() {
     setValidation("");
   }
 
+  if (live.status === "checking")
+    return (
+      <div className="app-shell live-checking" role="status">
+        <span className="brand-mark">
+          R
+          <span className="brand-dot" aria-hidden="true">
+            •
+          </span>
+        </span>
+        Checking for the local workspace…
+      </div>
+    );
+  if (live.status === "ready" && !preferDemo)
+    return (
+      <LiveApp session={live.session} onUseDemo={() => setPreferDemo(true)} />
+    );
   if (showLive) return <LiveRequests onBack={() => setShowLive(false)} />;
 
   return (
@@ -341,7 +382,7 @@ export default function ReliefReady() {
             <span className="context-dot" aria-hidden="true" />
             <span>Caring for {name || "your person"}</span>
             <span className="care-context-dates">
-              {episodeDate(start)} – {episodeDate(end)}
+              {episodeDate(start)} to {episodeDate(end)}
             </span>
           </div>
           <div className="header-actions">
@@ -405,9 +446,21 @@ export default function ReliefReady() {
             <span className="workspace-location">
               <MapPin size={14} /> Calgary, Alberta
             </span>
-            <button className="text-button" onClick={() => setShowLive(true)}>
-              Open live workspace <ArrowRight size={15} />
-            </button>
+            {live.status === "ready" ? (
+              <button
+                className="text-button"
+                onClick={() => {
+                  setLive({ status: "checking" });
+                  setPreferDemo(false);
+                }}
+              >
+                Back to live (local) mode <ArrowRight size={15} />
+              </button>
+            ) : (
+              <button className="text-button" onClick={() => setShowLive(true)}>
+                Open live workspace <ArrowRight size={15} />
+              </button>
+            )}
           </div>
         </div>
         <main id="main" tabIndex={-1}>

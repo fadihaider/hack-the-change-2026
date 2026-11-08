@@ -1,0 +1,13 @@
+{
+  "place": "Calgary Central Library (public building)",
+  "address": "800 3 ST SE",
+  "lat": 51.045354,
+  "lng": -114.054781,
+  "community": "DOWNTOWN EAST VILLAGE",
+  "source": "City of Calgary Parcel Address",
+  "sourceUrl": "https://data.calgary.ca/d/9zvu-p8uz",
+  "apiUrl": "https://data.calgary.ca/resource/9zvu-p8uz.json?$limit=1&address=800%203%20ST%20SE",
+  "license": "Open Government Licence - City of Calgary",
+  "fetchedAt": "2026-11-07",
+  "notes": "fictional persona Rosa uses this public building address; never a private home"
+}

@@ -36,7 +36,18 @@ function group(state: RequestView["state"]) {
   return "Not sent";
 }
 
-export default function LiveRequests({ onBack }: { onBack: () => void }) {
+export default function LiveRequests({
+  onBack,
+  embedded = false,
+  mail = "gmail",
+}: {
+  onBack?: () => void;
+  /** inside the live app: no page header or footer, the shell provides them */
+  embedded?: boolean;
+  /** RR_MAIL from GET /api/session; "outbox" means nothing leaves this machine */
+  mail?: string;
+}) {
+  const outbox = mail === "outbox";
   const [requests, setRequests] = useState<RequestView[]>([]);
   const [appNow, setAppNow] = useState("");
   const [error, setError] = useState("");
@@ -136,40 +147,46 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
           ),
         )
       : requests;
+  const back = () => onBack?.();
   return (
-    <div className="live-workspace">
-      <header className="live-header">
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            onBack();
-          }}
-        >
-          <Sprout size={25} /> reliefready<span className="brand-dot">.</span>
-        </a>
-        <button className="secondary" onClick={onBack}>
-          <ArrowLeft size={15} /> Back to fictional demo
-        </button>
-      </header>
-      <div className="page-heading">
-        <div>
-          <h1>Your live care workspace.</h1>
-          <p>
-            Signed-in account records only. Demo data never appears in this
-            view.
-          </p>
-        </div>
-        <span className="badge">
-          <ShieldCheck size={14} />{" "}
-          {ready
-            ? "Server records"
-            : loading
-              ? "Checking connection"
-              : "Service unavailable"}
-        </span>
-      </div>
+    <div className={embedded ? "live-embedded" : "live-workspace"}>
+      {!embedded && (
+        <>
+          <header className="live-header">
+            <a
+              className="brand"
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                back();
+              }}
+            >
+              <Sprout size={25} /> reliefready
+              <span className="brand-dot">.</span>
+            </a>
+            <button className="secondary" onClick={back}>
+              <ArrowLeft size={15} /> Back to fictional demo
+            </button>
+          </header>
+          <div className="page-heading">
+            <div>
+              <h1>Your live care workspace.</h1>
+              <p>
+                Signed-in account records only. Demo data never appears in this
+                view.
+              </p>
+            </div>
+            <span className="badge">
+              <ShieldCheck size={14} />{" "}
+              {ready
+                ? "Server records"
+                : loading
+                  ? "Checking connection"
+                  : "Service unavailable"}
+            </span>
+          </div>
+        </>
+      )}
       {error && (
         <div className="warning" role="alert">
           <strong>{error}</strong>
@@ -202,7 +219,7 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
               void reload(true).catch(() => {});
             }}
           >
-            Recover
+            {embedded ? "All requests" : "Recover"}
           </button>
         </div>
         <button
@@ -231,9 +248,11 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
             You can continue exploring the fictional demo while account access
             and services are prepared.
           </p>
-          <button className="primary" onClick={onBack}>
-            Return to demo <ArrowLeft size={16} />
-          </button>
+          {onBack && (
+            <button className="primary" onClick={back}>
+              Return to demo <ArrowLeft size={16} />
+            </button>
+          )}
         </div>
       )}
       {!loading && ready && !rows.length && (
@@ -448,12 +467,15 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
                             if (result.state === "needs_review")
                               return "Nothing was sent. The request needs review before another approval.";
                           },
-                          "Gmail delivery was recorded. This is still waiting for a recipient response.",
+                          outbox
+                            ? "Saved to the local demo outbox. No real email was sent. Open the outbox to answer as the recipient, then refresh."
+                            : "Gmail delivery was recorded. This is still waiting for a recipient response.",
                           true,
                         )
                       }
                     >
-                      Send approved email <Mail size={15} />
+                      {outbox ? "Send to demo outbox" : "Send approved email"}{" "}
+                      <Mail size={15} />
                     </button>
                   )}
                   {["awaiting_approval", "needs_review"].includes(r.state) && (
@@ -499,14 +521,16 @@ export default function LiveRequests({ onBack }: { onBack: () => void }) {
             ))}
         </div>
       )}
-      <footer className="page-footer">
-        <span>
-          <Sprout size={14} /> Approval first. Evidence always.
-        </span>
-        <span>
-          Live endpoints and sign-in must be configured by the account owner.
-        </span>
-      </footer>
+      {!embedded && (
+        <footer className="page-footer">
+          <span>
+            <Sprout size={14} /> Approval first. Evidence always.
+          </span>
+          <span>
+            Live endpoints and sign-in must be configured by the account owner.
+          </span>
+        </footer>
+      )}
     </div>
   );
 }
