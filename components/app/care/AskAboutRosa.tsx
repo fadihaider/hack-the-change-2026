@@ -229,11 +229,19 @@ function AnswerDetails({ name, result, factById, onAdd }: DetailsProps) {
               <span>Saved as an open question</span>
             </p>
           )}
-          <div className={a.answerActions}>
-            <Button variant="secondary" onClick={onAdd}>
-              Add the answer
-            </Button>
-          </div>
+          {result.conflictPending ? (
+            <p className={a.saved}>
+              <span>
+                Open “Open questions &amp; conflicts” in {possessive(name)} passport and keep the note that’s right.
+              </span>
+            </p>
+          ) : (
+            <div className={a.answerActions}>
+              <Button variant="secondary" onClick={onAdd}>
+                Add the answer
+              </Button>
+            </div>
+          )}
           {/* a missed health question still shows where to call */}
           <p className={a.missingHelp}>
             For health advice, call <a href={EMERGENCY_LINES.healthLink.href}>Health Link at 811</a>. In an

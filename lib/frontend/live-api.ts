@@ -314,6 +314,8 @@ const askSchema = z.object({
   answeredBy: z.enum(["demo_rules", "anthropic", "bedrock", "gemini", "none"]).default("none"),
   /** true when the question asks for medical judgment: the answer is a non-diagnostic 811/911 pointer */
   medicalRedirect: z.boolean().default(false),
+  /** true when the only matching notes disagree: settle the conflict first; no open question is created */
+  conflictPending: z.boolean().default(false),
   retrieval: z
     .object({
       method: z.enum(["keyword", "keyword+vector", "none"]),
