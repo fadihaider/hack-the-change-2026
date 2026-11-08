@@ -1,10 +1,22 @@
 import SwiftUI
 
 extension View {
-    /// names the screen for the back button and voiceover, but leaves the bar's title empty because the
-    /// QuestionHeader already says it in big type
+    /// names the screen for the back button and voiceover without showing it in the bar, because the QuestionHeader
+    /// already says it in big type. a tab's first screen hides its empty bar so the header starts at the top; a
+    /// pushed or presented screen keeps the bar for its back or close button
     func screenTitle(_ title: String) -> some View {
-        navigationTitle(title)
+        modifier(ScreenTitle(title: title))
+    }
+}
+
+private struct ScreenTitle: ViewModifier {
+    var title: String
+    /// true for a screen pushed onto a stack or shown in a sheet, false for a tab's root screen
+    @Environment(\.isPresented) private var isPresented
+
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle(title)
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -14,5 +26,24 @@ extension View {
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
+            .toolbar(isPresented ? .automatic : .hidden, for: .navigationBar)
+            .overlay(alignment: .top) {
+                if !isPresented { StatusBarFade() }
+            }
+    }
+}
+
+/// with no bar, the page colour behind the status bar, fading out just below it, so scrolled text stays clear of
+/// the clock
+private struct StatusBarFade: View {
+    var body: some View {
+        LinearGradient(colors: [Theme.page, Theme.page.opacity(0)], startPoint: .top, endPoint: .bottom)
+            .frame(height: 14)
+            .background(alignment: .top) {
+                // a zero-height strip at the top of the safe area grows up over the status bar
+                Theme.page.ignoresSafeArea(edges: .top).frame(height: 0)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
