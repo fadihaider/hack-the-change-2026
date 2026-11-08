@@ -5,7 +5,8 @@ import { CARE_LIMITS, eventTitle, runCareCompiler, type CareCategory, type Exist
 import { classifyQuestion } from "../../../lib/ai/medicalGuard.ts";
 import { redirectProfileQa, runProfileQa, type ProfileQaResult } from "../../../lib/ai/profileQa.ts";
 import { normalizeText } from "../../../lib/ai/text.ts";
-import { albertaTimestamp, datesMentioned, isRuleGrounded, timesMentioned } from "../../../lib/ai/time.ts";
+import { albertaTimestamp, datesMentioned, isRuleGrounded, statedDailyRule, timesMentioned } from "../../../lib/ai/time.ts";
+import { isLockedWording } from "../../../lib/care/lockedWording.ts";
 import type { SessionUser } from "../../../lib/mvp/auth.ts";
 import type { Runtime } from "../../../lib/mvp/runtime.ts";
 import { retrievePassport } from "./careRetrieval.ts";
@@ -320,10 +321,30 @@ export async function approveFact(rt: Runtime, user: SessionUser, factId: string
   return { fact };
 }
 
-const PARTNERS = `SELECT id::text AS id FROM care_fact
-  WHERE care_recipient_id = CAST(:recipient_id AS uuid) AND status = 'conflicting' AND id <> CAST(:id AS uuid)
-    AND (supersedes = CAST(:id AS uuid) OR id = CAST(:supersedes AS uuid))
+// every conflicting fact of this recipient; the conflict group is walked in code, since 3 or more notes form a chain
+const CONFLICTING = `SELECT id::text AS id, supersedes::text AS supersedes FROM care_fact
+  WHERE care_recipient_id = CAST(:recipient_id AS uuid) AND status = 'conflicting'
   ORDER BY created_at, id FOR UPDATE`;
+
+/**
+ * the conflicting facts linked to the kept one, directly or through other members: a fact joins when its supersedes
+ * points at a member or a member's supersedes points at it, the same grouping the review screen uses. in created order.
+ */
+function conflictGroup(rows: { id: string; supersedes: string | null }[], keep: string): string[] {
+  const group = new Set([keep]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    const pointedAt = new Set(rows.filter((row) => group.has(row.id)).map((row) => row.supersedes));
+    for (const row of rows) {
+      if (!group.has(row.id) && ((row.supersedes !== null && group.has(row.supersedes)) || pointedAt.has(row.id))) {
+        group.add(row.id);
+        grew = true;
+      }
+    }
+  }
+  return rows.map((row) => row.id).filter((id) => id !== keep && group.has(id));
+}
 
 const KEEP_FACT = `UPDATE care_fact SET status = 'approved', supersedes = CAST(:supersedes AS uuid)
   WHERE id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid)`;
@@ -335,7 +356,7 @@ const SUPERSEDE_FACT = `UPDATE care_fact SET status = 'superseded',
 const SUPERSEDE_EVENTS = `UPDATE care_event SET status = 'superseded'
   WHERE fact_id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid)`;
 
-/** the kept fact becomes approved with its events; its conflict partners become superseded (PRD C3) */
+/** the kept fact becomes approved with its events; every other fact in its conflict group becomes superseded (PRD C3) */
 export async function resolveConflict(rt: Runtime, user: SessionUser, keepFactId: string) {
   const database = rt.stores.database;
   const recipient = await loadRecipient(database, user.id);
@@ -345,9 +366,10 @@ export async function resolveConflict(rt: Runtime, user: SessionUser, keepFactId
     const rows = await tx.query<{ status: FactStatus; supersedes: string | null; version: number }>(FACT_STATE, params);
     if (!rows[0]) throw new ApiError(404, "not_found");
     if (rows[0].status !== "conflicting") throw new ApiError(409, "state_conflict");
-    const partners = (await tx.query<{ id: string }>(PARTNERS, [...params, p.text("supersedes", rows[0].supersedes)])).map(
-      (row) => row.id,
-    );
+    const conflicting = await tx.query<{ id: string; supersedes: string | null }>(CONFLICTING, [
+      p.uuid("recipient_id", recipient.id),
+    ]);
+    const partners = conflictGroup(conflicting, keep);
     // an edited version keeps pointing at the version it replaced, so its history survives the conflict
     const keepsHistory = Number(rows[0].version) > 1 && rows[0].supersedes !== null && !partners.includes(rows[0].supersedes);
     const supersedes =
@@ -394,7 +416,7 @@ export async function rejectFact(rt: Runtime, user: SessionUser, factId: string)
   return { fact };
 }
 
-const EDIT_STATE = `SELECT status, category, version FROM care_fact
+const EDIT_STATE = `SELECT status, category, text_exact, version FROM care_fact
   WHERE id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid) FOR UPDATE`;
 
 const EDIT_EVENTS = `SELECT to_json(starts_at)#>>'{}' AS starts_at, rrule, remind_minutes, location_text FROM care_event
@@ -450,9 +472,21 @@ function editedEventStart(text: string, oldStart: string): string | null {
 }
 
 /**
+ * the repeat rule an event keeps under the edited wording: a weekly or interval rule while the new text still states
+ * it, else a daily rule when the new text plainly says every day ("daily", "each morning"), else none. a plain daily
+ * rule is re-read the same way, so "every other day" never keeps it. a rule is never invented.
+ */
+function editedRule(oldRule: string | null, text: string): string | null {
+  if (oldRule !== null && oldRule !== "FREQ=DAILY" && isRuleGrounded(oldRule, text)) return oldRule;
+  const daily = statedDailyRule(text);
+  return daily !== null && isRuleGrounded(daily, text) ? daily : null;
+}
+
+/**
  * saves the caregiver's corrected wording as a new approved version (source: a caregiver note with exactly that text)
  * and keeps the old fact as superseded. events move to the new version only when the new text still states a time;
- * a repeat rule is kept only when the new text still states it. medical instructions keep their document wording.
+ * a repeat rule is kept or added only when the new text states it. locked care wording (medication, doses, wounds)
+ * keeps its source text.
  */
 export async function editFact(rt: Runtime, user: SessionUser, factId: string, value: string) {
   const database = rt.stores.database;
@@ -462,13 +496,19 @@ export async function editFact(rt: Runtime, user: SessionUser, factId: string, v
   if (text.length === 0 || text.length > CARE_LIMITS.maxFactChars) throw new ApiError(400, "invalid_input");
   const params = [p.uuid("id", id), p.uuid("recipient_id", recipient.id)];
   const newId = await database.transaction(async (tx) => {
-    const rows = await tx.query<{ status: FactStatus; category: CareCategory; version: number }>(EDIT_STATE, params);
+    const rows = await tx.query<{ status: FactStatus; category: CareCategory; text_exact: string; version: number }>(
+      EDIT_STATE,
+      params,
+    );
     const old = rows[0];
     if (!old) throw new ApiError(404, "not_found");
     if (old.status === "conflicting") throw new ApiError(409, "conflict_unresolved");
     if (old.status !== "suggested" && old.status !== "approved") throw new ApiError(409, "state_conflict");
-    // PRD 15: written care instructions are shown word for word from their source, never rewritten
-    if (old.category === "medical_instruction") throw new ApiError(409, "exact_wording_locked");
+    // PRD 15: written care instructions are shown word for word from their source, never rewritten. wording about
+    // medication, doses or wound care is locked whatever category it was given, and no edit may introduce it
+    if (isLockedWording(old.category, old.text_exact) || isLockedWording(old.category, text)) {
+      throw new ApiError(409, "exact_wording_locked");
+    }
     const events = await tx.query<EditEventRow>(EDIT_EVENTS, params);
     const sources = await tx.query<{ id: string }>(INSERT_NOTE_SOURCE, [
       p.uuid("recipient_id", recipient.id),
@@ -496,7 +536,7 @@ export async function editFact(rt: Runtime, user: SessionUser, factId: string, v
         p.uuid("fact_id", created),
         p.text("title", eventTitle(text)),
         p.text("starts_at", startsAt),
-        p.text("rrule", event.rrule !== null && isRuleGrounded(event.rrule, text) ? event.rrule : null),
+        p.text("rrule", editedRule(event.rrule, text)),
         p.int("remind_minutes", event.remind_minutes ?? 15),
         p.text("location_text", event.location_text),
       ]);

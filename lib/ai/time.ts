@@ -296,6 +296,15 @@ export function isRuleGrounded(rule: string, text: string): boolean {
   return (hasRange || WEEKLY_CUE.test(text)) && byDay.every((day) => days.has(day));
 }
 
+/**
+ * FREQ=DAILY when the text plainly says it happens every day ("daily", "every day", "each morning"), else null.
+ * "every other day" and wording that names days ("each morning on weekdays", "every day from tomorrow") are not
+ * read as a daily repeat, so no rule is invented from them.
+ */
+export function statedDailyRule(text: string): string | null {
+  return DAILY_CUE.test(text) && !INTERVAL_CUE.test(text) && !namesDay(text) ? "FREQ=DAILY" : null;
+}
+
 /** first date on or after the anchor that the rule allows, so starts_at is a real occurrence */
 export function ruleStartDate(anchor: string, rule: string): string {
   const byDay = /BYDAY=([A-Z,]+)/.exec(rule)?.[1].split(",");
