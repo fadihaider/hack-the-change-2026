@@ -54,7 +54,7 @@ struct SettingsView: View {
             Text("Care week")
                 .font(.rrHeadline)
                 .accessibilityAddTraits(.isHeader)
-            Text("Caring for \(StartText.recipientName(session)), \(AlbertaTime.weekRange(episode.startsOn, episode.endsOn))")
+            Text("Caring for \(AppModel.recipientName(session)), \(AlbertaTime.weekRange(episode.startsOn, episode.endsOn))")
                 .font(.rrBody)
                 .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)

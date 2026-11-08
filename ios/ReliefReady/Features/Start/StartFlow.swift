@@ -343,12 +343,6 @@ nonisolated enum StartText {
         return lines
     }
 
-    /// recipientName in session.tsx: displayName, then alias, then "your family member"
-    static func recipientName(_ session: Session?) -> String {
-        if let name = session?.careRecipient?.displayName { return name }
-        return session?.careRecipient?.alias ?? "your family member"
-    }
-
     /// the welcome's muted lead: before, during or after the week
     static func welcomeLead(name: String, today: String, episode: EpisodeSummary) -> String {
         // YYYY-MM-DD strings order like their dates, as in the web's string comparison

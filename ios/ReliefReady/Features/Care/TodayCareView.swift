@@ -241,6 +241,7 @@ struct TodayCareView: View {
 }
 
 private struct DayItemRow: View {
+    @Environment(AppModel.self) private var app
     var item: TimelineItem
     var busy: Bool
     var locked: Bool
@@ -289,7 +290,17 @@ private struct DayItemRow: View {
                         Text(item.fullText.map { "\u{201C}\($0)\u{201D}" } ?? item.title)
                             .font(.rrBody).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
                         if appointment {
-                            Text("See it in Urgent").font(.rrNote).foregroundStyle(Theme.muted)
+                            Button { app.showUrgent() } label: {
+                                Text("See it in Urgent")
+                                    .font(.rrNote)
+                                    .underline()
+                                    .foregroundStyle(Theme.tealInk)
+                                    .frame(minHeight: 44, alignment: .leading)
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(.isLink)
+                            .accessibilityIdentifier("care.today.urgent.\(item.title)")
                         }
                     }
                     .padding(12)

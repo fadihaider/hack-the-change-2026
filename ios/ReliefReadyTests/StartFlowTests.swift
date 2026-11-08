@@ -245,12 +245,6 @@ struct StartFlowTests {
         #expect(StartText.understood(end).map(\.text) == ["Until Saturday, Nov 14"])
         #expect(StartText.understood(Self.emptyPartial).isEmpty)
     }
-
-    @Test func recipientNameFallsBack() throws {
-        let session = try Fixtures.decode(Session.self, "session")
-        #expect(StartText.recipientName(session) == (session.careRecipient?.displayName ?? session.careRecipient?.alias ?? ""))
-        #expect(StartText.recipientName(nil) == "your family member")
-    }
 }
 
 /// what a flow announced, in order

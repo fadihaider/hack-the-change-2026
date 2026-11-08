@@ -165,17 +165,6 @@ struct RecoverLinesTests {
         #expect(RecoverLines.urgentLabel(.approved) == "See it in Urgent")
     }
 
-    @Test func showUrgentPostsTheRequest() async {
-        let center = NotificationCenter()
-        let received = Locked<String?>(nil)
-        let token = center.addObserver(forName: .reliefReadyShowUrgent, object: nil, queue: nil) { note in
-            received.set(note.userInfo?[RecoverNavigation.requestIdKey] as? String)
-        }
-        defer { center.removeObserver(token) }
-        await MainActor.run { RecoverNavigation.showUrgent(requestId: "r-42", center: center) }
-        #expect(received.get() == "r-42")
-    }
-
     @Test func checkAndSendMessages() throws {
         let before = RecoverLines.signature(Self.groups(waiting: [Self.request(.requested, id: "r1")]))
         let same = RecoverResponse(groups: Self.groups(waiting: [Self.request(.requested, id: "r1")]), appNow: "", expiredRequestIds: [])
@@ -203,11 +192,3 @@ struct RecoverLinesTests {
     }
 }
 
-/// a tiny thread-safe box for values set from notification callbacks
-final class Locked<Value: Sendable>: @unchecked Sendable {
-    private var value: Value
-    private let lock = NSLock()
-    init(_ value: Value) { self.value = value }
-    func set(_ next: Value) { lock.withLock { value = next } }
-    func get() -> Value { lock.withLock { value } }
-}

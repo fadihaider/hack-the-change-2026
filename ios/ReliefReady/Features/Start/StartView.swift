@@ -3,8 +3,9 @@ import UIKit
 
 /// Start: the welcome and the intake ("what's happening with your family?"), shown full screen while the session has
 /// no care episode. owns POST /api/intake, the clarifying questions, and calling AppModel.refreshSession() once an
-/// episode exists so RootView moves on to the tabs. Settings presents it as .newWeek, which opens on the welcome back
-/// to the current week and closes itself once a new week is saved or the user continues with this one.
+/// episode exists so RootView moves on to the tabs, on Urgent (the web's /urgent?from=intake). Settings presents it as
+/// .newWeek, which opens on the welcome back to the current week and, once a new week is saved or the user continues
+/// with this one, closes itself and switches to Urgent.
 struct StartView: View {
     enum Mode {
         /// RootView's full-screen start, with no care week on file
@@ -30,7 +31,7 @@ struct StartView: View {
     var body: some View {
         Group {
             if let flow {
-                StartContent(flow: flow, session: model.session, mode: mode, close: close)
+                StartContent(flow: flow, session: model.session, mode: mode, onContinue: openUrgent)
             } else {
                 LoadingView("Loading your week").pageBackground().accessibilityIdentifier("screen.start")
             }
@@ -50,7 +51,7 @@ struct StartView: View {
         }
         .onAppear(perform: makeFlow)
         .onChange(of: flow?.isFinished ?? false) { _, finished in
-            if finished { close() }
+            if finished { openUrgent() }
         }
     }
 
@@ -58,21 +59,32 @@ struct StartView: View {
         guard flow == nil else { return }
         let api = model.api
         let appModel = model
+        let mode = mode
         flow = StartFlow(
             current: mode == .newWeek ? model.session?.episode : nil,
             startAtWelcome: mode == .newWeek,
             intake: { statement throws(APIError) in try await api.intake(statement: statement) },
             reload: {
                 await appModel.refreshSession()
+                // full screen, the refreshed session swaps RootView to the tabs at once, so pick Urgent now
+                if mode == .root, appModel.sessionError == nil { appModel.showUrgent(fromStart: true) }
                 return appModel.sessionError
             },
             announce: { text in AccessibilityNotification.Announcement(text).post() }
         )
     }
 
-    /// in root mode the refreshed session already swapped RootView to the tabs; presented, the sheet closes
+    /// "Close": the sheet goes away and this week stays as it is
     private func close() {
         if mode == .newWeek { dismiss() }
+    }
+
+    /// a new week saved, or "Continue with this week": presented, the sheet closes onto Urgent. in root mode the
+    /// reload already switched RootView to the tabs on Urgent
+    private func openUrgent() {
+        guard mode == .newWeek else { return }
+        dismiss()
+        model.showUrgent(fromStart: true)
     }
 }
 
@@ -94,13 +106,13 @@ private struct StartContent: View {
     @Bindable var flow: StartFlow
     var session: Session?
     var mode: StartView.Mode
-    var close: () -> Void
+    var onContinue: () -> Void
 
     var body: some View {
         ScreenColumn {
             Group {
                 if flow.screen == .welcome, let episode = flow.replacing {
-                    WelcomeStage(flow: flow, session: session, episode: episode, onContinue: close)
+                    WelcomeStage(flow: flow, session: session, episode: episode, onContinue: onContinue)
                         .id("welcome")
                 } else {
                     switch flow.stage {
@@ -133,7 +145,7 @@ private struct WelcomeStage: View {
     @AccessibilityFocusState private var headingFocused: Bool
 
     var body: some View {
-        let name = StartText.recipientName(session)
+        let name = AppModel.recipientName(session)
         let today = session?.today ?? AlbertaTime.dateString(of: .now)
         VStack(alignment: .leading, spacing: 16) {
             MetaLines(lines: [(

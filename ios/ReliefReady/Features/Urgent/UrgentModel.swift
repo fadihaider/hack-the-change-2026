@@ -145,6 +145,9 @@ final class UrgentModel {
 
     var onSummary: Bool { (index ?? 0) >= total }
 
+    /// the request list loaded, or failed to
+    var isListed: Bool { all != nil || listError != nil }
+
     func request(_ id: String) -> RequestView? { byId[id] }
 
     func requestsOf(_ c: Commitment) -> [RequestView] {
@@ -460,6 +463,42 @@ final class UrgentModel {
         let next = on ? now.filter { $0 != contactId } + [contactId] : now.filter { $0 != contactId }
         // keep the server's order, so the first message is always the same person
         picked[c.id] = c.contacts.map(\.contactId).filter { next.contains($0) }
+    }
+
+    // MARK: - links from other tabs
+
+    /// a message named by another tab (/urgent?request=<id> in UrgentFlow.tsx): one that needs a new choice reopens
+    /// its step, one that can still be reviewed opens its letter over the summary, anything else shows its outcome
+    func openLinked(_ requestId: String) async {
+        let target = byId[requestId]
+        receipt = nil
+        guard let target else {
+            go(total, forward: true)
+            stepError = UrgentStepError(
+                at: Self.summaryKey, message: "That message isn\u{2019}t in your list any more. Everyone you asked is below."
+            )
+            return
+        }
+        if Self.chooseAgain.contains(target.state), let c = commitmentOf(requestId),
+            let at = commitments.firstIndex(where: { $0.id == c.id }) {
+            // open on screen at once; the reopen is saved on the server before any choice can be made
+            patchCommitment(c.id, reopened: true)
+            go(at, forward: false)
+            receipt = UrgentReceipt(text: "\(UrgentWords.outcomeLine(target)) Choose what to do now.", icon: .check)
+            busy = "\(c.id):reopen"
+            defer { busy = nil }
+            do throws(APIError) {
+                _ = try await api.reopen(commitmentId: c.id)
+            } catch {
+                stepError = UrgentStepError(at: c.id, message: "This step is open here but wasn\u{2019}t saved. \(error.userMessage)")
+            }
+        } else if Self.reviewable.contains(target.state) {
+            go(total, forward: true)
+            openLetter(target.id)
+        } else {
+            go(total, forward: true)
+            receipt = UrgentReceipt(text: UrgentWords.outcomeLine(target), icon: .check)
+        }
     }
 
     // MARK: - the letter

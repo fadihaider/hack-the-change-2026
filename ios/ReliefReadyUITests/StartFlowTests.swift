@@ -82,18 +82,30 @@ final class StartFlowTests: XCTestCase {
             dismissKeyboard()
             snap("09-new-week-example")
             app.buttons["start.check"].tap()
-            // the saved week closes the sheet and settings shows the new dates
+            // the saved week closes the sheet onto Urgent, as the web's /urgent?from=intake does
             XCTAssertTrue(element("start.welcome").waitForNonExistence(timeout: 60))
             XCTAssertTrue(element("start.write").waitForNonExistence(timeout: 30))
+            assertOnUrgent()
+            // settings, back on More, shows the new dates
+            tabs.tap()
             XCTAssertTrue(element("settings.careWeek").waitForExistence(timeout: 10))
             snap("10-new-week-saved")
         } else {
             app.buttons["start.backToWeek"].tap()
             XCTAssertTrue(element("start.welcome").waitForExistence(timeout: 5))
+            // "Continue with this week" closes the sheet onto Urgent
             app.buttons["start.continue"].tap()
             XCTAssertTrue(element("start.welcome").waitForNonExistence(timeout: 10))
-            XCTAssertTrue(element("screen.settings").exists)
+            assertOnUrgent()
         }
+    }
+
+    @MainActor
+    private func assertOnUrgent(file: StaticString = #filePath, line: UInt = #line) {
+        let urgent = app.tabBars.buttons["Urgent"]
+        expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: urgent)
+        waitForExpectations(timeout: 10)
+        XCTAssertTrue(element("screen.urgent").waitForExistence(timeout: 10), file: file, line: line)
     }
 
     /// no care week yet: write a partial statement, answer the clarifying question, land on the tabs
@@ -127,6 +139,7 @@ final class StartFlowTests: XCTestCase {
         snap("04-answered")
         app.buttons["start.check"].tap()
         XCTAssertTrue(app.tabBars.buttons["Urgent"].waitForExistence(timeout: 60))
+        assertOnUrgent()
         snap("04b-tabs")
     }
 

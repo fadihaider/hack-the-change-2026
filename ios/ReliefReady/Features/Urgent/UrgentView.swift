@@ -36,10 +36,7 @@ struct UrgentWeekView: View {
 
     init(api: APIClient, session: Session) {
         self.session = session
-        let display = session.careRecipient?.displayName.flatMap { $0.isEmpty ? nil : $0 }
-        let care = CareName(
-            name: display ?? session.careRecipient?.alias ?? "your family member", alias: session.careRecipient?.alias
-        )
+        let care = CareName(name: AppModel.recipientName(session), alias: session.careRecipient?.alias)
         _flow = State(initialValue: UrgentModel(
             api: api, episodeId: session.episode?.id ?? "", care: care, appNow: session.appNow,
             senderEmail: session.user.email, outbox: session.mode.mail == "outbox", aiMode: session.mode.ai
@@ -64,6 +61,9 @@ struct UrgentWeekView: View {
                 guard let now, now != flow.appNow else { return }
                 flow.appNow = now
                 Task { await flow.loadList() }
+            }
+            .onChange(of: LinkWait(link: appModel.urgentLink?.id, ready: flow.isReady, listed: flow.isListed), initial: true) {
+                consumeLink()
             }
             .onChange(of: flow.index) { _, _ in
                 guard flow.moved else { return }
@@ -91,6 +91,21 @@ struct UrgentWeekView: View {
                     .presentationDetents([.large])
                     .rrSheet()
             }
+    }
+
+    /// a link from another tab, once the week and the list have loaded (an unloaded list drops the message part)
+    private func consumeLink() {
+        guard let link = appModel.urgentLink, flow.isReady else { return }
+        if link.requestId != nil, !flow.isListed { return }
+        appModel.urgentLink = nil
+        if let requestId = link.requestId, flow.all != nil {
+            Task { await flow.openLinked(requestId) }
+        } else if link.fromStart {
+            Task {
+                try? await Task.sleep(for: .milliseconds(350))
+                headingFocused = true
+            }
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -628,4 +643,11 @@ extension StepStatus {
 
 extension SmsModel: Identifiable {
     nonisolated var id: ObjectIdentifier { ObjectIdentifier(self) }
+}
+
+/// what a pending link waits on before Urgent can open it
+private struct LinkWait: Equatable {
+    var link: UUID?
+    var ready: Bool
+    var listed: Bool
 }

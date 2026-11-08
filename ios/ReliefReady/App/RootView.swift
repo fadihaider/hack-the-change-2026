@@ -23,43 +23,26 @@ struct RootView: View {
     }
 }
 
-/// Urgent, Care, Recover and More
+/// Urgent, Care, Recover and More; the selection lives on AppModel so features can switch tabs
 struct MainTabs: View {
-    enum TabID: Hashable {
-        case urgent, care, recover, more
-    }
-
-    @State private var selection: TabID = MainTabs.launchTab
-
-    /// debug builds honour -StartTab urgent|care|recover|more, for screenshots
-    private static var launchTab: TabID {
-        #if DEBUG
-            switch UserDefaults.standard.string(forKey: "StartTab") {
-            case "care": return .care
-            case "recover": return .recover
-            case "more": return .more
-            default: return .urgent
-            }
-        #else
-            return .urgent
-        #endif
-    }
+    @Environment(AppModel.self) private var model
 
     var body: some View {
-        TabView(selection: $selection) {
-            Tab("Urgent", systemImage: "exclamationmark.bubble", value: TabID.urgent) {
+        @Bindable var model = model
+        TabView(selection: $model.selectedTab) {
+            Tab("Urgent", systemImage: "exclamationmark.bubble", value: AppTab.urgent) {
                 NavigationStack { UrgentView() }
             }
             .accessibilityIdentifier("tab.urgent")
-            Tab("Care", systemImage: "heart.text.square", value: TabID.care) {
+            Tab("Care", systemImage: "heart.text.square", value: AppTab.care) {
                 NavigationStack { CareView() }
             }
             .accessibilityIdentifier("tab.care")
-            Tab("Recover", systemImage: "arrow.uturn.backward.circle", value: TabID.recover) {
+            Tab("Recover", systemImage: "arrow.uturn.backward.circle", value: AppTab.recover) {
                 NavigationStack { RecoverView() }
             }
             .accessibilityIdentifier("tab.recover")
-            Tab("More", systemImage: "ellipsis.circle", value: TabID.more) {
+            Tab("More", systemImage: "ellipsis.circle", value: AppTab.more) {
                 NavigationStack { MoreView() }
             }
             .accessibilityIdentifier("tab.more")

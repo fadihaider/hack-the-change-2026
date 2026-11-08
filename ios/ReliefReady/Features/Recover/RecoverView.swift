@@ -101,7 +101,7 @@ private struct RecoverList: View {
 
                 if sorted.total == 0 {
                     ButtonStack {
-                        Button("Go to Urgent") { RecoverNavigation.showUrgent(requestId: nil) }
+                        Button("Go to Urgent") { model.showUrgent() }
                             .buttonStyle(.primary)
                             .accessibilityIdentifier("recover.goUrgent")
                         NoteText("Messages you send from Urgent show up here with who answered.")
@@ -378,7 +378,7 @@ private struct RecoverRequestRow: View {
     @ViewBuilder
     private var urgentButton: some View {
         let label = RecoverLines.urgentLabel(request.state)
-        let button = Button(label) { RecoverNavigation.showUrgent(requestId: request.id) }
+        let button = Button(label) { model.showUrgent(requestId: request.id) }
             .accessibilityIdentifier("recover.urgent.\(request.id)")
         if RecoverLines.urgentStep(request.state) != nil {
             button.buttonStyle(.secondary)
@@ -435,6 +435,7 @@ private struct RecoverRecord: View {
 
 /// a time someone asked for on their reply link
 private struct RecoverNewTimeRow: View {
+    @Environment(AppModel.self) private var model
     var time: RecoverNewItem
     var from: RequestView?
 
@@ -462,7 +463,7 @@ private struct RecoverNewTimeRow: View {
                 .fixedSize(horizontal: false, vertical: true)
             if let requestId = time.requestId {
                 Button(name.map { "See the message to \($0) in Urgent" } ?? "See the message in Urgent") {
-                    RecoverNavigation.showUrgent(requestId: requestId)
+                    model.showUrgent(requestId: requestId)
                 }
                 .buttonStyle(.quiet)
                 .frame(maxWidth: .infinity)
