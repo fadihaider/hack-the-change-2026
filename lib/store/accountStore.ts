@@ -9,7 +9,7 @@ const UPSERT_USER = `INSERT INTO app_user (email) VALUES (lower(:email))
   ON CONFLICT (email) DO UPDATE SET email = app_user.email
   RETURNING id::text AS id`;
 
-// bytea leaves the Data API as base64 text so JSON records stay exact
+// bytea leaves the database as base64 text (lib/sql.ts RESULT_PARSERS) so records stay exact
 const LOAD_TOKEN = `SELECT email, encode(google_refresh_token_enc, 'base64') AS ciphertext_b64
   FROM app_user WHERE id = CAST(:user_id AS uuid)`;
 

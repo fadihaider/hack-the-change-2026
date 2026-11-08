@@ -614,3 +614,109 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* ---------------------------------------------------------------- send a text (SmsSheet) */
+
+.smsTop {
+  margin: 4px 0 8px;
+}
+
+.smsFields {
+  display: grid;
+  gap: 18px;
+  margin-top: 4px;
+}
+
+.smsInput {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid #8a92a0;
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+  color: var(--rr-ink);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.smsInput:focus {
+  border-color: var(--rr-teal);
+  box-shadow: 0 0 0 3px var(--rr-teal-tint);
+  outline: none;
+}
+
+.smsInputLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-ink);
+}
+
+.smsTo {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.smsOther {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.smsCount {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.smsApprove {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 14px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+  font-size: 15px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.smsApprove:has(input:checked) {
+  border-color: rgb(14 124 134 / 45%);
+  background: var(--rr-teal-tint);
+}
+
+.smsResult {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 14px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+}
+
+.smsResultNote {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+}
+
+.smsRef {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+  overflow-wrap: anywhere;
+}

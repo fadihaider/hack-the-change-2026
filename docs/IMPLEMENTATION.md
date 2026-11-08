@@ -4,6 +4,8 @@ Companion to [PRD.md](PRD.md). This covers setup for AWS, Bedrock, the database,
 
 Anything marked **VERIFY** is still unconfirmed. Check it the first time you use it.
 
+> **Database update (2026-11-08):** Supabase PostgreSQL replaced AWS Aurora and the RDS Data API as the cloud database. PGlite stays the offline default. The Aurora steps below are kept as history and no longer apply. Current setup: [INTEGRATIONS.md, "Turn on Supabase PostgreSQL"](INTEGRATIONS.md#turn-on-supabase-postgresql).
+
 ## 0. Setup checklist (do in this order)
 
 By the Sat 18:00 setup gate (PRD section 14): rows 2, 3 and 5 pass and the Amplify URL loads. The full row 6 health check passes by the Sat 23:00 gate.

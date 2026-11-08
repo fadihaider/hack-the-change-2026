@@ -6,6 +6,8 @@ import { headers } from "next/headers";
 import { Info } from "lucide-react";
 import { getRuntime } from "../../lib/mvp/runtime.ts";
 import { listOutbox, type OutboxMessage } from "../../lib/mvp/mail.ts";
+import { listSmsOutbox, type SmsOutboxMessage } from "../../lib/sms/provider.ts";
+import { maskPhone } from "../../lib/sms/phone.ts";
 import { MinimalHeader } from "@/components/app/recover/MinimalHeader.tsx";
 import { Column, Note, Question } from "@/components/app/ui.tsx";
 import { formatAlberta } from "@/lib/frontend/live-api.ts";
@@ -44,14 +46,16 @@ function albertaTime(iso: string): string {
   return formatAlberta(iso);
 }
 
-async function loadMessages(): Promise<{ mail: string; messages: OutboxMessage[] } | null> {
+async function loadMessages(): Promise<{ mail: string; messages: OutboxMessage[]; texts: SmsOutboxMessage[] } | null> {
   try {
     const rt = await getRuntime();
     const request = new Request(new URL("/outbox", rt.baseUrl), { headers: new Headers(await headers()) });
     const user = await rt.auth.currentUser(request);
     if (!user) return null;
     const messages = rt.mode.mail === "outbox" ? await listOutbox(rt.stores.database, user.id) : [];
-    return { mail: rt.mode.mail, messages };
+    // simulated texts are kept whichever sms mode runs now, so a demo run stays visible after Twilio is set up
+    const texts = await listSmsOutbox(rt.stores.database, user.id);
+    return { mail: rt.mode.mail, messages, texts };
   } catch {
     return null;
   }
@@ -120,6 +124,38 @@ export default async function OutboxPage() {
                 ))}
               </ol>
             </>
+          )}
+          {loaded && loaded.texts.length > 0 && (
+            <section aria-labelledby="outbox-texts" className={s.texts}>
+              <p role="note" className={s.banner}>
+                <Info size={18} aria-hidden="true" />
+                <span>Simulated texts: not delivered to any phone</span>
+              </p>
+              <h2 id="outbox-texts" className={s.textsTitle}>
+                {loaded.texts.length === 1 ? "1 text that would have gone out" : `${loaded.texts.length} texts that would have gone out`}
+              </h2>
+              <ol className={s.list} role="list">
+                {loaded.texts.map((text) => (
+                  <li key={text.id}>
+                    <article className={s.letter} aria-label={`Simulated text to ${maskPhone(text.to)}`}>
+                      <dl className={s.head}>
+                        <div className={s.row}>
+                          <dt>To</dt>
+                          <dd>{maskPhone(text.to)}</dd>
+                        </div>
+                        <div className={s.row}>
+                          <dt>Saved</dt>
+                          <dd>
+                            <time dateTime={text.sentAt}>{albertaTime(text.sentAt)}</time>
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className={s.body}>{text.body}</div>
+                    </article>
+                  </li>
+                ))}
+              </ol>
+            </section>
           )}
         </Column>
       </main>

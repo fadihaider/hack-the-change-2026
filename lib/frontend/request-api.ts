@@ -54,6 +54,8 @@ export const requestViewSchema = z.object({
         "user_manual",
         "scheduler",
         "error",
+        "sms_message_sid",
+        "sms_status",
       ]),
       evidenceRef: z.string().nullable(),
       actor: z.string(),

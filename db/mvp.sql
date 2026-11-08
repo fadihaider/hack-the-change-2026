@@ -42,3 +42,33 @@ ALTER TABLE commitment ADD COLUMN IF NOT EXISTS reopened_at timestamptz;
 -- edit, approve and send; never sent to the browser
 ALTER TABLE request ADD COLUMN IF NOT EXISTS extra_health_terms text[] NOT NULL DEFAULT '{}';
 -- urgent repairs: end
+
+-- sms (Urgent "Send a text"): a text is a request row with channel 'sms' and no contact, so it shares the state
+-- machine, request_event evidence and approval hash with email, while the email queries (which join contact) skip it
+ALTER TABLE request ADD COLUMN IF NOT EXISTS channel text NOT NULL DEFAULT 'email';
+ALTER TABLE request ADD COLUMN IF NOT EXISTS episode_id uuid REFERENCES care_episode ON DELETE CASCADE;
+-- E.164, for example +14035550123
+ALTER TABLE request ADD COLUMN IF NOT EXISTS recipient_phone text;
+ALTER TABLE request ADD COLUMN IF NOT EXISTS recipient_label text;
+ALTER TABLE request ADD COLUMN IF NOT EXISTS sender_name text;
+-- one compose session in the browser; a repeated approve click with the same key returns the same row
+ALTER TABLE request ADD COLUMN IF NOT EXISTS sms_client_key text;
+-- twilio | demo (demo = simulated, never delivered)
+ALTER TABLE request ADD COLUMN IF NOT EXISTS sms_provider text;
+ALTER TABLE request ADD COLUMN IF NOT EXISTS sms_sid text;
+-- the provider's own status word (queued, sending, sent, delivered, undelivered, failed) or 'simulated'
+ALTER TABLE request ADD COLUMN IF NOT EXISTS sms_status text;
+ALTER TABLE request ADD COLUMN IF NOT EXISTS sms_error_code text;
+ALTER TABLE request ADD COLUMN IF NOT EXISTS sms_submitted_at timestamptz;
+ALTER TABLE request ADD COLUMN IF NOT EXISTS sms_status_at timestamptz;
+ALTER TABLE request DROP CONSTRAINT IF EXISTS request_channel_check;
+ALTER TABLE request ADD CONSTRAINT request_channel_check CHECK (channel IN ('email','sms') AND (channel = 'email' OR (contact_id IS NULL AND recipient_phone ~ '^\+[1-9][0-9]{7,14}$' AND char_length(draft_body) BETWEEN 1 AND 1600)));
+CREATE UNIQUE INDEX IF NOT EXISTS request_sms_client_key ON request (user_id, sms_client_key) WHERE sms_client_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS request_sms_episode ON request (user_id, episode_id, updated_at) WHERE channel = 'sms';
+-- sms evidence: the provider message id when it is accepted, then each provider status change
+ALTER TABLE request_event DROP CONSTRAINT IF EXISTS request_event_evidence_kind_check;
+ALTER TABLE request_event ADD CONSTRAINT request_event_evidence_kind_check CHECK (evidence_kind IN ('approval','gmail_message_id','link_click','user_manual','scheduler','error','sms_message_sid','sms_status'));
+-- demo sms adapter (no Twilio settings): texts are stored here, labelled simulated, and shown at /outbox
+CREATE TABLE IF NOT EXISTS sms_outbox (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid,
+  request_id uuid REFERENCES request ON DELETE CASCADE, to_phone text NOT NULL, body text NOT NULL, sent_at timestamptz DEFAULT now());
+CREATE INDEX IF NOT EXISTS sms_outbox_user_sent ON sms_outbox (user_id, sent_at DESC);

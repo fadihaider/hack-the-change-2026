@@ -1,13 +1,16 @@
-// end-to-end check of the durable stores on the real Aurora cluster, with fictional data and a fake Gmail sender
-// usage: AWS_PROFILE=hold-my-coffee DB_CLUSTER_ARN=... DB_SECRET_ARN=... node --conditions=react-server --import tsx scripts/verify-store-live.ts
+// end-to-end check of the durable stores on the live Supabase database, with fictional data and a fake Gmail sender.
+// it resets the demo clock when done. usage: npm run db:verify (reads SUPABASE_DB_URL from .env.local)
 import assert from "node:assert/strict";
 import { approvalHash } from "../lib/state.ts";
-import { confirmResponse, sendApprovedRequest } from "../lib/requests/workflow.ts";
+import { confirmResponse, sendApprovedRequest, WorkflowError } from "../lib/requests/workflow.ts";
 import { p } from "../lib/db.ts";
 import { hit } from "../lib/rateLimit.ts";
-import { appStores, jumpClock, readClock, resetClock, sweepExpired } from "../lib/store/index.ts";
+import { jumpClock, readClock, resetClock, storesFor, sweepExpired } from "../lib/store/index.ts";
+import { createSupabaseDatabase, migrateSupabase, supabaseConfigFromEnv } from "../lib/supabase/database.ts";
 
-const { database, workflow, accounts } = appStores();
+const supabase = createSupabaseDatabase(supabaseConfigFromEnv());
+await migrateSupabase(supabase);
+const { database, workflow, accounts } = storesFor(supabase);
 const email = `verify-${Date.now()}@example.test`;
 const results: string[] = [];
 const ok = (label: string) => results.push(`ok   ${label}`);
@@ -67,7 +70,8 @@ try {
 
   // owner scoping
   const other = await accounts.findOrCreateUserByEmail(`other-${email}`);
-  await assert.rejects(workflow.withOwnedRequest(other.id, requestId, async () => 1));
+  await assert.rejects(workflow.withOwnedRequest(other.id, requestId, async () => 1),
+    (e: unknown) => e instanceof WorkflowError && e.code === "not_found");
   ok("another owner cannot open the request (not_found)");
 
   // expiry through the demo clock
@@ -92,4 +96,5 @@ try {
   await database.execute(`DELETE FROM audit_event WHERE action = 'clock_jump' AND actor NOT IN (SELECT id::text FROM app_user)`);
   console.log(results.join("\n"));
   console.log("cleanup done (fictional rows removed, clock reset)");
+  await supabase.close();
 }

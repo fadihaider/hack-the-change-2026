@@ -17,10 +17,11 @@ Items marked "(verify)" describe behaviour being added in the current repair pas
 | Google sign-in | `RR_AUTH=google` | Callbacks are tested (`lib/auth/google.ts`), but no sign-in route is mounted. The adapter returns no user, so every API call is 401 | No |
 | Gmail send | `RR_MAIL=gmail` | Adapter exists (`lib/google.ts`). Needs Google sign-in | No |
 | Google Calendar read | `RR_CALENDAR=google` | Adapter exists (`lib/google.ts`). Needs Google sign-in | No |
-| Aurora PostgreSQL (RDS Data API) | `RR_DB=aurora` | Store adapter exists (`lib/db.ts`, `lib/store/*`). The schema script applies `db/schema.sql` only | `scripts/verify-store-live.ts` exists; rerun it before relying on it |
+| Supabase PostgreSQL (cloud database) | `RR_DB=supabase`, `SUPABASE_DB_URL` | Adapter in `lib/supabase/database.ts`. Boot creates the schema, seeds the demo and loads the Calgary data on an empty project | Yes, 2026-11-08: `npm run db:verify` (8 checks) and `scripts/mvp-smoke.ts` (all steps) passed on Supabase |
+| SMS (Urgent "Send a text") | `RR_SMS`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `DEMO_SMS_TO` | Twilio and demo adapters (`lib/sms/*`), draft by the `RR_AI` model | Partly, 2026-11-08: Gemini drafts, approval, duplicate-click guard and Twilio's error path verified; a delivered text still needs a trial number assigned to the test phone |
 | Care Access classifier service | `CARE_ACCESS_INFERENCE_URL` | Optional Python service in `ml/care_access` | No |
 
-`GET /api/session` returns only mode words and `providers:{speech:"elevenlabs"|"off", retrieval:"keyword"|"vector"}`. It never returns keys, ARNs or tokens. Secrets stay in `.env.local` (git-ignored) locally, or in the host's secret store when deployed.
+`GET /api/session` returns only mode words and `providers:{speech:"elevenlabs"|"off", retrieval:"keyword"|"vector"}`. It never returns keys, connection strings or tokens. Secrets stay in `.env.local` (git-ignored) locally, or in the host's secret store when deployed.
 
 Paid providers have one shared gate (`paidProvidersAllowed` in `lib/mvp/auth.ts`). With `RR_AUTH=demo`, model and speech calls are allowed only when the base URL is plain http on `localhost` or `127.0.0.1`. A deployed origin needs a verified owner (`RR_AUTH=google`), so a public demo can't spend credits for strangers. Every model and speech call reserves quota first (`lib/rateLimit.ts`). Model steps allow 30 calls per 10 minutes per user, with a daily global limit. Voice allows 30 calls per 10 minutes per user, shared by STT and TTS.
 
@@ -29,12 +30,12 @@ Paid providers have one shared gate (`paidProvidersAllowed` in `lib/mvp/auth.ts`
 | What you see | HTTP and code | Usual cause |
 |---|---|---|
 | Every button fails with a same-address message | 403 `invalid_origin` | `APP_BASE_URL` names a different host than the one in the address bar. Leave it blank locally |
-| Every screen is signed out | 401 `unauthenticated` | `RR_AUTH=google` (stub), or the demo user is missing from the database (an unseeded Aurora) |
+| Every screen is signed out | 401 `unauthenticated` | `RR_AUTH=google` (stub), or the demo user is missing from the database (migrated with `--no-seed`) |
 | A live AI or voice action refuses | 403 `verified_owner_required` | A paid provider on a non-local base URL with demo sign-in |
 | A message asking you to wait and try again | 429 `rate_limited` with `Retry-After` | The per-user quota was used up |
 | A model step fails | 503 `model_unavailable` | Missing or wrong key, no model access, or a network or provider error. The provider's message is never shown or logged |
 | A model answer is held back | 422 `model_needs_review` | The model refused, hit max tokens, or returned output that failed the schema or code guards |
-| A feature says it isn't set up | 503 `not_configured` | An adapter was picked without its settings, for example `RR_DB=aurora` without ARNs, or `RR_MAIL=gmail` without Google client settings |
+| A feature says it isn't set up | 503 `not_configured` | An adapter was picked without its settings, for example `RR_DB=supabase` without `SUPABASE_DB_URL`, or `RR_MAIL=gmail` without Google client settings |
 | Anything else | 503 `temporarily_unavailable` | An unexpected error. The server log shows only the error name and a safe code |
 
 Set `RR_DB_DEBUG=1` to print the Postgres message for database errors on the local console.
@@ -101,15 +102,39 @@ When the sign-in route lands, the steps are:
 
 Failures: `RR_MAIL=gmail` or `RR_CALENDAR=google` without the client settings or `APP_ENC_KEY` gives 503 `not_configured`. A revoked or missing refresh token gives `google_reauth_required`. A failed send is recorded as `failed` on the request and shown as failed. It is never retried automatically. An uncertain outcome stays `sending`, so it can be checked before anything is sent again.
 
-## Turn on Aurora PostgreSQL (RDS Data API)
+## Turn on Supabase PostgreSQL
 
-1. Use an Aurora PostgreSQL cluster in `us-east-2` with the Data API enabled, plus a Secrets Manager secret for its credentials.
-2. Set `RR_DB=aurora`, `DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME` (default `reliefready`) and `APP_AWS_REGION=us-east-2`. Give the server AWS credentials through the default chain.
-3. Apply the schema: `AWS_PROFILE=<profile> DB_CLUSTER_ARN=... DB_SECRET_ARN=... node --conditions=react-server --import tsx scripts/apply-schema.ts`. Add `--dry-run` first to list the statements.
-4. `scripts/apply-schema.ts` applies only `db/schema.sql`. The demo also needs `db/mvp.sql` (the outbox, display names and later additions), and the Aurora path does not seed the fictional Alex. Until both are handled (verify), `RR_AUTH=demo` on Aurora returns 401 `unauthenticated`.
-5. Check the stores with `scripts/verify-store-live.ts`, using the same environment as step 3. It uses fictional data and a fake Gmail sender.
+Supabase is the cloud database. PGlite (`RR_DB=pglite`, the default) stays for offline work and tests. Both run the same SQL, so stores and routes don't change.
 
-Failures: missing ARNs give 503 `not_configured`. Postgres errors become `pg_<sqlstate>` codes inside the server and 503 `temporarily_unavailable` in the browser.
+1. In the Supabase dashboard, open **Connect** and copy the **Session pooler** URI. It has the form `postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres` and works on IPv4 networks. URL-encode any special characters in the password (`%` becomes `%25`, `?` becomes `%3F`). Use the transaction pooler (port 6543) only for serverless hosts.
+2. In `.env.local`, set `RR_DB=supabase` and `SUPABASE_DB_URL=<that URI>`. For deployment, put both in the host's secret store. Never use a `NEXT_PUBLIC_` name: the URL carries the database password.
+3. Optional, recommended when deployed: download the CA certificate from **Database Settings → SSL Configuration** and set `SUPABASE_DB_CA_CERT` to the file path or the PEM text. With it, TLS checks the CA and the hostname. Without it, the connection is still encrypted, but the server certificate isn't checked, and the server logs a warning once.
+4. Run `npm run db:migrate`. On an empty project it installs `postgis`, `vector` and `pgcrypto` in the `extensions` schema (`db/supabase-extensions.sql`). Then it applies `db/schema.sql` and `db/mvp.sql`, seeds the fictional Alex and Rosa, and loads the Calgary snapshots (resources, community boundaries, rule cards). It finishes by printing the extensions, the access check and row counts. Add `--no-seed` to skip the demo persona and the Calgary data. The app runs the same migration on its first database call, so this step is optional.
+5. Optional: `npm run db:copy-local -- --yes` copies every row of the local PGlite database (`.data/pglite`) into Supabase and replaces what's there. Stop any dev server using that PGlite folder first.
+6. Run `npm run db:verify` to check the stores end to end. It uses fictional rows, deletes them afterwards and resets the demo clock.
+
+Access control: the app never uses the Supabase Data API, the anon key or the service-role key. Every query runs on the server over `SUPABASE_DB_URL` as the `postgres` role. Each boot runs `db/supabase-security.sql`, which revokes every grant the `anon` and `authenticated` roles have in `public` (including default privileges for new tables) and sets `sim_now` to `security_invoker`. Boot also enables row level security, with no policies, on every table in `public`. `npm run db:migrate` fails if any table is left reachable.
+
+Failures: no `SUPABASE_DB_URL` gives 503 `not_configured`. An unreachable host or a wrong password becomes `supabase_unavailable` inside the server. Postgres errors become `pg_<sqlstate>` codes inside the server. Both show as 503 `temporarily_unavailable` in the browser. Set `RR_DB_DEBUG=1` to print the Postgres message on the server console.
+
+## Turn on SMS (Twilio)
+
+Urgent's summary ("Here's who you asked") has a **Send a text** button. The sheet takes a recipient (the test phone from `DEMO_SMS_TO`, a saved care contact with a phone, or a typed North American number), a "sign it as" name, what they should know, and a disclosure tier. The `RR_AI` model writes a draft (`lib/ai/smsDrafter.ts`; the intake reason reaches it only at the detailed tier). The owner edits the draft, ticks "I approve sending exactly this text to …", and presses **Send SMS**.
+
+A text is a `request` row with `channel = 'sms'` and no contact. It uses the same state machine and `request_event` evidence as email. The email queries join `contact`, so they never see SMS rows.
+
+- **Approve:** `POST /api/sms` needs `approved: true`. It saves the exact words and number and records an `approval` event whose hash covers `sms:<number>`, the text and the tier. Health words at the minimal or general tier need an explicit "send it with these words". A repeated click with the same `clientKey` returns the same row.
+- **Send:** `POST /api/sms/send` moves approved → sending under a row lock, so a second click gets 409 `state_conflict`. Twilio's message SID is recorded as `sms_message_sid` evidence, and the request moves to `requested`, shown as "Submitted".
+- **Status:** `GET /api/sms` asks Twilio for the current status of any text still moving (`GET Messages/{Sid}.json`) and records each change as `sms_status` evidence. `sent` shows "Sent to carrier". `delivered` moves the request to `completed` ("Delivered"). `undelivered` or `failed` moves it to `failed`, keeping only the numeric error code. The summary asks again every 4 seconds for up to 3 minutes while a text is moving. Status callbacks aren't used, because they need a public URL.
+- **Uncertain sends:** a timeout or dropped connection leaves the request in `sending` as "Not confirmed". It is never re-sent automatically.
+- **Limits:** 10 texts per user per hour (`LIMITS.smsPerUser`). Real texts need a verified owner unless the app runs on localhost.
+
+Setup:
+
+1. Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_PHONE_NUMBER` in `.env.local`, plus `DEMO_SMS_TO` for the test phone. Blank `RR_SMS` then picks Twilio.
+2. On a trial account: verify the recipient in the Twilio Console (**Messaging → Try it out → Send an SMS**). Set `TWILIO_PHONE_NUMBER` to the trial number Twilio assigns to that recipient. Any other From number fails with 572002. Twilio limits trial texts to verified recipients in the sign-up country.
+
+Without Twilio settings (or with `RR_SMS=demo`), texts go to `sms_outbox`. They show at `/outbox` under "Simulated texts", and in Urgent as "Simulated · not delivered".
 
 ## Turn on the Care Access classifier (optional)
 
@@ -131,7 +156,7 @@ Failures: `POST /api/care-access/classify` returns 503 `classifier_not_configure
 
 ## Store boundary
 
-Implemented in `lib/store/workflowStore.ts` and `lib/store/requestQueue.ts`; the same SQL runs on PGlite and on the Aurora Data API. They implement `WorkflowStore` from `lib/requests/workflow.ts`, and the rules below still apply to any change.
+Implemented in `lib/store/workflowStore.ts` and `lib/store/requestQueue.ts`; the same SQL runs on PGlite and on Supabase Postgres. They implement `WorkflowStore` from `lib/requests/workflow.ts`, and the rules below still apply to any change.
 
 Both methods must serialize changes using a transaction and a lock on the same
 request row. Commit or roll back state, request_event, tokens and proposals

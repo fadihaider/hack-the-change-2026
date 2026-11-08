@@ -88,3 +88,14 @@
 .responseLink {
   font-weight: 500;
 }
+
+.texts {
+  margin-top: 40px;
+}
+
+.textsTitle {
+  margin: 16px 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+}

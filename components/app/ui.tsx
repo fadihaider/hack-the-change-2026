@@ -324,6 +324,11 @@ export function StatePill({ state }: { state: RequestState }) {
   return <span className={cx(s.pill, s[`pill_${stateTone(state)}`])}>{STATE_LABEL[state]}</span>;
 }
 
+/** the same pill with a tone and words of its own, for statuses that are not request states (text delivery) */
+export function TonePill({ tone, children }: { tone: StateTone; children: ReactNode }) {
+  return <span className={cx(s.pill, s[`pill_${tone}`])}>{children}</span>;
+}
+
 // muted tones, each 5.5:1 or more against white initials
 const AVATAR_TONES = ["#46597F", "#2F6B57", "#8C4A5E", "#7A5A1E", "#5B5F6B", "#5C6630"];
 

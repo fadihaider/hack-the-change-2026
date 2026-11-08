@@ -199,7 +199,7 @@ test("adapter labels say what runs, and demo rules are never called Claude", () 
   assert.ok(!demo.some((label) => /claude/i.test(label.value)));
 
   const live = modeLabels(
-    { db: "aurora", ai: "bedrock", mail: "gmail", calendar: "google", auth: "google" },
+    { db: "supabase", ai: "bedrock", mail: "gmail", calendar: "google", auth: "google" },
     { speech: "elevenlabs", retrieval: "vector" },
   );
   const liveByKey = Object.fromEntries(live.map((label) => [label.key, label.value]));
@@ -207,7 +207,7 @@ test("adapter labels say what runs, and demo rules are never called Claude", () 
   assert.equal(liveByKey.mail, "Gmail");
   assert.equal(liveByKey.speech, "ElevenLabs Scribe");
   assert.equal(liveByKey.retrieval, "Keyword + vectors");
-  assert.equal(liveByKey.db, "Aurora");
+  assert.equal(liveByKey.db, "Supabase");
   // an unknown mode word is shown as-is, not dressed up as a known provider
   const odd = modeLabels({ db: "pglite", ai: "mystery", mail: "outbox", calendar: "seed", auth: "demo" });
   assert.equal(odd.find((label) => label.key === "ai")?.value, "mystery");

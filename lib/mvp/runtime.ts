@@ -3,24 +3,26 @@ import "server-only";
 import { aiMode, getModelDeps, type AiMode } from "../ai/provider.ts";
 import type { StepDeps } from "../ai/model.ts";
 import { findHealthTerms } from "../healthTerms.ts";
-import { appStores, type AppStores } from "../store/index.ts";
-import { createAccountStore } from "../store/accountStore.ts";
-import { readClock } from "../store/clock.ts";
+import { storesFor, type AppStores } from "../store/index.ts";
+import { getSupabaseDatabase } from "../supabase/database.ts";
 import { createRequestQueue, type RequestQueue } from "../store/requestQueue.ts";
-import { createWorkflowStore } from "../store/workflowStore.ts";
 import { createAuthAdapter, type AuthAdapter, type AuthMode } from "./auth.ts";
 import { createCalendarSource, type CalendarMode, type CalendarSource } from "./calendar.ts";
 import { getMvpDatabase } from "./database.ts";
 import { createMailSender, NotConfiguredError, type MailMode, type MailSender } from "./mail.ts";
+import { createSmsProvider, smsMode, type SmsMode, type SmsProvider } from "../sms/provider.ts";
+import { createSmsStore, type SmsStore } from "../sms/workflow.ts";
 
 export { NotConfiguredError } from "./mail.ts";
 
 export interface RuntimeMode {
-  db: "pglite" | "aurora";
+  db: "pglite" | "supabase";
   ai: AiMode;
   mail: MailMode;
   calendar: CalendarMode;
   auth: AuthMode;
+  /** twilio sends real texts; demo stores them as simulated (lib/sms/provider.ts) */
+  sms: SmsMode;
 }
 
 export interface Runtime {
@@ -30,6 +32,8 @@ export interface Runtime {
   /** lib/ai/model.ts; the caller is picked by RR_AI */
   ai: StepDeps;
   mail: MailSender;
+  sms: SmsProvider;
+  smsStore: SmsStore;
   calendar: CalendarSource;
   auth: AuthAdapter;
   baseUrl: string;
@@ -47,23 +51,18 @@ function pick<T extends string>(name: string, value: string | undefined, allowed
 
 export function runtimeMode(env: NodeJS.ProcessEnv = process.env): RuntimeMode {
   return {
-    db: pick("RR_DB", env.RR_DB, ["pglite", "aurora"] as const),
+    db: pick("RR_DB", env.RR_DB, ["pglite", "supabase"] as const),
     ai: aiMode(),
     mail: pick("RR_MAIL", env.RR_MAIL, ["outbox", "gmail"] as const),
     calendar: pick("RR_CALENDAR", env.RR_CALENDAR, ["seed", "google"] as const),
     auth: pick("RR_AUTH", env.RR_AUTH, ["demo", "google"] as const),
+    sms: smsMode(env),
   };
 }
 
+/** pglite is the offline default; supabase is the cloud database (SUPABASE_DB_URL, lib/supabase/database.ts) */
 async function buildStores(mode: RuntimeMode): Promise<AppStores> {
-  if (mode.db === "aurora") return appStores();
-  const database = await getMvpDatabase();
-  return {
-    database,
-    workflow: createWorkflowStore(database),
-    accounts: createAccountStore(database),
-    appNow: async () => (await readClock(database)).appNow,
-  };
+  return storesFor(mode.db === "supabase" ? await getSupabaseDatabase() : await getMvpDatabase());
 }
 
 async function buildRuntime(): Promise<Runtime> {
@@ -75,6 +74,8 @@ async function buildRuntime(): Promise<Runtime> {
     queue: createRequestQueue(stores.database, { findHealthTerms: checkHealthTerms }),
     ai: getModelDeps(),
     mail: createMailSender(mode.mail, { sql: stores.database, accounts: stores.accounts }),
+    sms: createSmsProvider(mode.sms, { sql: stores.database }),
+    smsStore: createSmsStore(stores.database),
     calendar: createCalendarSource(mode.calendar, { accounts: stores.accounts }),
     auth: createAuthAdapter(mode.auth, { sql: stores.database }),
     baseUrl: process.env.APP_BASE_URL || "http://localhost:3000",
@@ -84,7 +85,7 @@ async function buildRuntime(): Promise<Runtime> {
 }
 
 // module scope on purpose: a Next dev reload rebuilds the adapters with fresh code, while the PGlite instance itself
-// stays on globalThis in database.ts
+// and the Supabase pool stay on globalThis in their database.ts files
 let shared: Promise<Runtime> | undefined;
 
 /** built once per module load; a failed build is retried on the next call */

@@ -18,7 +18,7 @@ Open `http://127.0.0.1:3000` (or `http://localhost:3000`). No accounts, keys or 
 - **Another device on the same network**: run `RR_DEV_ORIGINS=<your LAN IP> npx next dev --hostname 0.0.0.0` and open `http://<your LAN IP>:3000` on the other device. Browsers allow the microphone only on `localhost`, `127.0.0.1` or https, so voice recording does not work over a plain-http LAN address. Typed notes still work.
 - **Production build**: `npm run build`, then `npm start`.
 
-Every setting and its default is listed in [`.env.example`](.env.example). To switch on live providers (ElevenLabs speech, Claude, Claude on Bedrock, Gemini, Google, Aurora, the optional ML classifier), follow [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+Every setting and its default is listed in [`.env.example`](.env.example). To switch on live providers (ElevenLabs speech, Claude, Claude on Bedrock, Gemini, Google, the Supabase database, the optional ML classifier), follow [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
 ## Where things are
 
@@ -47,7 +47,7 @@ The Demo menu in the top bar opens the outbox and moves the demo clock. Moved ti
 | Calendar | Google Calendar adapter exists, but it needs Google sign-in | Six seeded fictional events |
 | Reply links | Real: single-use, hashed, expiring tokens. Status changes only when the recipient clicks | Same, used through the demo outbox |
 | Approval | Real: exact text, SHA-256 approval hash and revision check (`If-Match`) | Same |
-| Database | Aurora PostgreSQL through the RDS Data API (`RR_DB=aurora`) | Local PGlite in `.data/pglite` |
+| Database | Supabase PostgreSQL with PostGIS and pgvector (`RR_DB=supabase`, `SUPABASE_DB_URL`), server-side only | Local PGlite in `.data/pglite` |
 | Voice notes | ElevenLabs Scribe transcription when `ELEVENLABS_API_KEY` is set. You review and edit the transcript before it is saved | Without a key, Care says voice isn't connected and offers a typed note. Speech is never faked |
 | Ask the Care Passport | Keyword retrieval over approved, current facts, with citations checked in code. Vector search only when `RR_EMBED=bedrock` (verify) | Keyword retrieval; answers come from the demo rules |
 | Calgary resources and map | Public data snapshots (OpenStreetMap contributors and City of Calgary open data) with source, licence and fetch date. Map markers use each listed resource's real coordinates, drawn over City community boundaries (verify) | Same data. Distances are straight lines, not travel times. Hours and step-free access are Unknown unless the source lists them |

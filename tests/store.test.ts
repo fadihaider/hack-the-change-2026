@@ -1,67 +1,57 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createDatabase, DatabaseError, type DataApiClient, type Database, type Param, type SqlRunner } from "../lib/db.ts";
+import { DatabaseError, p, type Database, type Param, type SqlRunner } from "../lib/db.ts";
+import { translateNamedParams } from "../lib/sql.ts";
+import { createSupabaseDatabase, supabaseConfigFromEnv } from "../lib/supabase/database.ts";
 import { createWorkflowStore } from "../lib/store/workflowStore.ts";
 import { createAccountStore } from "../lib/store/accountStore.ts";
 import { WorkflowError } from "../lib/requests/workflow.ts";
 
-const CONFIG = { resourceArn: "arn:cluster", secretArn: "arn:secret", database: "reliefready", region: "us-east-2" };
 const USER = "11111111-1111-4111-8111-111111111111";
 const REQUEST = "22222222-2222-4222-8222-222222222222";
 
-// ---------- createDatabase over a fake Data API client ----------
+// ---------- Supabase adapter, offline ----------
 
-function fakeClient(script: (name: string, input: Record<string, unknown>) => unknown) {
-  const calls: { name: string; input: Record<string, unknown> }[] = [];
-  const client: DataApiClient = {
-    async send(command: unknown) {
-      const name = (command as object).constructor.name;
-      const input = (command as { input: Record<string, unknown> }).input;
-      calls.push({ name, input });
-      return script(name, input);
-    },
-  };
-  return { client, calls };
-}
+test("supabase config needs SUPABASE_DB_URL and never guesses one", () => {
+  assert.throws(() => supabaseConfigFromEnv({}), (e: unknown) => e instanceof DatabaseError && e.code === "not_configured");
+  const config = supabaseConfigFromEnv({ SUPABASE_DB_URL: " postgresql://u:pw@db.example.test:5432/postgres " });
+  assert.equal(config.connectionString, "postgresql://u:pw@db.example.test:5432/postgres");
+  assert.equal(config.caCert, null);
+  assert.equal(config.poolMax, 5);
+  const pem = "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----";
+  const pinned = supabaseConfigFromEnv({ SUPABASE_DB_URL: "postgresql://x", SUPABASE_DB_CA_CERT: pem, SUPABASE_DB_POOL_MAX: "2" });
+  assert.equal(pinned.caCert, pem);
+  assert.equal(pinned.poolMax, 2);
+});
 
-test("transaction commits on success and passes the transaction id to every statement", async () => {
-  const { client, calls } = fakeClient((name) =>
-    name === "BeginTransactionCommand" ? { transactionId: "tx-1" } : name === "ExecuteStatementCommand" ? { formattedRecords: '[{"a":1}]' } : {},
+test("node-postgres placeholders carry the parameter type, so both adapters resolve SQL alike", () => {
+  const out = translateNamedParams(
+    "SELECT CAST(:id AS uuid), :n + 1, :flag, :missing IS NULL, :id::text, ':skip' AS lit, x::int",
+    [p.uuid("id", "abc"), p.int("n", 2), p.bool("flag", true), p.text("missing", null)],
+    { castPlaceholders: true },
   );
-  const db = createDatabase(CONFIG, client, async () => {});
-  const rows = await db.transaction((tx) => tx.query<{ a: number }>("SELECT 1 AS a"));
-  assert.deepEqual(rows, [{ a: 1 }]);
-  assert.deepEqual(calls.map((c) => c.name), ["BeginTransactionCommand", "ExecuteStatementCommand", "CommitTransactionCommand"]);
-  assert.equal(calls[1].input.transactionId, "tx-1");
-  assert.equal(calls[1].input.formatRecordsAs, "JSON");
+  assert.equal(out.text, "SELECT CAST($1::text AS uuid), $2::int8 + 1, $3::bool, $4 IS NULL, $1::text::text, ':skip' AS lit, x::int");
+  assert.deepEqual(out.values, ["abc", 2, true, null]);
 });
 
-test("transaction rolls back and rethrows the original error", async () => {
-  const { client, calls } = fakeClient((name) => (name === "BeginTransactionCommand" ? { transactionId: "tx-2" } : {}));
-  const db = createDatabase(CONFIG, client, async () => {});
-  await assert.rejects(db.transaction(async () => { throw new WorkflowError("not_found"); }), (e: unknown) => e instanceof WorkflowError);
-  assert.deepEqual(calls.map((c) => c.name), ["BeginTransactionCommand", "RollbackTransactionCommand"]);
-});
-
-test("a resuming cluster is retried, other AWS errors become DatabaseError with the name only", async () => {
-  let attempts = 0;
-  const waits: number[] = [];
-  const { client } = fakeClient(() => {
-    attempts += 1;
-    if (attempts <= 2) throw Object.assign(new Error("resuming"), { name: "DatabaseResumingException" });
-    return { numberOfRecordsUpdated: 1 };
+test("an unreachable database is DatabaseError supabase_unavailable, with no URL or password in the message", async () => {
+  const database: Database & { close(): Promise<void> } = createSupabaseDatabase({
+    connectionString: "postgresql://postgres:hunter2-secret@127.0.0.1:1/postgres",
+    caCert: null,
+    poolMax: 1,
   });
-  const db = createDatabase(CONFIG, client, async (ms) => void waits.push(ms));
-  assert.equal(await db.execute("UPDATE x SET y = 1"), 1);
-  assert.deepEqual(waits, [10_000, 10_000]);
-
-  const failing = fakeClient(() => { throw Object.assign(new Error("secret sql text in message"), { name: "BadRequestException" }); });
-  await assert.rejects(createDatabase(CONFIG, failing.client, async () => {}).query("SELECT 1"), (e: unknown) => {
-    assert.ok(e instanceof DatabaseError);
-    assert.equal(e.code, "BadRequestException");
-    assert.ok(!e.message.includes("secret sql text"));
-    return true;
-  });
+  try {
+    for (const attempt of [() => database.query("SELECT 1"), () => database.transaction((tx) => tx.execute("SELECT 1"))]) {
+      await assert.rejects(attempt(), (e: unknown) => {
+        assert.ok(e instanceof DatabaseError);
+        assert.equal(e.code, "supabase_unavailable");
+        assert.ok(!e.message.includes("hunter2") && !e.message.includes("127.0.0.1"));
+        return true;
+      });
+    }
+  } finally {
+    await database.close();
+  }
 });
 
 // ---------- WorkflowStore over a scripted SqlRunner ----------

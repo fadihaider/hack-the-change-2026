@@ -16,7 +16,7 @@ Boot applies `db/schema.sql` once to a new PGlite folder, then runs `db/mvp.sql`
 
 | Var | Default | Live option | Code |
 |---|---|---|---|
-| `RR_DB` | `pglite`: in-process Postgres with PostGIS, pgvector and pgcrypto, same `db/schema.sql` | `aurora`: RDS Data API (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`, `APP_AWS_REGION`). See docs/INTEGRATIONS.md for the schema and seed steps | `lib/mvp/database.ts`, `lib/db.ts` |
+| `RR_DB` | `pglite`: in-process Postgres with PostGIS, pgvector and pgcrypto, same `db/schema.sql` | `supabase`: Supabase Postgres over `SUPABASE_DB_URL` (server-only). Boot creates the schema and seeds an empty project. See docs/INTEGRATIONS.md | `lib/mvp/database.ts`, `lib/supabase/database.ts`, `lib/db.ts` |
 | `RR_AI` | `demo`: offline keyword rules, no network. Never presented as AI | `anthropic` (`ANTHROPIC_API_KEY`, model `claude-opus-5-5`), `bedrock` (`BEDROCK_REGION`, `BEDROCK_MODEL_ID`), `gemini` (`GEMINI_API_KEY`, `GEMINI_MODEL`) (verify) | `lib/ai/provider.ts` |
 | `RR_MAIL` | `outbox`: messages are stored in `outbox_message` and shown at `/outbox` with working reply links | `gmail` (`lib/google.ts`). Needs Google sign-in, which is not wired yet | `lib/mvp/mail.ts` |
 | `RR_CALENDAR` | `seed`: 6 fictional events in the care window | `google` (`lib/google.ts` listEvents). Needs Google sign-in | `lib/mvp/calendar.ts` |

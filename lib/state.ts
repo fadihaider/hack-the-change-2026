@@ -7,7 +7,10 @@ export const REQUEST_STATES = [
 export type RequestState = (typeof REQUEST_STATES)[number];
 export type DisclosureTier = "minimal" | "general" | "detailed";
 export type ResponseChoice = "accept" | "decline" | "propose";
-export type EvidenceKind = "approval" | "gmail_message_id" | "link_click" | "user_manual" | "scheduler" | "error";
+export type EvidenceKind =
+  | "approval" | "gmail_message_id" | "link_click" | "user_manual" | "scheduler" | "error"
+  // sms: the provider message id when the text is accepted, then each provider status change
+  | "sms_message_sid" | "sms_status";
 
 export interface ApprovedContent {
   recipientEmail: string;

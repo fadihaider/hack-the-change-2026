@@ -1,7 +1,7 @@
 "use client";
 // urgent: clear the care week one commitment at a time (variant B), then see who you asked and find help nearby
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarPlus, CalendarX2, Check, Clock, LoaderCircle, MapPin, RefreshCw, Send, Users } from "lucide-react";
+import { CalendarPlus, CalendarX2, Check, Clock, LoaderCircle, MapPin, MessageSquareText, RefreshCw, Send, Users } from "lucide-react";
 import {
   liveErrorMessage,
   type CommitmentView,
@@ -10,6 +10,7 @@ import {
   type LiveSession,
 } from "@/lib/frontend/live-api.ts";
 import type { RequestView } from "@/lib/frontend/request-api.ts";
+import { SMS_MOVING, type SmsView } from "@/lib/frontend/sms-api.ts";
 import { HelpNearby } from "../guide/HelpNearby.tsx";
 import { recipientName, useApis, useSession } from "../session.tsx";
 import {
@@ -26,10 +27,13 @@ import {
   Question,
   Receipt,
   StatePill,
+  TonePill,
   useAnnounce,
   type RequestState,
 } from "../ui.tsx";
 import { LetterSheet, type SendOutcome } from "./LetterSheet.tsx";
+import { SmsSheet } from "./SmsSheet.tsx";
+import { DELIVERY_LABEL, DELIVERY_TONE, deliveryNote, deliveryTime } from "./smsWords.ts";
 import * as w from "./words.ts";
 import s from "./urgent.module.css";
 
@@ -170,7 +174,7 @@ export function UrgentFlow({ requestId = null }: { requestId?: string | null }) 
 }
 
 function Week({ session, episodeId, requestId }: { session: LiveSession; episodeId: string; requestId: string | null }) {
-  const { live, requests: requestApi } = useApis();
+  const { live, requests: requestApi, sms: smsApi } = useApis();
   const announce = useAnnounce();
   const care: w.CareName = { name: recipientName(session), alias: session.careRecipient?.alias ?? null };
   const carePossessive = w.possessive(care.name);
@@ -200,6 +204,10 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
   const [linked, setLinked] = useState<string | null>(null);
   const [linkProblem, setLinkProblem] = useState<string | null>(null);
+  // texts for this care week (Urgent "Send a text"); their delivery is checked again while any is still moving
+  const [texts, setTexts] = useState<SmsView[]>([]);
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [textsProblem, setTextsProblem] = useState<string | null>(null);
   const summaryHeading = useRef<HTMLHeadingElement>(null);
   const focusSummary = useRef(false);
   // one api action at a time, even when a double click lands before the next render
@@ -562,6 +570,34 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     }
   }
 
+  const loadTexts = useCallback(async () => {
+    try {
+      const result = await smsApi.list(episodeId);
+      setTexts(result.texts);
+      setTextsProblem(null);
+      return result.texts;
+    } catch (caught) {
+      setTextsProblem(liveErrorMessage(caught));
+      return null;
+    }
+  }, [smsApi, episodeId]);
+
+  useEffect(() => {
+    void loadTexts();
+  }, [loadTexts]);
+
+  // while a text is still on its way, ask again every few seconds for up to three minutes
+  const moving = texts.some((t) => SMS_MOVING.has(t.delivery));
+  useEffect(() => {
+    if (!moving) return;
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      if (Date.now() - started > 180_000) window.clearInterval(timer);
+      else void loadTexts();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [moving, loadTexts]);
+
   async function checkReplies() {
     if (busy || lock.current) return;
     lock.current = true;
@@ -570,6 +606,7 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     const before = new Map(episodeRequests.map((r) => [r.id, r.state]));
     try {
       const result = await requestApi.refresh();
+      void loadTexts();
       setAll(result.requests);
       setListError(null);
       setCheckedAt(result.appNow);
@@ -669,6 +706,20 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
   const sheetRequest = sheetId ? (byId.get(sheetId) ?? null) : null;
   const sheetWho = sheetRequest ? w.shortName(sheetRequest.recipient.name) : "";
   const sheetProposal = sheetRequest ? w.isProposal(sheetRequest) : false;
+
+  const smsSheet = (
+    <SmsSheet
+      open={smsOpen}
+      episodeId={episodeId}
+      careAlias={care.alias}
+      aiMode={session.mode.ai}
+      onClose={() => setSmsOpen(false)}
+      onChange={(text) => {
+        if (text) setTexts((current) => [text, ...current.filter((t) => t.id !== text.id)]);
+        void loadTexts();
+      }}
+    />
+  );
 
   const letter = (
     <LetterSheet
@@ -1164,9 +1215,38 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
     );
   }
 
+  /** one text with its delivery status, in the summary next to the emails */
+  function textRow(t: SmsView) {
+    const time = deliveryTime(t);
+    return (
+      <li key={t.id} className={`${s.reqRow} ${s.reqRowLarge}`}>
+        <span className={s.reqWho}>
+          <Avatar name={t.recipient.label} size="sm" />
+          <span className={s.reqName}>
+            {t.recipient.label} <span className={s.reqTime}>{t.recipient.phoneMasked}</span>
+          </span>
+        </span>
+        <span className={s.reqPill}>
+          <TonePill tone={DELIVERY_TONE[t.delivery]}>{DELIVERY_LABEL[t.delivery]}</TonePill>
+        </span>
+        <span className={s.reqSubject}>{t.body}</span>
+        <span className={s.reqTime}>
+          {deliveryNote(t)}
+          {time && (
+            <>
+              {" "}
+              {time.word} <time dateTime={time.at}>{w.stamp(time.at)}</time>
+            </>
+          )}
+        </span>
+      </li>
+    );
+  }
+
   function summaryView() {
     const visible = episodeRequests.filter((r) => r.state !== "cancelled");
     const waiting = visible.some((r) => r.state === "requested");
+    const anything = visible.length + texts.length;
     return (
       <div key="summary">
         {receiptView}
@@ -1176,10 +1256,16 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
             <ErrorNote message={linkProblem} />
           </div>
         )}
-        <Question ref={summaryHeading} autoFocusOnMount={moved} lead={visible.length === 0 ? "Nothing has gone out yet." : undefined}>
-          {visible.length === 0 ? "You haven’t asked anyone." : "Here’s who you asked"}
+        <Question ref={summaryHeading} autoFocusOnMount={moved} lead={anything === 0 ? "Nothing has gone out yet." : undefined}>
+          {anything === 0 ? "You haven’t asked anyone." : "Here’s who you asked"}
         </Question>
-        {visible.length === 0 && <Note align="start">Go back to a step and choose who to ask.</Note>}
+        <div className={s.smsTop}>
+          <Button variant="primary" onClick={() => setSmsOpen(true)}>
+            <MessageSquareText size={18} aria-hidden="true" />
+            Send a text
+          </Button>
+        </div>
+        {anything === 0 && <Note align="start">Go back to a step and choose who to ask, or send someone a text.</Note>}
         {GROUPS.map((group) => {
           const rows = visible.filter((r) => group.states.includes(r.state)).sort(newestFirst);
           if (rows.length === 0) return null;
@@ -1196,6 +1282,22 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
             </section>
           );
         })}
+        {texts.length > 0 && (
+          <section className={s.group} aria-labelledby="ur-group-texts">
+            <h2 id="ur-group-texts" className={s.groupTitle}>
+              Texts
+            </h2>
+            <p className={s.groupHint}>Delivery updates on their own while a text is on its way.</p>
+            <ul className={s.reqList} role="list" aria-live="polite">
+              {texts.map(textRow)}
+            </ul>
+          </section>
+        )}
+        {textsProblem && (
+          <div className={s.space}>
+            <ErrorNote message={textsProblem} />
+          </div>
+        )}
         <div className={s.summaryActions}>
           {visible.length > 0 && (
             <Button
@@ -1238,6 +1340,7 @@ function Week({ session, episodeId, requestId }: { session: LiveSession; episode
   return (
     <>
       {letter}
+      {smsSheet}
       <Column key={current ? current.id : "summary"} before={progress} remaining={remaining} motion={moved ? motion : null}>
         {!onSummary && listProblem}
         {current ? stepView(current, statuses[index], index) : summaryView()}

@@ -104,7 +104,7 @@ const MAX_TERM = 80;
 const MAX_EXTRA_TERMS = 200;
 const TIERS = new Set<string>(["minimal", "general", "detailed"]);
 
-// every timestamp leaves the database as ISO text; arrays as JSON text (both work the same on the Data API)
+// every timestamp leaves the database as ISO text; arrays as JSON text (both work the same on every adapter)
 const VIEW_COLUMNS = `r.id::text AS id, r.user_id::text AS user_id, r.state, r.action, r.health_override,
   to_json(r.respond_by)#>>'{}' AS respond_by, to_json(r.proposed_at)#>>'{}' AS proposed_at, r.proposed_note,
   r.draft_subject, r.draft_body, r.disclosure_tier,
@@ -144,7 +144,7 @@ const EXTRA_TERMS = `SELECT array_to_json(coalesce(r.extra_health_terms, '{}')):
 const OWNED_COMMITMENT = `SELECT id::text AS id FROM commitment
   WHERE id = CAST(:commitment_id AS uuid) AND user_id = CAST(:user_id AS uuid)`;
 
-// the Data API takes no array parameters, so term lists travel as a JSON text array
+// lib/db.ts has no array parameters, so term lists travel as a JSON text array
 const TERMS_ARRAY = `ARRAY(SELECT jsonb_array_elements_text(CAST(:terms AS jsonb)))`;
 const EXTRA_ARRAY = `ARRAY(SELECT jsonb_array_elements_text(CAST(:extra AS jsonb)))`;
 

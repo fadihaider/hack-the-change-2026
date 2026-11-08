@@ -1,4 +1,5 @@
--- ReliefReady schema for Aurora PostgreSQL 17 (IMPLEMENTATION section 4); apply with scripts/apply-schema.ts
+-- ReliefReady schema for PostgreSQL 17 (IMPLEMENTATION section 4): PGlite applies it on first boot (lib/mvp/database.ts),
+-- Supabase after db/supabase-extensions.sql (lib/supabase/database.ts, npm run db:migrate)
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;

@@ -4,6 +4,7 @@
 import type { Message, MessageCreateParamsNonStreaming } from "@anthropic-ai/sdk/resources/messages";
 import { CARE_COMPILER_SYSTEM_PROMPT, CARE_CATEGORIES, type CareCategory, type CareCompilerOutput } from "./careCompiler.ts";
 import { DRAFTER_SYSTEM_PROMPT, type DrafterOutput } from "./drafter.ts";
+import { SMS_DRAFTER_SYSTEM_PROMPT, type SmsDrafterOutput } from "./smsDrafter.ts";
 import { IMPACT_SYSTEM_PROMPT, type CommitmentDecision, type ImpactOutput } from "./impact.ts";
 import { INTAKE_SYSTEM_PROMPT, type IntakeOutput } from "./intake.ts";
 import { ModelCallError, type ModelCaller, type StepName } from "./model.ts";
@@ -18,6 +19,7 @@ const STEPS: [string, StepName][] = [
   [INTAKE_SYSTEM_PROMPT, "intake"],
   [IMPACT_SYSTEM_PROMPT, "impact"],
   [DRAFTER_SYSTEM_PROMPT, "drafter"],
+  [SMS_DRAFTER_SYSTEM_PROMPT, "sms_drafter"],
   [CARE_COMPILER_SYSTEM_PROMPT, "care_compiler"],
   [PROFILE_QA_SYSTEM_PROMPT, "profile_qa"],
   [RESOURCE_SYSTEM_PROMPT, "resource_composer"],
@@ -71,6 +73,8 @@ function respond(step: StepName, content: string): unknown {
       return demoImpact(content);
     case "drafter":
       return demoDraft(content);
+    case "sms_drafter":
+      return demoSmsDraft(content);
     case "care_compiler":
       return demoCare(content);
     case "profile_qa":
@@ -301,6 +305,31 @@ function demoDraft(content: string): DrafterOutput {
   const note = p.userNote ? `\n\n${p.userNote}` : "";
   const body = `Hi ${p.recipientFirstName ?? "there"},\n\n${situation} ${ask}${note}\n\nThank you for understanding.`;
   return { subject, body };
+}
+
+// ---------------------------------------------------------------- A3s text message
+
+interface DemoSmsPayload {
+  tier?: string;
+  senderName?: string | null;
+  recipientFirstName?: string | null;
+  note?: string | null;
+  unavailableFrom?: string | null;
+  unavailableUntil?: string | null;
+  relationship?: string | null;
+  reasonText?: string | null;
+}
+
+function demoSmsDraft(content: string): SmsDrafterOutput {
+  const p = parseJson<DemoSmsPayload>(untrustedBlocks(content)[0], {});
+  const window = p.unavailableFrom && p.unavailableUntil ? ` from ${p.unavailableFrom} to ${p.unavailableUntil}` : " for a while";
+  let why = "a family matter";
+  if (p.tier === "general") why = `${p.relationship ?? "a family member"}'s medical procedure`;
+  if (p.tier === "detailed" && p.reasonText) why = p.reasonText;
+  const hello = p.recipientFirstName ? `Hi ${p.recipientFirstName}, ` : "Hi, ";
+  const note = p.note ? ` ${p.note}` : "";
+  const sign = p.senderName ? ` - ${p.senderName}` : "";
+  return { text: `${hello}I'm dealing with ${why} and won't be available${window}.${note} Thanks for understanding.${sign}` };
 }
 
 // ---------------------------------------------------------------- A4 care compiler

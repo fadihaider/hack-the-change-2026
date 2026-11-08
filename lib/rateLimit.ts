@@ -18,6 +18,8 @@ export const LIMITS = {
   voicePerUser: { name: "voice", limit: 30, windowSeconds: 600 },
   /** passport embedding batches and question embeddings per signed-in user (RR_EMBED=bedrock), apart from model steps */
   embedPerUser: { name: "embed", limit: 120, windowSeconds: 600 },
+  /** texts sent per signed-in user (Twilio charges per message part); the demo outbox counts too */
+  smsPerUser: { name: "sms", limit: 10, windowSeconds: 3600 },
   /** response-link confirmations and previews per client IP (links are bearer tokens, so slow down guessing) */
   responsePerIp: { name: "response", limit: 30, windowSeconds: 600 },
   /** spend fuse: all model calls in the app per day; keeps Bedrock spend inside the USD 100 plan */

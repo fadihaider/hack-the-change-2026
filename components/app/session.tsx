@@ -3,9 +3,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createLiveApi, liveErrorMessage, type LiveApi, type LiveSession } from "@/lib/frontend/live-api.ts";
 import { createRequestApi, RequestApiError } from "@/lib/frontend/request-api.ts";
+import { createSmsApi, type SmsApi } from "@/lib/frontend/sms-api.ts";
 
 export type RequestApi = ReturnType<typeof createRequestApi>;
-export type Apis = { live: LiveApi; requests: RequestApi };
+export type Apis = { live: LiveApi; requests: RequestApi; sms: SmsApi };
 
 export type SessionState = {
   /** null until the first load succeeds */
@@ -19,7 +20,7 @@ export type SessionState = {
 };
 
 // one client of each kind for the whole tab
-const APIS: Apis = { live: createLiveApi(), requests: createRequestApi() };
+const APIS: Apis = { live: createLiveApi(), requests: createRequestApi(), sms: createSmsApi() };
 
 // the newest session this tab has seen, so moving between layouts does not flash a loading screen
 let lastSession: LiveSession | null = null;

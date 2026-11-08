@@ -544,7 +544,7 @@ const OPEN_REQUEST = `SELECT id::text AS id FROM request
 const COMMITMENT_DEPENDENCIES = `SELECT to_ref, confirmed FROM dependency
   WHERE from_commitment = CAST(:id AS uuid) ORDER BY confirmed DESC, id`;
 
-const MEDICAL_FACTS = `SELECT text_exact FROM care_fact
+export const MEDICAL_FACTS = `SELECT text_exact FROM care_fact
   WHERE care_recipient_id = CAST(:recipient_id AS uuid) AND status = 'approved' AND category = 'medical_instruction'
   ORDER BY created_at LIMIT 200`;
 
@@ -558,7 +558,7 @@ const COMMON_WORDS = new Set([
 ]);
 
 /** distinctive words from the intake reason and approved medical_instruction facts, for the draft check (A3 guards) */
-function extraHealthTerms(reasonText: string | null, medicalFacts: string[], aliases: string[]): string[] {
+export function extraHealthTerms(reasonText: string | null, medicalFacts: string[], aliases: string[]): string[] {
   const skip = new Set(aliases.map((alias) => alias.toLowerCase()));
   const words = new Set<string>();
   const add = (text: string, minLength: number) => {

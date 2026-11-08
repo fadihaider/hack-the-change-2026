@@ -27,6 +27,8 @@ export const sessionSchema = z.object({
     mail: text,
     calendar: text,
     auth: text,
+    /** twilio | demo; absent from older servers */
+    sms: text.optional(),
   }),
   admin: z.boolean(),
   appNow: timestamp,
@@ -624,7 +626,7 @@ export function liveErrorMessage(error: unknown): string {
   return apiErrorMessage(error);
 }
 
-export type ModeLabelKey = "ai" | "mail" | "calendar" | "speech" | "retrieval" | "db" | "auth";
+export type ModeLabelKey = "ai" | "mail" | "calendar" | "speech" | "retrieval" | "db" | "auth" | "sms";
 export type ModeLabel = { key: ModeLabelKey; name: string; value: string };
 
 /**
@@ -659,7 +661,11 @@ export function modeLabels(
   };
   const db: Record<string, string> = {
     pglite: "Local PGlite",
-    aurora: "Aurora",
+    supabase: "Supabase",
+  };
+  const sms: Record<string, string> = {
+    twilio: "Twilio",
+    demo: "Demo text outbox (simulated)",
   };
   const auth: Record<string, string> = {
     demo: "Demo (fictional Alex)",
@@ -674,6 +680,7 @@ export function modeLabels(
     { key: "retrieval", name: "Ask retrieval", value: retrieval[providers.retrieval] ?? providers.retrieval },
     { key: "db", name: "DB", value: db[mode.db] ?? mode.db },
     { key: "auth", name: "Sign-in", value: auth[mode.auth] ?? mode.auth },
+    ...(mode.sms ? [{ key: "sms" as const, name: "Texts", value: sms[mode.sms] ?? mode.sms }] : []),
   ];
 }
 
