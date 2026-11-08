@@ -16,6 +16,8 @@ export const LIMITS = {
   modelPerUser: { name: "model", limit: 30, windowSeconds: 600 },
   /** speech-to-text and text-to-speech per signed-in user */
   voicePerUser: { name: "voice", limit: 30, windowSeconds: 600 },
+  /** passport embedding batches and question embeddings per signed-in user (RR_EMBED=bedrock), apart from model steps */
+  embedPerUser: { name: "embed", limit: 120, windowSeconds: 600 },
   /** response-link confirmations and previews per client IP (links are bearer tokens, so slow down guessing) */
   responsePerIp: { name: "response", limit: 30, windowSeconds: 600 },
   /** spend fuse: all model calls in the app per day; keeps Bedrock spend inside the USD 100 plan */
@@ -107,6 +109,7 @@ export function tooManyRequests(result: LimitResult): Response {
 export const PRUNE_RATE_LIMITS = `DELETE FROM rate_limit WHERE window_start < now() - interval '2 days'`;
 
 const VOICE_STEPS = new Set(["stt", "tts"]);
+const EMBED_STEPS = new Set(["embed_query", "embed_fact"]);
 
 const RECORD_CALL = `INSERT INTO llm_call (user_id, step, model) VALUES (CAST(:user_id AS uuid), :step, :model) RETURNING id::text AS id`;
 
@@ -123,13 +126,18 @@ export interface Reservation {
 /**
  * Atomically counts one paid call against the user's limit and records it in llm_call, in one transaction.
  * Call before every model or speech request; failed provider calls still count. Voice steps (stt, tts) use the
- * voice limit; model steps use the per-user model limit plus the app-wide daily fuse.
+ * voice limit; embedding steps (embed_query, embed_fact) use the embed limit; model steps use the per-user model limit
+ * plus the app-wide daily fuse.
  */
 export async function reserveCall(
   database: { transaction<T>(work: (tx: SqlRunner) => Promise<T>): Promise<T> },
   call: { userId: string; step: string; model: string },
 ): Promise<Reservation> {
-  const checks = VOICE_STEPS.has(call.step) ? [{ rule: LIMITS.voicePerUser, subject: call.userId }] : modelLimits(call.userId);
+  const checks = VOICE_STEPS.has(call.step)
+    ? [{ rule: LIMITS.voicePerUser, subject: call.userId }]
+    : EMBED_STEPS.has(call.step)
+      ? [{ rule: LIMITS.embedPerUser, subject: call.userId }]
+      : modelLimits(call.userId);
   return database.transaction(async (tx) => {
     const limit = await hitAll(tx, checks);
     if (!limit.allowed) {

@@ -9,6 +9,7 @@ import { INTAKE_SYSTEM_PROMPT, type IntakeOutput } from "./intake.ts";
 import { ModelCallError, type ModelCaller, type StepName } from "./model.ts";
 import { PROFILE_QA_SYSTEM_PROMPT, type ProfileQaOutput } from "./profileQa.ts";
 import { RESOURCE_SYSTEM_PROMPT, type ResourceOutput } from "./resources.ts";
+import { keywordMatches } from "./retrieval.ts";
 import { addDays, datesMentioned, isIsoDate, spokenClockTimes, timesMentioned } from "./time.ts";
 
 export const DEMO_MODEL = "demo";
@@ -454,19 +455,22 @@ function sharesTopic(a: string, b: string): boolean {
 
 // ---------------------------------------------------------------- A5 profile Q&A
 
+// exact-fact lookup by shared words and a small synonym list (lib/ai/retrieval.ts); the wording says it is not AI
 function demoProfileQa(content: string): ProfileQaOutput {
   const [question = "", factsJson] = untrustedBlocks(content);
-  const facts = parseJson<{ id: string; category: string; textExact: string }[]>(factsJson, []);
-  const asked = keywords(question);
-  const cited = facts
-    .filter((fact) => (CARE_CATEGORIES as readonly string[]).includes(fact.category))
-    .filter((fact) => [...keywords(fact.textExact)].some((word) => asked.has(word)))
-    .slice(0, 3);
+  const facts = parseJson<{ id: string; category: string; textExact: string }[]>(factsJson, []).filter(
+    (fact) => typeof fact?.id === "string" && typeof fact.textExact === "string",
+  );
+  const cited = keywordMatches(question, facts, 3);
   if (cited.length === 0) {
     return { answer: "unknown", citedFactIds: [], notFound: true };
   }
-  const count = cited.length === 1 ? "1 approved fact matches" : `${cited.length} approved facts match`;
-  return { answer: `${count} this question; see the exact text below.`, citedFactIds: cited.map((fact) => fact.id), notFound: false };
+  const count = cited.length === 1 ? "1 approved fact shares words" : `${cited.length} approved facts share words`;
+  return {
+    answer: `Demo keyword match, not AI: ${count} with this question. The exact text is below.`,
+    citedFactIds: cited.map((fact) => fact.id),
+    notFound: false,
+  };
 }
 
 // ---------------------------------------------------------------- A6 resources

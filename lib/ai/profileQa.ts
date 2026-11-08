@@ -2,7 +2,9 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { CareCategory } from "./careCompiler.ts";
+import { redirectFor, type QuestionKind } from "./medicalGuard.ts";
 import { callStructured, type StepDeps } from "./model.ts";
+import { keywordMatches } from "./retrieval.ts";
 import { normalizeText, wrapUntrusted } from "./text.ts";
 
 export const ProfileQaOutput = z.object({
@@ -21,7 +23,7 @@ export interface ApprovedFact {
 
 export interface ProfileQaInput {
   question: string;
-  /** approved facts, ordered by created_at, at most 200 */
+  /** approved facts after owner-scoped retrieval (lib/ai/retrieval.ts), best match first, at most 200 */
   facts: ApprovedFact[];
 }
 
@@ -121,4 +123,27 @@ export function applyProfileQaGuards(output: ProfileQaOutput, input: ProfileQaIn
     createOpenQuestion: false,
     healthNotice: medical ? HEALTH_NOTICE : null,
   };
+}
+
+/**
+ * A5 without a model for a question the medical guard flagged (lib/ai/medicalGuard.ts). an emergency gets only the
+ * 911 notice, with no passport text that could read as advice. a medical question shows matching approved facts word
+ * for word (written instructions first) under the 811 notice, with no model wording; with no match the notice is the
+ * answer. neither creates an open question.
+ */
+export function redirectProfileQa(input: ProfileQaInput, kind: Exclude<QuestionKind, "profile">): ProfileQaResult {
+  const notice = redirectFor(kind) ?? "";
+  if (kind === "emergency") {
+    return { notFound: false, answer: notice, citedFacts: [], createOpenQuestion: false, healthNotice: null };
+  }
+  const question = normalizeText(input.question).slice(0, PROFILE_QA_LIMITS.questionChars);
+  const matches = keywordMatches(question, input.facts.slice(0, PROFILE_QA_LIMITS.maxFacts), 3);
+  const citedFacts = [
+    ...matches.filter((fact) => fact.category === "medical_instruction"),
+    ...matches.filter((fact) => fact.category !== "medical_instruction"),
+  ].map(({ id, category, textExact }) => ({ id, category, textExact }));
+  if (citedFacts.length === 0) {
+    return { notFound: false, answer: notice, citedFacts: [], createOpenQuestion: false, healthNotice: null };
+  }
+  return { notFound: false, answer: null, citedFacts, createOpenQuestion: false, healthNotice: notice };
 }

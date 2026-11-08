@@ -28,3 +28,9 @@ CREATE INDEX IF NOT EXISTS resource_kind ON resource (kind);
 ALTER TABLE care_fact ADD COLUMN IF NOT EXISTS display_text text;
 ALTER TABLE care_fact DROP CONSTRAINT IF EXISTS care_fact_category_check;
 ALTER TABLE care_fact ADD CONSTRAINT care_fact_category_check CHECK (category IN ('routine','preference','communication','mobility','practical','contacts','logistics','medical_instruction'));
+
+-- care retrieval (PRD 7): a care_fact vector counts only while its model and text hash match the approved text.
+-- per-recipient passports are small, so search is an exact cosine scan behind the recipient and status filter.
+ALTER TABLE care_fact ADD COLUMN IF NOT EXISTS embedding_model text;
+ALTER TABLE care_fact ADD COLUMN IF NOT EXISTS embedded_hash text;
+CREATE INDEX IF NOT EXISTS care_fact_recipient_status ON care_fact (care_recipient_id, status, created_at);

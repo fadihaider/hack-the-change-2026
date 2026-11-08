@@ -2,11 +2,13 @@
 import "server-only";
 import { p, type SqlRunner } from "../../../lib/db.ts";
 import { CARE_LIMITS, eventTitle, runCareCompiler, type CareCategory, type ExistingFact } from "../../../lib/ai/careCompiler.ts";
-import { runProfileQa, type ProfileQaResult } from "../../../lib/ai/profileQa.ts";
+import { classifyQuestion } from "../../../lib/ai/medicalGuard.ts";
+import { redirectProfileQa, runProfileQa, type ProfileQaResult } from "../../../lib/ai/profileQa.ts";
 import { normalizeText } from "../../../lib/ai/text.ts";
 import { albertaTimestamp, datesMentioned, isRuleGrounded, timesMentioned } from "../../../lib/ai/time.ts";
 import type { SessionUser } from "../../../lib/mvp/auth.ts";
 import type { Runtime } from "../../../lib/mvp/runtime.ts";
+import { retrievePassport } from "./careRetrieval.ts";
 import { albertaDate, loadActiveEpisode, loadRecipient, reserveModel } from "./context.ts";
 import { ApiError, requireUuid } from "./http.ts";
 import { occurrenceOn } from "./rrule.ts";
@@ -608,32 +610,98 @@ export async function timelineFor(rt: Runtime, user: SessionUser, date: string |
 
 // ---------- ask (C6) ----------
 
-const APPROVED_FACTS = `SELECT id::text AS id, category, text_exact FROM care_fact
-  WHERE care_recipient_id = CAST(:recipient_id AS uuid) AND status = 'approved'
-  ORDER BY created_at, id LIMIT 200`;
+// the same open question asked twice stays one row
+const OPEN_QUESTION_LIKE = `SELECT id::text AS id FROM open_question
+  WHERE care_recipient_id = CAST(:recipient_id AS uuid) AND status = 'open' AND lower(question) = lower(:question)
+  ORDER BY id LIMIT 1`;
 
 const INSERT_QUESTION = `INSERT INTO open_question (care_recipient_id, asked_by, question, status)
   VALUES (CAST(:recipient_id AS uuid), 'caregiver', :question, 'open')
   RETURNING id::text AS id`;
 
-/** A5 over approved facts only; no answer creates an open question for the caregiver */
-export async function askProfile(rt: Runtime, user: SessionUser, question: string): Promise<ProfileQaResult & { openQuestionId: string | null }> {
+/** who produced the answer wording: demo keyword rules are never presented as AI; "none" means no model call */
+export type AnsweredBy = "demo_rules" | "anthropic" | "bedrock" | "gemini" | "none";
+
+export interface AskCitedFact {
+  id: string;
+  category: CareCategory;
+  /** stored text_exact, shown verbatim */
+  textExact: string;
+  sourceId: string | null;
+  sourceKind: string | null;
+  sourceCreatedAt: string | null;
+  version: number;
+}
+
+export type AskResult = Omit<ProfileQaResult, "citedFacts"> & {
+  citedFacts: AskCitedFact[];
+  openQuestionId: string | null;
+  answeredBy: AnsweredBy;
+  /** the question asked for medical judgment or described an emergency: the answer is a fixed 811/911 pointer */
+  medicalRedirect: boolean;
+  retrieval: { method: "keyword" | "keyword+vector" | "none"; considered: number };
+};
+
+function answeredByFor(mode: string): AnsweredBy {
+  if (mode === "demo") return "demo_rules";
+  if (mode === "anthropic" || mode === "bedrock" || mode === "gemini") return mode;
+  return "none";
+}
+
+type Provenance = Pick<AskCitedFact, "sourceId" | "sourceKind" | "sourceCreatedAt" | "version">;
+
+/**
+ * A5 over the owner's approved, current facts only (PRD 7.2). approved facts come from careRetrieval.ts (owner-scoped,
+ * passage-checked, ranked). a medical or emergency question gets a fixed 811/911 pointer before any model call;
+ * otherwise retrieval picks the context and the A5 guards check every citation. no answer creates an open question.
+ */
+export async function askProfile(rt: Runtime, user: SessionUser, question: string): Promise<AskResult> {
   const database = rt.stores.database;
-  const recipient = await loadRecipient(database, user.id);
-  const rows = await database.query<{ id: string; category: CareCategory; text_exact: string }>(APPROVED_FACTS, [
-    p.uuid("recipient_id", recipient.id),
-  ]);
-  const facts = rows.map((row) => ({ id: row.id, category: row.category, textExact: row.text_exact }));
-  // runProfileQa makes no model call for an empty profile, so nothing is reserved then
-  const deps = facts.length > 0 ? await reserveModel(rt, user.id, "profile_qa") : rt.ai;
-  const result = await runProfileQa({ question, facts }, deps);
+  const kind = classifyQuestion(question);
+  let result: ProfileQaResult;
+  let answeredBy: AnsweredBy = "none";
+  let retrieval: AskResult["retrieval"] = { method: "none", considered: 0 };
+  let byId = new Map<string, Provenance>();
+  let recipientId: string;
+
+  if (kind === "emergency") {
+    // nothing from the passport is shown next to an emergency, and nothing is read or sent to a model
+    recipientId = (await loadRecipient(database, user.id)).id;
+    result = redirectProfileQa({ question, facts: [] }, kind);
+  } else {
+    // medical questions never reach a model, so they skip the paid embedding call too
+    const retrieved = await retrievePassport(rt, user, question, { useVector: kind === "profile" });
+    recipientId = retrieved.scope.careRecipientId;
+    byId = retrieved.byId;
+    retrieval = { method: retrieved.method, considered: retrieved.considered };
+    if (kind === "medical") {
+      result = redirectProfileQa({ question, facts: retrieved.facts }, kind);
+    } else {
+      // runProfileQa makes no model call for an empty profile, so nothing is reserved then
+      const deps = retrieved.facts.length > 0 ? await reserveModel(rt, user.id, "profile_qa") : rt.ai;
+      result = await runProfileQa({ question, facts: retrieved.facts }, deps);
+      if (retrieved.facts.length > 0) answeredBy = answeredByFor(rt.mode.ai);
+    }
+  }
+
   let openQuestionId: string | null = null;
   if (result.createOpenQuestion) {
-    const inserted = await database.query<{ id: string }>(INSERT_QUESTION, [
-      p.uuid("recipient_id", recipient.id),
-      p.text("question", normalizeText(question).slice(0, 500)),
-    ]);
-    openQuestionId = inserted[0].id;
+    const params = [p.uuid("recipient_id", recipientId), p.text("question", normalizeText(question).slice(0, 500))];
+    const existing = await database.query<{ id: string }>(OPEN_QUESTION_LIKE, params);
+    openQuestionId = existing[0]?.id ?? (await database.query<{ id: string }>(INSERT_QUESTION, params))[0].id;
   }
-  return { ...result, openQuestionId };
+  // every citation was in the retrieved, approved set (applyProfileQaGuards); provenance comes from the same rows
+  const citedFacts = result.citedFacts.map((fact) => {
+    const known = byId.get(fact.id);
+    return {
+      id: fact.id,
+      category: fact.category,
+      textExact: fact.textExact,
+      sourceId: known?.sourceId ?? null,
+      sourceKind: known?.sourceKind ?? null,
+      sourceCreatedAt: known?.sourceCreatedAt ?? null,
+      version: known?.version ?? 1,
+    };
+  });
+  return { ...result, citedFacts, openQuestionId, answeredBy, medicalRedirect: kind !== "profile", retrieval };
 }

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HEALTH_NOTICE, NOT_IN_PROFILE, runProfileQa, type ApprovedFact } from "../profileQa.ts";
+import { EMERGENCY_REDIRECT, MEDICAL_REDIRECT } from "../medicalGuard.ts";
+import { HEALTH_NOTICE, NOT_IN_PROFILE, redirectProfileQa, runProfileQa, type ApprovedFact } from "../profileQa.ts";
 import { fakeCaller } from "./fakeCaller.ts";
 
 const facts: ApprovedFact[] = [
@@ -21,4 +22,20 @@ test("A5 shows no model wording when a cited fact is a medical instruction", asy
   assert.deepEqual(result.citedFacts, [facts[1]]);
   assert.equal(result.healthNotice, HEALTH_NOTICE);
   assert.equal(result.createOpenQuestion, false);
+});
+
+test("a medical question cites matching written instructions verbatim under the 811 notice, with no model wording", () => {
+  const result = redirectProfileQa({ question: "Should I give her more pain medicine?", facts }, "medical");
+  assert.equal(result.answer, null);
+  // written instructions come first; "medicine" also matches "medication" in the breakfast fact
+  assert.deepEqual(result.citedFacts, [facts[1], facts[0]]);
+  assert.equal(result.healthNotice, MEDICAL_REDIRECT);
+  assert.equal(result.createOpenQuestion, false);
+  const none = redirectProfileQa({ question: "Is it normal that her ankle is swollen?", facts }, "medical");
+  assert.deepEqual(none, { notFound: false, answer: MEDICAL_REDIRECT, citedFacts: [], createOpenQuestion: false, healthNotice: null });
+});
+
+test("an emergency gets only the 911 notice and no passport text", () => {
+  const result = redirectProfileQa({ question: "She has chest pain and cannot breathe", facts }, "emergency");
+  assert.deepEqual(result, { notFound: false, answer: EMERGENCY_REDIRECT, citedFacts: [], createOpenQuestion: false, healthNotice: null });
 });
