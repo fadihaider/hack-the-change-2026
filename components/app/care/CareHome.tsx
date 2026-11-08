@@ -1,6 +1,7 @@
 "use client";
 // the care overview: the one question, the next thing to do, then the profile, the day and a place to ask
 import type { CareProfileView, LiveEpisode, LiveSession } from "@/lib/frontend/live-api.ts";
+import { NearRosa } from "../access/NearRosa.tsx";
 import { Actions, Button, Column, Note, Question, Receipt } from "../ui.tsx";
 import { AskAboutRosa } from "./AskAboutRosa.tsx";
 import { ProfileFacts } from "./ProfileFacts.tsx";
@@ -68,6 +69,7 @@ export function CareHome({
 
       <ProfileFacts name={name} facts={profile.facts} pending={pending.length} />
       <RosaDay name={name} session={session} episode={episode} version={version} />
+      <NearRosa />
       <AskAboutRosa
         name={name}
         facts={profile.facts}

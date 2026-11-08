@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test lib/demo/*.test.ts lib/frontend/*.test.ts",
     "test:ai": "node --import tsx --test lib/ai/**/*.test.ts",
-    "test:store": "node --conditions=react-server --import tsx --test tests/store.test.ts tests/rate-limit.test.ts tests/health-terms.test.ts",
+    "test:store": "node --conditions=react-server --import tsx --test tests/store.test.ts tests/rate-limit.test.ts tests/health-terms.test.ts tests/care-access.test.ts",
     "mvp:reset": "node -e \"require('node:fs').rmSync(process.env.RR_PGLITE_DIR || '.data/pglite', { recursive: true, force: true })\"",
     "test:mvp": "node --conditions=react-server --import tsx --test tests/mvp-*.test.ts"
   },

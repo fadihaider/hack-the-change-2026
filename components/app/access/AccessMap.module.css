@@ -1,0 +1,892 @@
+/* compare calgary communities: a wider page than the 560px column (up to 1100px), stacking on phones. only --rr-*
+   tokens, plus the map's own data colours, which live in access-data.ts. */
+
+.lane {
+  --rr-gut: 20px;
+  min-height: calc(100dvh - 57px);
+  background: var(--rr-surface);
+}
+
+.page {
+  max-width: calc(1100px + 2 * var(--rr-gut));
+  margin: 0 auto;
+  padding: 16px var(--rr-gut) 112px;
+}
+
+.card {
+  min-width: 0;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  margin: 0 0 12px -8px;
+  padding: 0 12px 0 6px;
+  border-radius: var(--rr-radius-sm);
+  color: var(--rr-muted);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .back:hover {
+    color: var(--rr-ink);
+    background: var(--rr-page);
+  }
+}
+
+.card > h1 {
+  max-width: 760px;
+}
+
+.intro {
+  max-width: 680px;
+  margin: -12px 0 28px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--rr-muted);
+}
+
+.loading {
+  padding: 20px 18px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-page);
+  font-size: 16px;
+  color: var(--rr-muted);
+}
+
+.state {
+  max-width: 560px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.sectionTitle {
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  font-weight: 600;
+  color: var(--rr-ink);
+}
+
+/* ---------------------------------------------------------------- controls */
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 24px 32px;
+  padding: 20px;
+  border-radius: var(--rr-radius-lg);
+  background: var(--rr-page);
+}
+
+.controlCol {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  min-width: 0;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-ink);
+}
+
+/* a legend floats so the grid gap below it behaves the same as for a label */
+.field > .legend + * {
+  clear: both;
+}
+
+.segments {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.segment {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 6px 6px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius-sm);
+  background: var(--rr-surface);
+  color: var(--rr-ink);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.radio {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.segment:has(.radio:checked) {
+  border-color: var(--rr-teal);
+  background: var(--rr-teal-tint);
+  color: var(--rr-teal-ink);
+  box-shadow: inset 0 0 0 1px var(--rr-teal);
+}
+
+.segment:has(.radio:focus-visible) {
+  outline: 2px solid var(--rr-teal);
+  outline-offset: 2px;
+}
+
+.segment:has(.radio:disabled) {
+  border-style: dashed;
+  border-color: #c9ced7;
+  background: transparent;
+  color: var(--rr-muted);
+  font-weight: 500;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .segment:not(:has(.radio:checked)):not(:has(.radio:disabled)):hover {
+    border-color: #c9ced7;
+  }
+}
+
+.checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0 12px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--rr-ink);
+  cursor: pointer;
+}
+
+.checkbox {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--rr-teal);
+  cursor: pointer;
+}
+
+.notice {
+  padding: 10px 12px;
+  border-radius: var(--rr-radius-sm);
+  background: var(--rr-warn-tint);
+  color: var(--rr-warn-ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.selectWrap {
+  position: relative;
+}
+
+.select {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 40px 10px 14px;
+  border: 1px solid #8a92a0;
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+  color: var(--rr-ink);
+  font-size: 16px;
+  line-height: 1.3;
+  appearance: none;
+  cursor: pointer;
+}
+
+.select:focus {
+  border-color: var(--rr-teal);
+  box-shadow: 0 0 0 3px var(--rr-teal-tint);
+}
+
+.selectIcon {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  color: var(--rr-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- map and details */
+
+.workspace {
+  display: grid;
+  gap: 36px;
+  margin-top: 36px;
+}
+
+.mapPane {
+  min-width: 0;
+}
+
+.mapHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+
+.viewToggle {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius-sm);
+  background: var(--rr-page);
+}
+
+.viewButton {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  color: var(--rr-muted);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.viewButton[aria-pressed="true"] {
+  background: var(--rr-surface);
+  color: var(--rr-teal-ink);
+  box-shadow:
+    inset 0 0 0 1px var(--rr-teal),
+    0 1px 2px rgb(29 36 51 / 8%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .viewButton[aria-pressed="false"]:hover {
+    color: var(--rr-ink);
+  }
+}
+
+/* visible only when it has focus */
+.skip {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.skip:focus,
+.skip:focus-visible {
+  position: static;
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  clip: auto;
+  border-radius: var(--rr-radius-sm);
+  background: var(--rr-teal-tint);
+  color: var(--rr-teal-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+  overflow: visible;
+}
+
+.area {
+  stroke: #ffffff;
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+
+.area:focus,
+.area:focus-visible {
+  outline: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .area:hover {
+    filter: brightness(0.92);
+  }
+}
+
+/* the outlines are drawn over every community and ignore the pointer, so the shapes underneath stay clickable */
+.homeLine,
+.halo,
+.selectedLine,
+.focusLine {
+  fill: none;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.homeLine {
+  stroke: var(--rr-ink);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+}
+
+.halo {
+  stroke: #ffffff;
+  stroke-width: 6;
+}
+
+.selectedLine {
+  stroke: var(--rr-ink);
+  stroke-width: 3;
+}
+
+.focusLine {
+  stroke: var(--rr-teal);
+  stroke-width: 3;
+  stroke-dasharray: 6 3;
+}
+
+.homeDot {
+  fill: #ffffff;
+  stroke: var(--rr-ink);
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.key {
+  margin-top: 16px;
+}
+
+.keyTitle {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-ink);
+}
+
+.keyList,
+.keyList[role="list"],
+.marks,
+.marks[role="list"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.keyItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--rr-ink);
+}
+
+.swatch {
+  flex: none;
+  width: 18px;
+  height: 14px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgb(29 36 51 / 12%);
+}
+
+/* the map's diagonal hatching, for communities whose routes are incomplete */
+.swatchHatch {
+  background: repeating-linear-gradient(45deg, #eef0f4 0 3px, #b3b9c5 3px 5px);
+}
+
+.keyNote {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.marks {
+  margin-top: 10px;
+}
+
+.markHome,
+.markSelected {
+  flex: none;
+  width: 18px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--rr-surface);
+}
+
+.markHome {
+  border: 2px dashed var(--rr-ink);
+}
+
+.markSelected {
+  border: 3px solid var(--rr-ink);
+}
+
+.credit {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.credit a,
+.placeSource a {
+  color: inherit;
+  text-decoration-color: rgb(94 102 119 / 50%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .credit a:hover,
+  .placeSource a:hover {
+    color: var(--rr-ink);
+  }
+}
+
+.detailPane {
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------- one community */
+
+.detail {
+  display: grid;
+  gap: 4px;
+}
+
+.detailTitle {
+  font-size: 26px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+  scroll-margin-top: 24px;
+}
+
+.detailTitle:focus,
+.detailTitle:focus-visible {
+  outline: none;
+}
+
+.tag {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  margin-top: 6px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--rr-teal-tint);
+  color: var(--rr-teal-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.metric {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border-left: 3px solid var(--rr-teal);
+  border-radius: 0 var(--rr-radius) var(--rr-radius) 0;
+  background: var(--rr-page);
+}
+
+.metricValue {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--rr-ink);
+}
+
+.metricNumber {
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricOf {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--rr-muted);
+}
+
+.metricText {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+}
+
+.counts {
+  display: grid;
+  margin: 12px 0 0;
+}
+
+.countRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rr-hairline);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.countRow:last-child {
+  border-bottom: 0;
+}
+
+.countRow dt {
+  color: var(--rr-ink);
+}
+
+.countRow dd {
+  font-weight: 600;
+  color: var(--rr-ink);
+}
+
+.groupNote {
+  margin-top: 10px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.groupLead {
+  font-weight: 600;
+  color: var(--rr-ink);
+}
+
+.placesTitle {
+  margin-top: 20px;
+  font-size: 17px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--rr-ink);
+}
+
+.places,
+.places[role="list"] {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.place {
+  display: grid;
+  gap: 2px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rr-hairline);
+}
+
+.place:last-child {
+  border-bottom: 0;
+}
+
+.placeName {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-ink);
+  overflow-wrap: anywhere;
+}
+
+.placeName:focus,
+.placeName:focus-visible {
+  outline: none;
+}
+
+.placeMeta {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.placeAddress {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+  overflow-wrap: anywhere;
+}
+
+.placeModel {
+  justify-self: start;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--rr-page);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.placeSource {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.more {
+  display: grid;
+  margin: 4px 0 8px;
+}
+
+/* ---------------------------------------------------------------- how this works */
+
+.how {
+  margin-top: 52px;
+  padding-top: 32px;
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.howGrid {
+  display: grid;
+  gap: 28px 40px;
+  margin-top: 18px;
+}
+
+.howBlock {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--rr-ink);
+}
+
+.howTitle {
+  font-size: 17px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--rr-ink);
+}
+
+.formula {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.caption {
+  padding-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: start;
+  color: var(--rr-muted);
+}
+
+.table th,
+.table td {
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--rr-hairline);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table thead th {
+  font-weight: 600;
+  color: var(--rr-muted);
+}
+
+.table tbody th {
+  font-weight: 500;
+}
+
+.table td {
+  white-space: nowrap;
+}
+
+.chosenRow th,
+.chosenRow td {
+  color: var(--rr-teal-ink);
+  font-weight: 600;
+}
+
+.chosen {
+  font-weight: 500;
+}
+
+.sourceList,
+.sourceList[role="list"],
+.limits {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.limits {
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.sourceList a {
+  color: var(--rr-teal-ink);
+}
+
+/* ---------------------------------------------------------------- wider screens */
+
+@media (min-width: 720px) {
+  .lane {
+    --rr-gut: 24px;
+    min-height: 0;
+    background: none;
+  }
+
+  .page {
+    padding: 28px var(--rr-gut) 140px;
+  }
+
+  .card {
+    padding: 28px 40px 44px;
+    border: 1px solid var(--rr-hairline);
+    border-radius: var(--rr-radius-lg);
+    background: var(--rr-surface);
+    box-shadow:
+      0 1px 2px rgb(29 36 51 / 4%),
+      0 24px 48px -32px rgb(29 36 51 / 22%);
+  }
+
+  .back {
+    margin-left: -6px;
+  }
+
+  .howGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .howWide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 960px) {
+  .card {
+    padding: 32px 48px 48px;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
+    gap: 40px;
+    align-items: start;
+  }
+
+  .mapPane {
+    position: sticky;
+    top: 16px;
+  }
+
+  .map {
+    max-height: calc(100dvh - 260px);
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 479px) {
+  .controls {
+    margin: 0 -8px;
+    padding: 16px 14px;
+  }
+
+  .segment {
+    font-size: 14px;
+  }
+
+  .metricNumber {
+    font-size: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .area,
+  .segment,
+  .viewButton,
+  .back {
+    transition: none;
+  }
+}
