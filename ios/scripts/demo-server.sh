@@ -4,7 +4,7 @@
 #   --reset  deletes the demo database first
 #   --lan    binds every interface and accepts only http://<mac-ip>:<port>, so a phone on the same wifi works; the
 #            default is loopback only, which the simulator reaches as http://127.0.0.1:<port>
-# env: RR_IOS_PGLITE_DIR (default .data/pglite-ios)
+# env: RR_IOS_PGLITE_DIR (default .data/pglite-ios), RR_NEXT_DIST_DIR (default .next; give each parallel server its own)
 cd ${0:A:h}/../..
 RESET=0; LAN=0
 while [ $# -gt 0 ]; do
@@ -44,7 +44,7 @@ if [ $LAN = 1 ]; then
 fi
 RR_DB=pglite RR_PGLITE_DIR="$DIR" RR_AI=demo RR_EMBED=off ELEVENLABS_API_KEY= TWILIO_ACCOUNT_SID= \
   TWILIO_AUTH_TOKEN= TWILIO_PHONE_NUMBER= DEMO_SMS_TO= GEMINI_API_KEY= SUPABASE_DB_URL= APP_BASE_URL="$BASE" \
-  RR_DEV_ORIGINS="$DEV_ORIGINS" RR_TRUSTED_LAN_HOSTS= \
+  RR_DEV_ORIGINS="$DEV_ORIGINS" RR_TRUSTED_LAN_HOSTS= RR_NEXT_DIST_DIR="${RR_NEXT_DIST_DIR:-.next}" \
   nohup npx next dev --hostname $HOST -p $PORT > "$LOG" 2>&1 &
 for i in $(seq 1 90); do
   if curl -s -m 5 -o /dev/null "http://127.0.0.1:$PORT/api/session"; then

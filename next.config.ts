@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
   poweredByHeader: false,
+  // lets several throwaway dev servers (ios/scripts/demo-server.sh) run side by side without sharing one build folder
+  distDir: process.env.RR_NEXT_DIST_DIR || ".next",
   // PGlite loads its wasm and extension bundles relative to its own files, so it runs from node_modules unbundled
   serverExternalPackages: ["@electric-sql/pglite", "@electric-sql/pglite-pgvector", "@electric-sql/pglite-postgis"],
   // lets other devices on the same network load the dev server, e.g. RR_DEV_ORIGINS=10.32.18.243
