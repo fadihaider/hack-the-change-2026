@@ -1,6 +1,7 @@
 "use client";
-// help nearby: the cards /api/guide returns (leave rule, EI, supports, hospital, pharmacy, transit), each with its
-// source link and the date it was checked. one small question about time at work re-queries the leave card.
+// help nearby: the cards /api/guide returns (leave rule, EI, supports), each with its source link and the date it was
+// checked. hospitals, pharmacies and transit stops come from the shared nearby cards with their map directly below.
+// one small question about time at work re-queries the leave card.
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import {
   BriefcaseBusiness,
@@ -14,9 +15,17 @@ import {
   Pill,
   type LucideIcon,
 } from "lucide-react";
-import { liveErrorMessage, safeHref, type GuideCardView, type GuideView, type Tenure } from "@/lib/frontend/live-api.ts";
+import {
+  liveErrorMessage,
+  safeHref,
+  type GuideCardView,
+  type GuideView,
+  type NearbyType,
+  type Tenure,
+} from "@/lib/frontend/live-api.ts";
 import { RequestApiError } from "@/lib/frontend/request-api.ts";
-import { useApis, useSession } from "../session.tsx";
+import { NearbyResourcesAndMap } from "../resources/NearbyResourcesAndMap.tsx";
+import { recipientName, useApis, useSession } from "../session.tsx";
 import { Button, ErrorNote, VisuallyHidden, useAnnounce } from "../ui.tsx";
 import s from "./guide.module.css";
 
@@ -49,6 +58,9 @@ const TENURE_CHOICES: { value: Tenure; label: string }[] = [
 // the first few supports show at once; the rest wait behind one quiet button
 const SUPPORTS_SHOWN = 3;
 const ADDRESS_MAX = 200;
+// the close-by kinds offered here, and the ones ticked at first (what the guide used to list)
+const NEAR_TYPES: readonly NearbyType[] = ["hospital", "pharmacy", "clinic", "transit"];
+const NEAR_DEFAULT_TYPES: readonly NearbyType[] = ["hospital", "pharmacy", "transit"];
 
 export function HelpNearby({ address }: { address: string | null }) {
   const { live } = useApis();
@@ -132,7 +144,13 @@ export function HelpNearby({ address }: { address: string | null }) {
   const cards = guide?.cards ?? [];
   const grouped = groupCards(cards);
   const community = guide ? placeName(guide.location.community) : null;
-  const usesOsm = cards.some((card) => card.source.includes("OpenStreetMap") || card.sourceUrl.includes("openstreetmap"));
+  // the close-by places credit openstreetmap themselves, under their map
+  const usesOsm = cards.some(
+    (card) =>
+      GROUP_OF[card.kind] !== "near" &&
+      (card.source.includes("OpenStreetMap") || card.sourceUrl.includes("openstreetmap")),
+  );
+  const typedAddress = Boolean(typed && typed.for === address && typed.value && typed.value !== (address ?? ""));
   const supports = grouped.support;
   const shownSupports = allSupports ? supports : supports.slice(0, SUPPORTS_SHOWN);
   const hiddenSupports = supports.length - shownSupports.length;
@@ -186,9 +204,26 @@ export function HelpNearby({ address }: { address: string | null }) {
 
       {guide && (
         <div className={s.groups}>
-          {grouped.near.length > 0 && (
-            <CardGroup title={community ? `Close to ${community}` : "Close by"} cards={grouped.near} idBase={`${uid}-near`} />
-          )}
+          <div className={s.group}>
+            <NearbyResourcesAndMap
+              name={recipientName(session)}
+              title={community ? `Close to ${community}` : "Close by"}
+              titleClassName={s.groupTitle}
+              headingLevel={3}
+              address={query || undefined}
+              allowedTypes={NEAR_TYPES}
+              defaultTypes={NEAR_DEFAULT_TYPES}
+              defaultRadiusKm={2}
+              initialVisible={5}
+              refreshKey={appNow}
+              openFirst
+              intro={
+                typedAddress
+                  ? "From public Calgary lists. Distances are straight lines from the address you entered, not travel times. Transit isn’t routed."
+                  : undefined
+              }
+            />
+          </div>
 
           <div className={s.group}>
             <h3 className={s.groupTitle}>Time off and income</h3>
