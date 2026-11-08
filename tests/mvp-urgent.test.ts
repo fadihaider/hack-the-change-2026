@@ -177,6 +177,89 @@ test("change the plan is saved on the server and survives a new scan, without to
   assert.equal(byTitle(/group project/i).reopened, false);
 });
 
+test("a decide that fails leaves a reopened step open and its decision as it was", async () => {
+  const group = byTitle(/group project/i);
+  assert.equal((await call("POST", "commitments/reopen", { body: { commitmentId: group.id } })).status, 200);
+  const foreign = await call("POST", "commitments/decide", {
+    body: { commitmentId: group.id, decision: "reschedule", contactIds: ["00000000-0000-4000-8000-000000000000"] },
+  });
+  assert.equal(foreign.status, 404);
+  await scan();
+  const after = byTitle(/group project/i);
+  assert.equal(after.reopened, true);
+  assert.equal(after.decision, "defer");
+
+  // keep and defer write no message, so they still save at once
+  assert.equal((await call("POST", "commitments/decide", { body: { commitmentId: group.id, decision: "defer" } })).status, 200);
+  await scan();
+  assert.equal(byTitle(/group project/i).reopened, false);
+});
+
+test("after one yes and one no, a new plan writes only to the person who said no", async () => {
+  const w = await import("../components/app/urgent/words.ts");
+  const { createLiveApi } = await import("../lib/frontend/live-api.ts");
+  const { getRuntime } = await import("../lib/mvp/runtime.ts");
+  const rt = await getRuntime();
+  const [yes, no] = groupRequestIds;
+  // the replies arrive as they would from the response links
+  for (const [id, state] of [[yes, "accepted"], [no, "rejected"]] as const) {
+    await rt.stores.database.execute(
+      "UPDATE request SET state = :state, updated_at = now() WHERE id = CAST(:id AS uuid)",
+      [p.text("state", state), p.uuid("id", id)],
+    );
+    await rt.stores.database.execute(
+      `INSERT INTO request_event (request_id, from_state, to_state, evidence_kind, evidence_ref, actor)
+        VALUES (CAST(:id AS uuid), 'requested', :state, 'link_click', 'test reply', 'contact')`,
+      [p.uuid("id", id), p.text("state", state)],
+    );
+  }
+  const listed = async () => {
+    const all = (await call("GET", "requests")).data.requests;
+    const links = new Set(byTitle(/group project/i).requests.map((l: any) => l.id));
+    return all.filter((r: any) => links.has(r.id));
+  };
+  // the browser schema parses what the server sent, so the helpers see the real shapes
+  const parse = async () =>
+    (await createLiveApi(async () => Response.json({
+      episode: { id: episodeId, startsOn: "2026-11-08", endsOn: "2026-11-14" },
+      commitments,
+      modelStatus: "ok",
+    })).impact(episodeId)).commitments.find((c) => /group project/i.test(c.title))!;
+  await scan();
+  const group = await parse();
+  const yesContact = (await listed()).find((r: any) => r.id === yes).recipient.contactId;
+  const noContact = (await listed()).find((r: any) => r.id === no).recipient.contactId;
+
+  // the screen's default ticks leave out the person who already said yes
+  const to = w.defaultRecipients(group, await listed());
+  assert.deepEqual(to, [noContact]);
+  const decided = await call("POST", "commitments/decide", { body: { commitmentId: group.id, decision: "reschedule", contactId: to[0] } });
+  assert.equal(decided.status, 200);
+  assert.equal(decided.data.requests.length, 1);
+  const fresh = decided.data.requests[0];
+  assert.equal(fresh.recipient.contactId, noContact);
+  assert.notEqual(fresh.id, no);
+  assert.equal(fresh.state, "awaiting_approval");
+
+  // even ticked by hand, the person who said yes to the same ask gets their yes back, not a new message
+  const both = await call("POST", "commitments/decide", {
+    body: { commitmentId: group.id, decision: "reschedule", contactIds: [yesContact, noContact] },
+  });
+  assert.equal(both.status, 200);
+  assert.deepEqual(both.data.requests.map((r: any) => r.id), [yes, fresh.id]);
+  assert.ok(both.data.drafts.every((d: any) => d.existing === true));
+
+  // the step shows each person once: the yes and the new message, with the old no under messages so far
+  await scan();
+  const now = await listed();
+  const { latest, older } = w.newestPerPerson(now);
+  assert.deepEqual(latest.map((r) => r.id).sort(), [yes, fresh.id].sort());
+  assert.deepEqual(older.map((r) => r.id), [no]);
+  const line = w.outcomeLineMany(now.filter((r: any) => r.state !== "cancelled"));
+  for (const name of ["Jordan", "Sam"]) assert.equal(line.split(name).length, 2, `${name} is named once in “${line}”`);
+  assert.equal(w.defaultRecipients(await parse(), now).length, 1, "the new message is open, so it is still asked");
+});
+
 test("the tier can be chosen per request; revision, hash and approval follow it", async () => {
   const shift = byTitle(/work shift/i);
   const decided = await call("POST", "commitments/decide", { body: { commitmentId: shift.id, decision: "coverage" } });

@@ -113,7 +113,7 @@ export function LetterSheet({
   const [error, setError] = useState<string | null>(null);
   // terms the server named when it refused an approval
   const [refused, setRefused] = useState<string[]>([]);
-  // a tier Alex picked while typed words are unsaved: rewrite at that level, or keep the words
+  // a tier Alex picked but hasn't applied yet; nothing is rewritten or sent until Alex chooses below the picker
   const [askTier, setAskTier] = useState<Tier | null>(null);
   // one action at a time, even when a double click lands before the next render
   const lock = useRef(false);
@@ -122,7 +122,9 @@ export function LetterSheet({
   const errorRef = useRef<HTMLDivElement>(null);
   const warnRef = useRef<HTMLParagraphElement>(null);
   const sendRef = useRef<HTMLButtonElement>(null);
+  const privacyRef = useRef<HTMLDivElement>(null);
   const wasBusy = useRef(false);
+  const lastBusy = useRef<Busy>(null);
 
   const dirty = base !== null && (subject !== base.subject || body !== base.body);
 
@@ -196,12 +198,21 @@ export function LetterSheet({
   useEffect(() => {
     if (busy) {
       wasBusy.current = true;
+      lastBusy.current = busy;
       return;
     }
     if (!wasBusy.current || !open) return;
     wasBusy.current = false;
     const active = document.activeElement;
     if (active && active !== document.body && active.isConnected) return;
+    // after a tier change, back to the level now set, so the new words come before the send button
+    if (lastBusy.current === "tier") {
+      const chosen = privacyRef.current?.querySelector<HTMLInputElement>("input[type='radio']:checked");
+      if (chosen) {
+        chosen.focus();
+        return;
+      }
+    }
     (warnRef.current ?? sendRef.current)?.focus();
   }, [busy, open]);
 
@@ -218,6 +229,8 @@ export function LetterSheet({
   const editable = EDITABLE.has(current.state);
   const terms = [...new Set([...current.healthTermsFound, ...refused])];
   const blocked = blocks(current, refused);
+  // a picked level that differs from the saved one; once the server copy matches it there is nothing left to apply
+  const pendingTier = askTier !== null && askTier !== current.disclosureTier ? askTier : null;
   const flagNotes = flags.map((flag) => editFlagNote(flag, name)).filter((note): note is string => Boolean(note));
 
   async function close() {
@@ -257,6 +270,11 @@ export function LetterSheet({
 
   async function send(override: boolean) {
     if (busy || lock.current) return;
+    // the picker shows a level that isn't saved yet; approving now would approve the old one
+    if (pendingTier !== null) {
+      setError("Finish changing how much it shares, or cancel it, before you send.");
+      return;
+    }
     if (!subject.trim() || !body.trim()) {
       setError("Add a subject and a message before sending.");
       return;
@@ -361,18 +379,25 @@ export function LetterSheet({
   }
 
   /**
-   * a different tier for this one message. with nothing typed, the message is written again at that level; with typed
-   * words Alex chooses first. either way it goes back for a fresh approval, so the send button is needed again
+   * a different tier for this one message. picking only marks it, so stepping through the radios with the arrow keys
+   * rewrites nothing; Alex applies it below (written again at that level, or with typed words, a choice first). either
+   * way it goes back for a fresh approval, so the send button is needed again
    */
   function pickTier(next: Tier) {
-    if (busy || lock.current || !editable || next === current.disclosureTier) return;
+    if (busy || lock.current || !editable) return;
     setError(null);
-    if (dirty) {
-      setAskTier(next);
-      announce("You’ve changed the words. Choose whether to write it again or keep your words.");
+    if (next === current.disclosureTier) {
+      setAskTier(null);
       return;
     }
-    void changeTier(next, !isProposal(current));
+    if (pendingTier === null) {
+      announce(
+        dirty
+          ? "You’ve changed the words. Choose whether to write it again or keep your words."
+          : "Choose “Use this level” to change how much it shares.",
+      );
+    }
+    setAskTier(next);
   }
 
   async function changeTier(next: Tier, rewrite: boolean) {
@@ -495,26 +520,38 @@ export function LetterSheet({
         </div>
       </div>
 
-      <div className={s.privacy}>
+      <div className={s.privacy} ref={privacyRef}>
         <TierPicker
-          value={askTier ?? current.disclosureTier}
+          value={pendingTier ?? current.disclosureTier}
           groupTier={current.defaultDisclosureTier}
           alias={careAlias}
           disabled={!editable || busy !== null}
           onChange={pickTier}
         />
-        {askTier && (
+        {pendingTier && (
           <div className={s.tierAsk} role="group" aria-labelledby={`${titleId}-tier`}>
             <p id={`${titleId}-tier`} className={s.tierAskText}>
-              You’ve changed the words. Write it again as “{tierLabel(askTier, careAlias)}”, or keep your words?
+              {dirty
+                ? `You’ve changed the words. Write it again as “${tierLabel(pendingTier, careAlias)}”, or keep your words?`
+                : isProposal(current)
+                  ? `Share it as “${tierLabel(pendingTier, careAlias)}”? Your words stay as they are.`
+                  : `Share it as “${tierLabel(pendingTier, careAlias)}”? The message is written again at this level.`}
             </p>
             <div className={s.tierAskActions}>
-              <Button variant="primary" onClick={() => void changeTier(askTier, true)}>
-                Write it again
-              </Button>
-              <Button variant="secondary" onClick={() => void changeTier(askTier, false)}>
-                Keep my words
-              </Button>
+              {dirty ? (
+                <>
+                  <Button variant="primary" onClick={() => void changeTier(pendingTier, true)}>
+                    Write it again
+                  </Button>
+                  <Button variant="secondary" onClick={() => void changeTier(pendingTier, false)}>
+                    Keep my words
+                  </Button>
+                </>
+              ) : (
+                <Button variant="primary" onClick={() => void changeTier(pendingTier, !isProposal(current))}>
+                  Use this level
+                </Button>
+              )}
               <Button variant="quiet" onClick={() => setAskTier(null)}>
                 Cancel
               </Button>
@@ -565,7 +602,7 @@ export function LetterSheet({
               variant="secondary"
               busy={busy === "anyway"}
               busyLabel={`Sending to ${name}`}
-              disabled={busy !== null && busy !== "anyway"}
+              disabled={(busy !== null && busy !== "anyway") || pendingTier !== null}
               onClick={() => void send(true)}
             >
               Send anyway to {name}
@@ -592,7 +629,7 @@ export function LetterSheet({
               variant="primary"
               busy={busy === "send"}
               busyLabel={`Sending to ${name}`}
-              disabled={busy !== null && busy !== "send"}
+              disabled={(busy !== null && busy !== "send") || pendingTier !== null}
               onClick={() => void send(false)}
             >
               <Send size={18} aria-hidden="true" />

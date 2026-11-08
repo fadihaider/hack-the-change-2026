@@ -1,6 +1,7 @@
 "use client";
-// how much one message shares: three native radios, the contact group's usual tier marked. the choice is saved on the
-// server, and the approval covers it, so a change always needs a fresh send click
+// how much one message shares: three native radios, the contact group's usual tier marked. a pick only marks the level;
+// the letter applies it with its own button, saves it on the server, and the approval covers it, so a change always
+// needs a fresh send click
 import { useId } from "react";
 import { TIER_HINT, TIERS, tierLabel, type Tier } from "./words.ts";
 import s from "./urgent.module.css";
