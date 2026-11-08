@@ -569,35 +569,56 @@ export function liveErrorMessage(error: unknown): string {
   return apiErrorMessage(error);
 }
 
-/** the adapter badges shown in live mode, so nobody mistakes the local outbox for real email */
-export function modeLabels(mode: LiveMode): string[] {
+export type ModeLabelKey = "ai" | "mail" | "calendar" | "speech" | "retrieval" | "db" | "auth";
+export type ModeLabel = { key: ModeLabelKey; name: string; value: string };
+
+/**
+ * what actually runs behind each feature, for the demo/admin menu (PRD 14, AC13). built only from the adapter
+ * mode words in GET /api/session, never from secrets. the demo ai is keyword rules and is never called Claude.
+ */
+export function modeLabels(
+  mode: LiveMode,
+  providers: LiveSession["providers"] = { speech: "off", retrieval: "keyword" },
+): ModeLabel[] {
   const ai: Record<string, string> = {
-    demo: "Demo AI provider (offline rules)",
-    anthropic: "Claude API",
-    bedrock: "Claude on Amazon Bedrock",
+    demo: "Demo rules (offline)",
+    anthropic: "Claude",
+    bedrock: "Claude on Bedrock",
+    gemini: "Gemini",
   };
   const mail: Record<string, string> = {
-    outbox: "Local outbox, no real email",
-    gmail: "Gmail: real email is sent",
+    outbox: "Demo outbox",
+    gmail: "Gmail",
   };
   const calendar: Record<string, string> = {
     seed: "Seeded demo calendar",
-    google: "Google Calendar, read-only",
+    google: "Google",
+  };
+  const speech: Record<string, string> = {
+    elevenlabs: "ElevenLabs Scribe",
+    off: "Off",
+  };
+  const retrieval: Record<string, string> = {
+    keyword: "Keyword",
+    vector: "Keyword + vectors",
   };
   const db: Record<string, string> = {
-    pglite: "Local database",
-    aurora: "Aurora database",
+    pglite: "Local PGlite",
+    aurora: "Aurora",
   };
   const auth: Record<string, string> = {
-    demo: "Demo sign-in (fictional Alex)",
-    google: "Google sign-in",
+    demo: "Demo (fictional Alex)",
+    google: "Google",
   };
+  // an unrecognised mode word is shown as-is rather than dressed up as a known provider
   return [
-    ai[mode.ai] ?? `AI: ${mode.ai}`,
-    mail[mode.mail] ?? `Mail: ${mode.mail}`,
-    calendar[mode.calendar] ?? `Calendar: ${mode.calendar}`,
-    db[mode.db] ?? `Database: ${mode.db}`,
-    auth[mode.auth] ?? `Sign-in: ${mode.auth}`,
+    { key: "ai", name: "AI", value: ai[mode.ai] ?? mode.ai },
+    { key: "mail", name: "Mail", value: mail[mode.mail] ?? mode.mail },
+    { key: "calendar", name: "Calendar", value: calendar[mode.calendar] ?? mode.calendar },
+    { key: "speech", name: "Speech", value: speech[providers.speech] ?? providers.speech },
+    { key: "retrieval", name: "Ask retrieval", value: retrieval[providers.retrieval] ?? providers.retrieval },
+    { key: "db", name: "DB", value: db[mode.db] ?? mode.db },
+    { key: "auth", name: "Sign-in", value: auth[mode.auth] ?? mode.auth },
   ];
 }
 
