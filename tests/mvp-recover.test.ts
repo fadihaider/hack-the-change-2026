@@ -118,10 +118,9 @@ test("sent copy follows the mail adapter: demo outbox never says sent by email",
   const sent = view({ evidence: [event("gmail_message_id", "sending", "requested", "outbox-123", T1)] });
   const outboxLine = statusLine(sent, "outbox");
   assert.match(outboxLine, /^Placed in the demo outbox/);
-  assert.match(outboxLine, /No real email went out\./);
   assert.doesNotMatch(outboxLine, /Sent by email/);
   assert.match(statusLine(sent, "gmail"), /^Sent by email/);
-  assert.equal(evidenceLine(sent.evidence[0], sent, "outbox"), "Placed in the demo outbox. No real email went out.");
+  assert.equal(evidenceLine(sent.evidence[0], sent, "outbox"), "Placed in the demo outbox.");
   assert.equal(evidenceLine(sent.evidence[0], sent, "gmail"), "Sent by email. Gmail accepted it.");
   const sending = view({ state: "sending", evidence: [event("approval", "approved", "sending", SECRET_REF, T1)] });
   assert.match(statusLine(sending, "outbox"), /check the demo outbox before sending again/);
@@ -320,7 +319,7 @@ test("recover over the real routes: sent waits, held back needs follow-up, accep
     "You chose this message to review.",
     "You approved this exact message.",
     "Placing it in the demo outbox started from your approval.",
-    "Placed in the demo outbox. No real email went out.",
+    "Placed in the demo outbox.",
     "Morgan Chen chose Accept on their reply link.",
   ]);
 });

@@ -97,9 +97,8 @@ export function statusLine(request: RequestView, mail: MailMode = "gmail"): stri
       const sent = reachedAt(request, "requested");
       const verb = outbox ? "Placed in the demo outbox" : "Sent by email";
       const first = sent ? sentence(`${verb} ${at(sent)}`) : `${verb}.`;
-      const noEmail = outbox ? " No real email went out." : "";
       const due = request.respondBy ? ` ${sentence(`Reply due by ${at(request.respondBy)}`)}` : "";
-      return `${first}${noEmail}${due}`;
+      return `${first}${due}`;
     }
     case "accepted":
       return changed ? sentence(`Said yes ${at(changed)}`) : "Said yes.";
@@ -159,7 +158,7 @@ export function evidenceLine(event: Evidence, request: RequestView, mail: MailMo
       }
       return "Recorded from your approval.";
     case "gmail_message_id":
-      return outbox ? "Placed in the demo outbox. No real email went out." : "Sent by email. Gmail accepted it.";
+      return outbox ? "Placed in the demo outbox." : "Sent by email. Gmail accepted it.";
     case "link_click":
       if (event.toState === "accepted") return `${name} chose Accept on their reply link.`;
       if (event.toState === "rejected") return `${name} chose Decline on their reply link.`;

@@ -656,7 +656,7 @@ export function LetterSheet({
 
       <p className={s.sendNote}>
         {outbox
-          ? `Goes to the demo outbox from ${senderEmail}. No real email is sent.`
+          ? `Goes to the demo outbox from ${senderEmail}.`
           : `Sends by email from ${senderEmail}.`}
       </p>
     </Sheet>
