@@ -11,6 +11,18 @@ final class AskModel {
         var result: AskResponse
     }
 
+    /// how one ask ended, so voiceover reads the new answer or the new problem, never the last answer again
+    enum Outcome: Equatable {
+        /// a new answer is in asked; true when it saved an open question, so the profile should reload
+        case answered(savedOpenQuestion: Bool)
+        /// the question was empty or too long; error says which
+        case invalid
+        /// the call failed; error says why
+        case failed
+        /// another ask was still running
+        case ignored
+    }
+
     var question = ""
     private(set) var asked: Asked?
     private(set) var busy = false
@@ -18,9 +30,8 @@ final class AskModel {
     private(set) var invalid = false
     @ObservationIgnored private var asks = 0
 
-    /// POST /api/care/ask; true when the answer saved an open question, so the profile should reload
-    func ask(_ api: APIClient) async -> Bool {
-        guard !busy else { return false }
+    /// checks the question before anything is said or sent; false sets error
+    func validate() -> Bool {
         let words = question.trimmingCharacters(in: .whitespacesAndNewlines)
         if words.isEmpty {
             invalid = true
@@ -32,6 +43,14 @@ final class AskModel {
             error = "That question is longer than 500 characters. Shorten it, then ask again."
             return false
         }
+        return true
+    }
+
+    /// POST /api/care/ask
+    func ask(_ api: APIClient) async -> Outcome {
+        guard !busy else { return .ignored }
+        guard validate() else { return .invalid }
+        let words = question.trimmingCharacters(in: .whitespacesAndNewlines)
         busy = true
         error = nil
         invalid = false
@@ -40,10 +59,10 @@ final class AskModel {
             let result = try await api.ask(question: words)
             asks += 1
             asked = Asked(key: asks, question: words, result: result)
-            return result.openQuestionId != nil
+            return .answered(savedOpenQuestion: result.openQuestionId != nil)
         } catch {
             self.error = error.userMessage
-            return false
+            return .failed
         }
     }
 
@@ -146,10 +165,22 @@ struct AskAboutView: View {
 
     private func submit() {
         fieldFocused = false
+        // a question that can't be asked says why, and nothing claims to be looking (AskAboutRosa.tsx)
+        guard model.validate() else {
+            if let error = model.error { careAnnounce(error) }
+            return
+        }
         careAnnounce("Looking in \(Labels.possessive(name)) approved passport.")
         Task {
-            if await model.ask(app.api) { await onChanged() }
-            if let asked = model.asked { careAnnounce(AnswerView.leadText(name: name, asked: asked)) }
+            switch await model.ask(app.api) {
+            case .answered(let saved):
+                if saved { await onChanged() }
+                if let asked = model.asked { careAnnounce(AnswerView.leadText(name: name, asked: asked)) }
+            case .invalid, .failed:
+                if let error = model.error { careAnnounce(error) }
+            case .ignored:
+                break
+            }
         }
     }
 }
