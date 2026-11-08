@@ -4,6 +4,7 @@ import SwiftUI
 struct TonePill: View {
     var text: String
     var tone: StateTone
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(_ text: String, tone: StateTone) {
         self.text = text
@@ -12,13 +13,18 @@ struct TonePill: View {
 
     var body: some View {
         let colors = Theme.colors(for: tone)
+        // at accessibility sizes the words wrap instead of ending in an ellipsis beside a name
+        let wraps = dynamicTypeSize.isAccessibilitySize
         Text(text)
             .font(.rrPill)
-            .lineLimit(1)
+            .lineLimit(wraps ? nil : 1)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(colors.ink)
             .padding(.horizontal, 10)
+            .padding(.vertical, wraps ? 4 : 0)
             .frame(minHeight: 26)
-            .background(colors.tint, in: .capsule)
+            .background(colors.tint, in: .rect(cornerRadius: wraps ? Theme.radiusSmall : 13))
             .accessibilityLabel(text)
     }
 }
