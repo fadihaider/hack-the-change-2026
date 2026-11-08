@@ -355,6 +355,12 @@
   overflow: visible;
 }
 
+/* the last answer, kept on screen while the scores for new choices load */
+.stale {
+  opacity: 0.55;
+  transition: opacity 150ms ease;
+}
+
 .area {
   stroke: #ffffff;
   stroke-width: 0.8;
@@ -739,6 +745,14 @@
   color: var(--rr-muted);
 }
 
+/* the plain caveat right under a method title */
+.howSub {
+  margin-top: -6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--rr-muted);
+}
+
 .tableWrap {
   max-width: 100%;
   overflow-x: auto;
@@ -883,6 +897,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .stale,
   .area,
   .segment,
   .viewButton,

@@ -1,9 +1,10 @@
 # Care Access Intelligence MVP
 
-**Branch held unmerged at Ali's request.** This is an additive module: it does not
-change the current app navigation, backend runtime, database schema or AI services.
-Open `/care-access` in this branch to use the map. No Python server, cloud account
-or model training is required for the map: its 1 MB public snapshot is included.
+This module is merged into the app. It adds no database tables and no AI services.
+Open `/care/access` (linked from Care) to use the explorer map. No Python server,
+cloud account or model training is required: the 1 MB public snapshot is committed
+and the server reads it once per process. The browser never downloads the whole
+snapshot; it reads a slim basemap and per-choice scores (see "API" below).
 
 ## Recorded notebook results
 
@@ -59,9 +60,12 @@ profiles and candidate results are in `artifacts/clustering.json`.
 - The app's score is `100 × mean(min(reachable count / 5, 1))` across selected
   categories. It is a transparent coverage metric, **not** an ML prediction or
   clinical/accessibility certification. Categories receive equal weights.
-- Interactive filters recalculate the metric from cached route/distance matrices.
-  The ML groups remain the fixed offline 20/30-minute profile partition, labelled
-  as such. No retraining, routing or Python process launches happen per interaction.
+- Interactive filters recalculate the metric on the server from the cached
+  route/distance matrices. The ML groups remain the fixed offline 20/30-minute
+  profile partition, labelled as area access groups. No retraining, routing or
+  Python process launches happen per interaction.
+- 25 snapshot rows typed "Ambulatory Health Care Services" are not one of the 7
+  scored kinds, so no score counts them. The explorer says so in its limits.
 
 The data snapshot includes source URLs, fetch dates, raw-source hashes, route
 coverage and limitations. Public source data and fitted models are checked in;
@@ -74,7 +78,7 @@ artifacts: load only this trusted notebook's outputs or your own deployment buck
 # In the repository root; the map works from the committed snapshot.
 npm ci
 npm run dev
-# Open http://127.0.0.1:3000/care-access
+# Open http://127.0.0.1:3000/care/access
 
 # Optional Python service for classifying NEW resource names.
 python3 -m venv .venv-care-access
@@ -86,25 +90,43 @@ Set `CARE_ACCESS_INFERENCE_URL=http://127.0.0.1:8091/classify` in ignored
 `.env.local` to enable `POST /api/care-access/classify`. The Python server loads the
 fitted classifier once; it does not train on requests. Unknown vocabulary returns
 `Unknown`. Use only resource names/service descriptions, not personal care records.
-The map never needs this optional server.
+The map never needs this optional server and never calls it: it shows the published
+categories and the predictions saved when the snapshot was built. Without the URL,
+the route answers `503 classifier_not_configured` and the explorer says live
+prediction is unavailable.
 
 The local lookup smoke measured **2.43ms median / 5.63ms p95** for comparing
 all223 communities against299 records. This measures cached filter computation
 on this machine, not network loading, React rendering or a latency guarantee.
 
+## API
+
 ```sh
+# Explorer base layer, read once per page: outlines (5 decimals), route coverage,
+# fixed groups, model report numbers, excluded categories and whether live
+# classification is configured (never the URL or token). About 87 KB.
+curl 'http://127.0.0.1:3000/api/care-access/basemap'
+
+# Explorer scores for one set of choices: one row per community, no place lists.
+# About 40 KB for all 7 kinds.
+curl 'http://127.0.0.1:3000/api/care-access?mode=driving&threshold=20&categories=Pharmacy,Health%20Centre&view=scores'
+
 # Public aggregate access/RAG hook; response contains sourced resource IDs.
+# Without `area` this embeds every community's places: about 3.5 MB for these two
+# kinds, about 7.7 MB for all 7. Pass `area=<community code>` or `view=scores`.
 curl 'http://127.0.0.1:3000/api/care-access?mode=driving&threshold=20&categories=Pharmacy,Health%20Centre'
 
-# Optional warm classifier hook, 1–20 texts, at most2000 chars each.
+# Optional warm classifier hook, 1–20 texts, at most 2000 chars each. Needs the
+# signed-in owner and a same-origin Origin header; 30 calls per owner per 10 minutes.
 curl -X POST http://127.0.0.1:3000/api/care-access/classify \
+  -H 'Origin: http://127.0.0.1:3000' \
   -H 'Content-Type: application/json' -d '{"texts":["Community pharmacy"]}'
 ```
 
 `GET /api/care-access` accepts `area` (community code), `mode` (`driving` or
 `proximity`), `threshold` (minutes or km), comma-separated `categories`, and
-`stepFree=true`. Unknown areas return404; unsupported transit returns422 rather
-than fabricated times. This is an additive integration point for existing RAG:
+`stepFree=true`, plus `view=scores` for the slim per-community rows. Unknown areas
+return 404; unsupported transit returns 422 rather than fabricated times. This is an additive integration point for existing RAG:
 use returned resource IDs/source URLs as candidate evidence, then keep existing
 authorization and citation guards. No existing retrieval contract is changed.
 
@@ -147,9 +169,3 @@ python -m ml.care_access.deploy --bucket YOUR_EXISTING_BUCKET --prefix care-acce
 - No AWS upload, invocation, account/security verification or production deployment
   was run. Cold starts and network calls are not instantaneous; browser map filters
   avoid them entirely. No hosted free-text classifier is required for the MVP map.
-
-## Review hold
-
-All changes are under new additive paths. There is no top-nav edit or automatic
-integration into `mvp-local`. The branch must remain separate from `main`; Ali
-requested a completed board handoff and a hold, without a merge request or merge.

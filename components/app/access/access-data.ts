@@ -1,6 +1,13 @@
-// shared pieces for the care access views: the home api client, the snapshot loader, map geometry, colours and words
+// shared pieces for the care access views: the home api client, the slim explorer payloads (with the full snapshot
+// as a fallback), map geometry, colours and words. pure apart from the fetch helpers, so the basemap route reuses it.
 import { z } from "zod";
-import { SERVICE_CATEGORIES, SERVICE_NAMES, type AccessArea, type AccessSnapshot } from "@/lib/care-access/engine.ts";
+import {
+  compareAreas,
+  SERVICE_CATEGORIES,
+  SERVICE_NAMES,
+  type AccessSnapshot,
+} from "@/lib/care-access/engine.ts";
+import { clusterSizes } from "@/lib/care-access/home.ts";
 import { liveErrorMessage } from "@/lib/frontend/live-api.ts";
 import { createCaller, RequestApiError } from "@/lib/frontend/request-api.ts";
 
@@ -241,7 +248,10 @@ export type SnapshotExtras = {
   clustering: { areas?: number; features?: string[] };
 };
 
-/** the public 1 MB snapshot, checked before use: rows must line up with the communities and the places */
+/**
+ * the public 1 MB snapshot, checked before use: rows must line up with the communities and the places. the explorer
+ * only falls back to it when the slim basemap route fails.
+ */
 export async function loadSnapshot(signal: AbortSignal): Promise<AccessSnapshot> {
   const response = await fetch("/care-access/snapshot.json", { signal, credentials: "same-origin" });
   if (!response.ok) throw new Error("snapshot_unavailable");
@@ -263,6 +273,291 @@ export async function loadSnapshot(signal: AbortSignal): Promise<AccessSnapshot>
   return data as AccessSnapshot;
 }
 
+// ---------------------------------------------------------------- the slim explorer payloads
+
+// the parts of the model reports the method notes read; confusion matrices and the search grid stay in the artifacts
+const classificationShape = z.object({
+  selected_model: z.string(),
+  results: z.array(
+    z.object({
+      model: z.string(),
+      heldout_accuracy: z.number(),
+      heldout_macro_f1: z.number(),
+      labels: z.array(z.string()).optional(),
+    }),
+  ),
+  test_rows: z.number().optional(),
+  train_rows: z.number().optional(),
+  features: z.string().optional(),
+  label_source: z.string().optional(),
+  limitations: z.array(z.string()).optional(),
+});
+
+const clusteringShape = z.object({
+  selected: z.object({
+    algorithm: z.string(),
+    silhouette: z.number(),
+    davies_bouldin: z.number().optional(),
+    perturbation_ari: z.number(),
+    clusters: z.number(),
+  }),
+  profiles: z.array(z.object({ cluster: z.number(), areas: z.number(), mean_counts: z.record(z.string(), z.number()) })),
+  accuracy_reason: z.string(),
+  areas: z.number().optional(),
+  features: z.array(z.string()).optional(),
+});
+
+/** GET /api/care-access/basemap: community outlines, the fixed groups and the method notes, without the cost matrices */
+export const basemapSchema = z
+  .object({
+    areas: z.array(areaShape.extend({ sector: z.string().max(80) })).min(1),
+    drivingCoverage: z.array(z.number()),
+    clusters: z.array(z.number().nullable()),
+    clusterSizes: z.array(z.object({ cluster: z.number(), areas: z.number() })),
+    clusterBasis: z.string(),
+    scoreFormula: z.string(),
+    provenance: z.object({
+      fetchedAt: z.string(),
+      limitations: z.array(z.string()),
+      sources: z.record(z.string(), z.string()),
+      licences: z.array(z.string()).optional(),
+    }),
+    benchmark: z.object({ classification: classificationShape, clustering: clusteringShape }),
+    /** places in the snapshot, and how many of them confirm step-free access */
+    resources: z.object({ total: z.number(), stepFreeConfirmed: z.number() }),
+    /** published types in the snapshot that no score counts */
+    excludedCategories: z.array(z.object({ category: z.string(), resources: z.number() })),
+    /** whether the optional live classifier is set up on the server; null when the page can't tell */
+    inference: z.object({ configured: z.boolean().nullable() }),
+  })
+  .refine((map) => map.drivingCoverage.length === map.areas.length && map.clusters.length === map.areas.length);
+
+export type AccessBasemap = z.infer<typeof basemapSchema>;
+
+const scoreRowShape = z.object({
+  id: z.string(),
+  score: z.number().nullable(),
+  counts: z.record(z.string(), z.number()),
+  /** places in reach after the step-free filter */
+  inReach: z.number(),
+  unknownStepFree: z.number(),
+  cluster: z.number().nullable(),
+  routingCoverage: z.number(),
+});
+
+/** GET /api/care-access?view=scores: one row per community, in basemap order, with no place lists */
+export const scoresSchema = z.object({
+  mode: z.enum(["driving", "proximity"]),
+  threshold: z.number(),
+  categories: z.array(z.string()),
+  areas: z.array(scoreRowShape),
+});
+
+export type ScoreRow = z.infer<typeof scoreRowShape>;
+
+const placeShape = z.object({ resource: resourceShape, cost: z.number() });
+
+/** GET /api/care-access?area=ID: the one community's places in reach, nearest first */
+export const areaPlacesSchema = z.object({
+  areas: z
+    .array(z.object({ area: z.object({ id: z.string(), name: z.string() }), resources: z.array(placeShape) }))
+    .length(1),
+});
+
+export type Place = z.infer<typeof placeShape>;
+
+export type AccessQuery = { mode: TravelMode; threshold: number; categories: readonly string[]; stepFree: boolean };
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function stringsOrUndefined(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
+}
+
+function roundDeep(value: unknown, factor: number): unknown {
+  if (Array.isArray(value)) return value.map((item) => roundDeep(item, factor));
+  return typeof value === "number" ? Math.round(value * factor) / factor : value;
+}
+
+/**
+ * the basemap from the full snapshot. the route rounds outlines to `digits` places (5 is about a metre, well under a
+ * pixel on the map); the browser fallback keeps them as they are.
+ */
+export function slimBasemap(
+  snapshot: AccessSnapshot,
+  options: { inferenceConfigured: boolean | null; digits?: number },
+): AccessBasemap {
+  const factor = options.digits === undefined ? null : 10 ** options.digits;
+  const classification = snapshot.benchmark.classification as AccessSnapshot["benchmark"]["classification"] &
+    Record<string, unknown>;
+  const clustering = snapshot.benchmark.clustering as AccessSnapshot["benchmark"]["clustering"] &
+    Record<string, unknown>;
+  const selected = clustering.selected as typeof clustering.selected & Record<string, unknown>;
+  const provenance = snapshot.provenance as AccessSnapshot["provenance"] & Record<string, unknown>;
+  const counted = new Set<string>(CATEGORIES);
+  const excluded = new Map<string, number>();
+  for (const resource of snapshot.resources) {
+    if (!counted.has(resource.category)) excluded.set(resource.category, (excluded.get(resource.category) ?? 0) + 1);
+  }
+  return {
+    areas: snapshot.areas.map((area) => ({
+      id: area.id,
+      name: area.name,
+      lat: area.lat,
+      lon: area.lon,
+      sector: area.sector,
+      geometry: {
+        type: area.geometry.type,
+        coordinates: (factor === null
+          ? area.geometry.coordinates
+          : roundDeep(area.geometry.coordinates, factor)) as unknown[],
+      },
+    })),
+    drivingCoverage: snapshot.drivingCoverage,
+    clusters: snapshot.clusters,
+    clusterSizes: clusterSizes(snapshot.clusters),
+    clusterBasis: snapshot.clusterBasis,
+    scoreFormula: snapshot.scoreFormula,
+    provenance: {
+      fetchedAt: provenance.fetchedAt,
+      limitations: provenance.limitations,
+      sources: provenance.sources,
+      licences: stringsOrUndefined(provenance.licences),
+    },
+    benchmark: {
+      classification: {
+        selected_model: classification.selected_model,
+        results: classification.results.map((result) => ({
+          model: result.model,
+          heldout_accuracy: result.heldout_accuracy,
+          heldout_macro_f1: result.heldout_macro_f1,
+          labels: stringsOrUndefined((result as Record<string, unknown>).labels),
+        })),
+        test_rows: numberOrUndefined(classification.test_rows),
+        train_rows: numberOrUndefined(classification.train_rows),
+        features: stringOrUndefined(classification.features),
+        label_source: stringOrUndefined(classification.label_source),
+        limitations: stringsOrUndefined(classification.limitations),
+      },
+      clustering: {
+        selected: {
+          algorithm: selected.algorithm,
+          silhouette: selected.silhouette,
+          davies_bouldin: numberOrUndefined(selected.davies_bouldin),
+          perturbation_ari: selected.perturbation_ari,
+          clusters: selected.clusters,
+        },
+        profiles: clustering.profiles,
+        accuracy_reason: clustering.accuracy_reason,
+        areas: numberOrUndefined(clustering.areas),
+        features: stringsOrUndefined(clustering.features),
+      },
+    },
+    resources: {
+      total: snapshot.resources.length,
+      stepFreeConfirmed: snapshot.resources.filter((resource) => resource.wheelchair === true).length,
+    },
+    excludedCategories: [...excluded.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([category, resources]) => ({ category, resources })),
+    inference: { configured: options.inferenceConfigured },
+  };
+}
+
+/** every community's score row, without its place list; the scores view and the browser fallback share it */
+export function scoreRows(snapshot: AccessSnapshot, query: AccessQuery): ScoreRow[] {
+  return compareAreas(snapshot, { ...query, categories: [...query.categories] }).map((row) => ({
+    id: row.area.id,
+    score: row.score,
+    counts: row.counts,
+    inReach: row.resources.length,
+    unknownStepFree: row.unknownStepFree,
+    cluster: snapshot.clusters[row.index] ?? null,
+    routingCoverage: snapshot.drivingCoverage[row.index] ?? 0,
+  }));
+}
+
+/** where the explorer gets its numbers: the slim routes, or the full snapshot scored in the browser */
+export type AccessSource = {
+  kind: "api" | "snapshot";
+  basemap: AccessBasemap;
+  scores(query: AccessQuery): Promise<ScoreRow[]>;
+  places(query: AccessQuery, id: string): Promise<Place[]>;
+};
+
+function accessParams(query: AccessQuery, extra: Record<string, string>): string {
+  return new URLSearchParams({
+    mode: query.mode,
+    threshold: String(query.threshold),
+    categories: query.categories.join(","),
+    stepFree: String(query.stepFree),
+    ...extra,
+  }).toString();
+}
+
+// one basemap per page load: it only changes when the snapshot is rebuilt
+let basemapRequest: Promise<AccessBasemap> | null = null;
+
+function fetchBasemap(): Promise<AccessBasemap> {
+  if (!basemapRequest) {
+    basemapRequest = call("/api/care-access/basemap", basemapSchema).catch((error: unknown) => {
+      basemapRequest = null;
+      throw error;
+    });
+  }
+  return basemapRequest;
+}
+
+function apiSource(basemap: AccessBasemap): AccessSource {
+  return {
+    kind: "api",
+    basemap,
+    scores: (query) =>
+      call(`/api/care-access?${accessParams(query, { view: "scores" })}`, scoresSchema).then((data) => data.areas),
+    places: (query, id) =>
+      call(`/api/care-access?${accessParams(query, { area: id })}`, areaPlacesSchema).then(
+        (data) => data.areas[0].resources,
+      ),
+  };
+}
+
+function snapshotSource(snapshot: AccessSnapshot): AccessSource {
+  return {
+    kind: "snapshot",
+    basemap: slimBasemap(snapshot, { inferenceConfigured: null }),
+    scores: async (query) => scoreRows(snapshot, query),
+    places: async (query, id) => {
+      const index = snapshot.areas.findIndex((area) => area.id === id);
+      if (index < 0) return [];
+      // the engine only needs this one community's rows
+      const one: AccessSnapshot = {
+        ...snapshot,
+        areas: [snapshot.areas[index]],
+        drivingCoverage: [snapshot.drivingCoverage[index]],
+        drivingMinutes: [snapshot.drivingMinutes[index] ?? []],
+        distanceKm: [snapshot.distanceKm[index] ?? []],
+      };
+      return compareAreas(one, { ...query, categories: [...query.categories] })[0]?.resources ?? [];
+    },
+  };
+}
+
+/** the slim basemap route first; the full public snapshot only when that route fails */
+export async function openAccessSource(signal: AbortSignal): Promise<AccessSource> {
+  try {
+    return apiSource(await fetchBasemap());
+  } catch (error) {
+    if (signal.aborted) throw error;
+    return snapshotSource(await loadSnapshot(signal));
+  }
+}
+
 // ---------------------------------------------------------------- map geometry
 
 export type MapShape = { id: string; d: string; x: number; y: number };
@@ -271,7 +566,10 @@ export type MapLayout = { width: number; height: number; shapes: MapShape[] };
 // calgary sits near 51 degrees north; this keeps east-west distances true to scale on a flat map
 const LON_SCALE = Math.cos((51.05 * Math.PI) / 180);
 
-function ringsOf(area: AccessArea): number[][][] {
+/** what the map needs from a community: snapshot areas and basemap areas both fit */
+export type MapArea = { id: string; lat: number; lon: number; geometry: { type: string; coordinates: unknown } };
+
+function ringsOf(area: MapArea): number[][][] {
   const geometry = area.geometry as { type: string; coordinates: unknown };
   if (!Array.isArray(geometry.coordinates)) return [];
   if (geometry.type === "Polygon") return geometry.coordinates as number[][][];
@@ -284,7 +582,7 @@ function usable(point: unknown): point is [number, number] {
 }
 
 /** svg paths for every community, fitted to a box `width` wide; the height follows the city's shape */
-export function projectAreas(areas: readonly AccessArea[], width = 1000, pad = 10): MapLayout {
+export function projectAreas(areas: readonly MapArea[], width = 1000, pad = 10): MapLayout {
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
