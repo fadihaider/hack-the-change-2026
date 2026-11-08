@@ -22,3 +22,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS usage_signal_completed_once ON usage_signal (c
 
 -- nearby resources: GET /api/care-access/nearby looks up the nearest places of each kind around a point
 CREATE INDEX IF NOT EXISTS resource_kind ON resource (kind);
+
+-- care passport (PRD 5): belongings get their own "practical" category, and a fact may carry a short display label.
+-- the inline CHECK in db/schema.sql has the implicit name care_fact_category_check, so it is swapped here by name
+ALTER TABLE care_fact ADD COLUMN IF NOT EXISTS display_text text;
+ALTER TABLE care_fact DROP CONSTRAINT IF EXISTS care_fact_category_check;
+ALTER TABLE care_fact ADD CONSTRAINT care_fact_category_check CHECK (category IN ('routine','preference','communication','mobility','practical','contacts','logistics','medical_instruction'));

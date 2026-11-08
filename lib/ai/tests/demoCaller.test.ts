@@ -105,3 +105,64 @@ test("demo caller refuses a prompt it does not know", async () => {
     (error: unknown) => error instanceof ModelCallError && error.code === "demo_unknown_step",
   );
 });
+
+const PRD_NOTE =
+  "Rosa usually has breakfast at eight. She prefers instructions written down. " +
+  "Her spare glasses are in the bedroom drawer. She likes the radio on in the morning.";
+
+test("demo A4 splits the PRD note into routine, communication, practical and preference, with an 08:00 breakfast", async () => {
+  const result = await runCareCompiler({ fullText: PRD_NOTE, existingFacts: [], episodeStart: EPISODE_START }, deps);
+  assert.deepEqual(
+    result.facts.map((fact) => [fact.category, fact.textExact]),
+    [
+      ["routine", "Rosa usually has breakfast at eight."],
+      ["communication", "She prefers instructions written down."],
+      ["practical", "Her spare glasses are in the bedroom drawer."],
+      ["preference", "She likes the radio on in the morning."],
+    ],
+  );
+  const [breakfast, written, glasses, radio] = result.facts;
+  assert.equal(breakfast.time, "08:00");
+  // "usually" is not a stated repeat, so the event is one-off on the episode start
+  assert.equal(breakfast.rrule, null);
+  assert.deepEqual(breakfast.event, { title: "Rosa usually has breakfast at eight.", startsAt: `${EPISODE_START}T14:00:00.000Z`, rrule: null });
+  for (const other of [written, glasses, radio]) {
+    assert.equal(other.time, null);
+    assert.equal(other.event, null);
+  }
+  assert.deepEqual(result.dropped, []);
+  assert.deepEqual(result.clearedValues, []);
+});
+
+test("demo A4 reads written times and keeps loose location wording practical", async () => {
+  const result = await runCareCompiler(
+    {
+      fullText:
+        "Lunch is at half past twelve. Dinner is at six in the evening. The house key is under the mat. " +
+        "Her follow-up appointment is in the afternoon. She is hard of hearing on the left side. Her tablets are in the drawer.",
+      existingFacts: [],
+      episodeStart: EPISODE_START,
+    },
+    deps,
+  );
+  const byText = new Map(result.facts.map((fact) => [fact.textExact, fact]));
+  assert.equal(byText.get("Lunch is at half past twelve.")?.time, "12:30");
+  assert.equal(byText.get("Dinner is at six in the evening.")?.time, "18:00");
+  assert.equal(byText.get("The house key is under the mat.")?.category, "practical");
+  assert.equal(byText.get("Her follow-up appointment is in the afternoon.")?.category, "logistics");
+  assert.equal(byText.get("She is hard of hearing on the left side.")?.category, "communication");
+  assert.equal(byText.get("Her tablets are in the drawer.")?.category, "medical_instruction");
+});
+
+test("demo A4 flags 8:30 against an 08:00 breakfast, and a shared name alone is no conflict", async () => {
+  const existing = [
+    { id: "fact-breakfast", category: "routine" as const, textExact: "Rosa usually has breakfast at eight.", time: "08:00" },
+  ];
+  const later = await runCareCompiler({ fullText: "Rosa has breakfast at 8:30.", existingFacts: existing, episodeStart: EPISODE_START }, deps);
+  assert.equal(later.facts[0].time, "08:30");
+  assert.deepEqual(later.conflicts.map((conflict) => [conflict.factIndex, conflict.existingFactId]), [[0, "fact-breakfast"]]);
+  const lunch = await runCareCompiler({ fullText: "Rosa has lunch at noon.", existingFacts: existing, episodeStart: EPISODE_START }, deps);
+  assert.deepEqual(lunch.conflicts, []);
+  const same = await runCareCompiler({ fullText: "Rosa has breakfast at eight.", existingFacts: existing, episodeStart: EPISODE_START }, deps);
+  assert.deepEqual(same.conflicts, []);
+});

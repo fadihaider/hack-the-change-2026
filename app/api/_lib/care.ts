@@ -1,9 +1,10 @@
 // care mode: A4 sources to suggested facts, approvals, conflict resolution, the day timeline and A5 questions
 import "server-only";
 import { p, type SqlRunner } from "../../../lib/db.ts";
-import { CARE_LIMITS, runCareCompiler, type CareCategory, type ExistingFact } from "../../../lib/ai/careCompiler.ts";
+import { CARE_LIMITS, eventTitle, runCareCompiler, type CareCategory, type ExistingFact } from "../../../lib/ai/careCompiler.ts";
 import { runProfileQa, type ProfileQaResult } from "../../../lib/ai/profileQa.ts";
 import { normalizeText } from "../../../lib/ai/text.ts";
+import { albertaTimestamp, datesMentioned, isRuleGrounded, timesMentioned } from "../../../lib/ai/time.ts";
 import type { SessionUser } from "../../../lib/mvp/auth.ts";
 import type { Runtime } from "../../../lib/mvp/runtime.ts";
 import { albertaDate, loadActiveEpisode, loadRecipient, reserveModel } from "./context.ts";
@@ -37,6 +38,16 @@ export interface CareFactView {
   conflictsWith: string[];
   events: CareEventView[];
   createdAt: string;
+  /** 1 for an original fact; an edit saves the caregiver's wording as version + 1 */
+  version: number;
+  /** the previous version (now superseded) for an edited fact, or the conflict partner while conflicting */
+  supersedes: string | null;
+  /** care_source.author, e.g. "caregiver" */
+  sourceAuthor: string | null;
+  /** care_source.created_at, UTC ISO */
+  sourceCreatedAt: string | null;
+  /** optional short label; the UI falls back to textExact */
+  displayText: string | null;
 }
 
 interface FactRow {
@@ -50,6 +61,10 @@ interface FactRow {
   span_end: number | null;
   supersedes: string | null;
   created_at: string;
+  version: number;
+  display_text: string | null;
+  source_author: string | null;
+  source_created_at: string | null;
 }
 
 interface EventRow {
@@ -65,11 +80,12 @@ interface EventRow {
 
 const FACTS = `SELECT f.id::text AS id, f.category, f.text_exact, f.status, f.source_id::text AS source_id,
     s.kind AS source_kind, f.span_start, f.span_end, f.supersedes::text AS supersedes,
-    to_json(f.created_at)#>>'{}' AS created_at
+    to_json(f.created_at)#>>'{}' AS created_at, f.version, f.display_text, s.author AS source_author,
+    to_json(s.created_at)#>>'{}' AS source_created_at
   FROM care_fact f LEFT JOIN care_source s ON s.id = f.source_id
   WHERE f.care_recipient_id = CAST(:recipient_id AS uuid)
     AND (CAST(:fact_id AS uuid) IS NULL OR f.id = CAST(:fact_id AS uuid))
-  ORDER BY f.created_at, f.id`;
+  ORDER BY f.created_at, f.span_start NULLS LAST, f.id`;
 
 const EVENTS = `SELECT id::text AS id, fact_id::text AS fact_id, title, to_json(starts_at)#>>'{}' AS starts_at, rrule,
     remind_minutes, location_text, status
@@ -112,6 +128,11 @@ export async function listFacts(sql: SqlRunner, recipientId: string, factId: str
         : [],
     events: events.filter((event) => event.fact_id === fact.id).map(toEvent),
     createdAt: new Date(fact.created_at).toISOString(),
+    version: Number(fact.version ?? 1),
+    supersedes: fact.supersedes,
+    sourceAuthor: fact.source_author,
+    sourceCreatedAt: fact.source_created_at === null ? null : new Date(fact.source_created_at).toISOString(),
+    displayText: fact.display_text,
   }));
 }
 
@@ -147,9 +168,10 @@ const INSERT_SOURCE = `INSERT INTO care_source (care_recipient_id, kind, s3_key,
   VALUES (CAST(:recipient_id AS uuid), :kind, NULL, :full_text, 'caregiver')
   RETURNING id::text AS id`;
 
-const INSERT_FACT = `INSERT INTO care_fact (care_recipient_id, category, text_exact, source_id, span_start, span_end, status, supersedes)
+const INSERT_FACT = `INSERT INTO care_fact (care_recipient_id, category, text_exact, source_id, span_start, span_end, status, supersedes,
+    version)
   VALUES (CAST(:recipient_id AS uuid), :category, :text_exact, CAST(:source_id AS uuid), CAST(:span_start AS int),
-    CAST(:span_end AS int), :status, CAST(:supersedes AS uuid))
+    CAST(:span_end AS int), :status, CAST(:supersedes AS uuid), 1)
   RETURNING id::text AS id`;
 
 const INSERT_EVENT = `INSERT INTO care_event (care_recipient_id, fact_id, title, starts_at, rrule, status)
@@ -276,7 +298,7 @@ const APPROVE_FACT = `UPDATE care_fact SET status = 'approved'
 const APPROVE_EVENTS = `UPDATE care_event SET status = 'approved'
   WHERE fact_id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid) AND status = 'suggested'`;
 
-const FACT_STATE = `SELECT status, supersedes::text AS supersedes FROM care_fact
+const FACT_STATE = `SELECT status, supersedes::text AS supersedes, version FROM care_fact
   WHERE id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid) FOR UPDATE`;
 
 /** approving a fact approves its events; only suggested facts can be approved (conflicts go through resolve) */
@@ -318,13 +340,16 @@ export async function resolveConflict(rt: Runtime, user: SessionUser, keepFactId
   const keep = requireUuid(keepFactId);
   const params = [p.uuid("id", keep), p.uuid("recipient_id", recipient.id)];
   const supersededIds = await database.transaction(async (tx) => {
-    const rows = await tx.query<{ status: FactStatus; supersedes: string | null }>(FACT_STATE, params);
+    const rows = await tx.query<{ status: FactStatus; supersedes: string | null; version: number }>(FACT_STATE, params);
     if (!rows[0]) throw new ApiError(404, "not_found");
     if (rows[0].status !== "conflicting") throw new ApiError(409, "state_conflict");
     const partners = (await tx.query<{ id: string }>(PARTNERS, [...params, p.text("supersedes", rows[0].supersedes)])).map(
       (row) => row.id,
     );
-    const supersedes = rows[0].supersedes !== null && partners.includes(rows[0].supersedes) ? rows[0].supersedes : partners[0] ?? null;
+    // an edited version keeps pointing at the version it replaced, so its history survives the conflict
+    const keepsHistory = Number(rows[0].version) > 1 && rows[0].supersedes !== null && !partners.includes(rows[0].supersedes);
+    const supersedes =
+      keepsHistory || (rows[0].supersedes !== null && partners.includes(rows[0].supersedes)) ? rows[0].supersedes : partners[0] ?? null;
     await tx.execute(KEEP_FACT, [...params, p.text("supersedes", supersedes)]);
     await tx.execute(APPROVE_EVENTS, params);
     for (const partner of partners) {
@@ -338,6 +363,170 @@ export async function resolveConflict(rt: Runtime, user: SessionUser, keepFactId
   return {
     kept: facts.find((fact) => fact.id === keep) ?? null,
     superseded: facts.filter((fact) => supersededIds.includes(fact.id)),
+  };
+}
+
+// ---------- reject, edit and full source (PRD 4.3, 5) ----------
+
+const REJECT_FACT = `UPDATE care_fact SET status = 'rejected'
+  WHERE id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid) AND status = 'suggested'`;
+
+const REJECT_EVENTS = `UPDATE care_event SET status = 'rejected'
+  WHERE fact_id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid)`;
+
+/** a suggested fact the caregiver says is wrong: kept as rejected (never deleted) and off the passport and timeline */
+export async function rejectFact(rt: Runtime, user: SessionUser, factId: string) {
+  const database = rt.stores.database;
+  const recipient = await loadRecipient(database, user.id);
+  const id = requireUuid(factId);
+  const params = [p.uuid("id", id), p.uuid("recipient_id", recipient.id)];
+  await database.transaction(async (tx) => {
+    const rows = await tx.query<{ status: FactStatus }>(FACT_STATE, params);
+    if (!rows[0]) throw new ApiError(404, "not_found");
+    if (rows[0].status === "conflicting") throw new ApiError(409, "conflict_unresolved");
+    if (rows[0].status !== "suggested") throw new ApiError(409, "state_conflict");
+    await tx.execute(REJECT_FACT, params);
+    await tx.execute(REJECT_EVENTS, params);
+  });
+  const [fact] = await listFacts(database, recipient.id, id);
+  return { fact };
+}
+
+const EDIT_STATE = `SELECT status, category, version FROM care_fact
+  WHERE id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid) FOR UPDATE`;
+
+const EDIT_EVENTS = `SELECT to_json(starts_at)#>>'{}' AS starts_at, rrule, remind_minutes, location_text FROM care_event
+  WHERE fact_id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid)
+    AND status IN ('suggested','approved') AND starts_at IS NOT NULL
+  ORDER BY starts_at, id`;
+
+const INSERT_NOTE_SOURCE = `INSERT INTO care_source (care_recipient_id, kind, s3_key, full_text, author)
+  VALUES (CAST(:recipient_id AS uuid), 'note', NULL, :full_text, 'caregiver')
+  RETURNING id::text AS id`;
+
+const INSERT_VERSION = `INSERT INTO care_fact (care_recipient_id, category, text_exact, source_id, span_start, span_end, status, supersedes,
+    version)
+  VALUES (CAST(:recipient_id AS uuid), :category, :text_exact, CAST(:source_id AS uuid), 0, CAST(:span_end AS int), 'approved',
+    CAST(:supersedes AS uuid), CAST(:version AS int))
+  RETURNING id::text AS id`;
+
+const SUPERSEDE_OLD_VERSION = `UPDATE care_fact SET status = 'superseded'
+  WHERE id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid) AND status IN ('suggested','approved')`;
+
+const INSERT_APPROVED_EVENT = `INSERT INTO care_event (care_recipient_id, fact_id, title, starts_at, rrule, remind_minutes, location_text, status)
+  VALUES (CAST(:recipient_id AS uuid), CAST(:fact_id AS uuid), :title, CAST(:starts_at AS timestamptz), :rrule,
+    CAST(:remind_minutes AS int), :location_text, 'approved')`;
+
+interface EditEventRow {
+  starts_at: string;
+  rrule: string | null;
+  remind_minutes: number | null;
+  location_text: string | null;
+}
+
+/** the Alberta Time date (YYYY-MM-DD) of a UTC ISO instant */
+function albertaDay(iso: string): string {
+  return new Date(Date.parse(iso) - 6 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * the start an old event moves to under the edited wording, or null. the old time stays when the new text still says
+ * it; otherwise a time the new text says is used only when it is the one reading on the same side of noon (so "8:30"
+ * replaces 08:00 with 08:30, never 20:30). no time in the text, or a date that is no longer written, means no event.
+ */
+function editedEventStart(text: string, oldStart: string): string | null {
+  const oldClock = albertaClock(oldStart);
+  if (oldClock === null) return null;
+  const day = albertaDay(oldStart);
+  const written = datesMentioned(text, day);
+  if (written.size > 0 && !written.has(day)) return null;
+  const times = [...timesMentioned(text)];
+  if (times.includes(oldClock)) return albertaTimestamp(day, oldClock);
+  const morning = oldClock < "12:00";
+  const sameHalf = times.length === 1 ? times : times.filter((time) => (time < "12:00") === morning);
+  return sameHalf.length === 1 ? albertaTimestamp(day, sameHalf[0]) : null;
+}
+
+/**
+ * saves the caregiver's corrected wording as a new approved version (source: a caregiver note with exactly that text)
+ * and keeps the old fact as superseded. events move to the new version only when the new text still states a time;
+ * a repeat rule is kept only when the new text still states it. medical instructions keep their document wording.
+ */
+export async function editFact(rt: Runtime, user: SessionUser, factId: string, value: string) {
+  const database = rt.stores.database;
+  const recipient = await loadRecipient(database, user.id);
+  const id = requireUuid(factId);
+  const text = normalizeText(value);
+  if (text.length === 0 || text.length > CARE_LIMITS.maxFactChars) throw new ApiError(400, "invalid_input");
+  const params = [p.uuid("id", id), p.uuid("recipient_id", recipient.id)];
+  const newId = await database.transaction(async (tx) => {
+    const rows = await tx.query<{ status: FactStatus; category: CareCategory; version: number }>(EDIT_STATE, params);
+    const old = rows[0];
+    if (!old) throw new ApiError(404, "not_found");
+    if (old.status === "conflicting") throw new ApiError(409, "conflict_unresolved");
+    if (old.status !== "suggested" && old.status !== "approved") throw new ApiError(409, "state_conflict");
+    // PRD 15: written care instructions are shown word for word from their source, never rewritten
+    if (old.category === "medical_instruction") throw new ApiError(409, "exact_wording_locked");
+    const events = await tx.query<EditEventRow>(EDIT_EVENTS, params);
+    const sources = await tx.query<{ id: string }>(INSERT_NOTE_SOURCE, [
+      p.uuid("recipient_id", recipient.id),
+      p.text("full_text", text),
+    ]);
+    const inserted = await tx.query<{ id: string }>(INSERT_VERSION, [
+      p.uuid("recipient_id", recipient.id),
+      p.text("category", old.category),
+      p.text("text_exact", text),
+      p.uuid("source_id", sources[0].id),
+      p.int("span_end", text.length),
+      p.uuid("supersedes", id),
+      p.int("version", Number(old.version ?? 1) + 1),
+    ]);
+    const created = inserted[0].id;
+    await tx.execute(SUPERSEDE_OLD_VERSION, params);
+    await tx.execute(SUPERSEDE_EVENTS, params);
+    const starts = new Set<string>();
+    for (const event of events) {
+      const startsAt = editedEventStart(text, event.starts_at);
+      if (startsAt === null || starts.has(startsAt)) continue;
+      starts.add(startsAt);
+      await tx.execute(INSERT_APPROVED_EVENT, [
+        p.uuid("recipient_id", recipient.id),
+        p.uuid("fact_id", created),
+        p.text("title", eventTitle(text)),
+        p.text("starts_at", startsAt),
+        p.text("rrule", event.rrule !== null && isRuleGrounded(event.rrule, text) ? event.rrule : null),
+        p.int("remind_minutes", event.remind_minutes ?? 15),
+        p.text("location_text", event.location_text),
+      ]);
+    }
+    return created;
+  });
+  const facts = await listFacts(database, recipient.id);
+  return {
+    fact: facts.find((fact) => fact.id === newId) ?? null,
+    previous: facts.find((fact) => fact.id === id) ?? null,
+  };
+}
+
+const SOURCE = `SELECT id::text AS id, kind, author, to_json(created_at)#>>'{}' AS created_at, full_text FROM care_source
+  WHERE id = CAST(:id AS uuid) AND care_recipient_id = CAST(:recipient_id AS uuid)`;
+
+/** the retained text of one of the owner's sources; another owner's id is a 404, like an unknown one */
+export async function careSourceDetail(rt: Runtime, user: SessionUser, sourceId: string) {
+  const database = rt.stores.database;
+  const recipient = await loadRecipient(database, user.id);
+  const rows = await database.query<{ id: string; kind: string; author: string; created_at: string | null; full_text: string }>(
+    SOURCE,
+    [p.uuid("id", requireUuid(sourceId)), p.uuid("recipient_id", recipient.id)],
+  );
+  const row = rows[0];
+  if (!row) throw new ApiError(404, "not_found");
+  return {
+    id: row.id,
+    kind: row.kind,
+    author: row.author,
+    createdAt: row.created_at === null ? "" : new Date(row.created_at).toISOString(),
+    fullText: row.full_text,
   };
 }
 
