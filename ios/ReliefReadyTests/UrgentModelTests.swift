@@ -421,7 +421,26 @@ struct UrgentModelTests {
         #expect(box.sent.isEmpty)
     }
 
-    @Test func aTierIsOnlyPickedUntilItIsApplied() async throws {
+    @Test func pickingATierWritesTheMessageAgainRightAway() async throws {
+        let api = FakeUrgentAPI()
+        let draft = try UrgentFixtures.draft()
+        var general = try UrgentFixtures.edited()
+        general.disclosureTier = .general
+        let rewritten = general
+        api.redraftHandler = { _, tier throws(APIError) in
+            #expect(tier == .general)
+            return RedraftResult(request: rewritten, editFlags: [], approvalBlocked: false)
+        }
+        let (letter, _) = letter(api, request: draft)
+        await letter.chooseTier(.general)
+        #expect(api.calls == ["redraft:general"])
+        #expect(letter.current.disclosureTier == .general)
+        #expect(letter.body == rewritten.body)
+        #expect(letter.pendingTier == nil)
+        #expect(letter.busy == nil)
+    }
+
+    @Test func aTierOverTypedWordsIsOnlyPickedUntilItIsApplied() async throws {
         let api = FakeUrgentAPI()
         let draft = try UrgentFixtures.draft()
         var general = try UrgentFixtures.edited()
@@ -432,12 +451,13 @@ struct UrgentModelTests {
             return RedraftResult(request: rewritten, editFlags: ["url"], approvalBlocked: false)
         }
         let (letter, _) = letter(api, request: draft)
+        letter.setBody(draft.body + " Thanks again.")
         letter.pickTier(.general)
         #expect(letter.pendingTier == .general)
-        #expect(letter.tierQuestion == "Share it as \u{201C}Say I\u{2019}m caring for my mom\u{201D}? The message is written again at this level.")
+        #expect(letter.tierQuestion == "You\u{2019}ve changed the words. Write it again as \u{201C}Say I\u{2019}m caring for my mom\u{201D}, or keep your words?")
         await letter.send(override: false)
         #expect(letter.error == "Finish changing how much it shares, or cancel it, before you send.")
-        await letter.useTier()
+        await letter.useTier(rewrite: true)
         #expect(api.calls == ["redraft:general"])
         #expect(letter.current.disclosureTier == .general)
         #expect(letter.pendingTier == nil)

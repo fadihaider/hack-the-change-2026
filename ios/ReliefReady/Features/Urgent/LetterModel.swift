@@ -42,8 +42,10 @@ final class LetterModel: Identifiable {
     var error: String?
     /// terms the server named when it refused an approval
     private(set) var refused: [String] = []
-    /// a tier Alex picked but hasn't applied yet; nothing is rewritten or sent until Alex chooses below the picker
+    /// a tier Alex picked over typed words; nothing is rewritten or sent until Alex chooses below the picker
     private(set) var askTier: DisclosureTier?
+    /// the tier being written right now, so the picker holds Alex's pick while the new words load
+    private(set) var changingTo: DisclosureTier?
 
     private let onUpdate: (RequestView) -> Void
     private let onSent: (RequestView, SendResult) -> Void
@@ -110,7 +112,7 @@ final class LetterModel: Identifiable {
         return askTier
     }
 
-    var shownTier: DisclosureTier { pendingTier ?? current.disclosureTier }
+    var shownTier: DisclosureTier { changingTo ?? pendingTier ?? current.disclosureTier }
 
     var flagNotes: [String] { flags.compactMap { UrgentWords.editFlagNote($0, name) } }
 
@@ -119,7 +121,10 @@ final class LetterModel: Identifiable {
     var closeLabel: String { dirty && editable ? "Close and save your changes" : "Close" }
 
     var tierNote: String {
-        if busy == .tier { return "Changing how much it shares" }
+        if busy == .tier {
+            let label = UrgentWords.tierLabel(changingTo ?? current.disclosureTier, alias: careAlias)
+            return "Writing it again as \u{201C}\(label)\u{201D}"
+        }
         return editable ? "Changing this needs your OK again before it goes." : "Shared at this level when you approved it."
     }
 
@@ -330,22 +335,33 @@ final class LetterModel: Identifiable {
 
     // MARK: - how much it shares
 
-    /// picking only marks the level; Alex applies it below the picker
+    /// the message is written again at the picked level right away; with typed words Alex chooses first
     func pickTier(_ next: DisclosureTier) {
         guard busy == nil, editable else { return }
+        if !dirty, next != current.disclosureTier {
+            // changeTier marks itself busy before its first await, so a second tap's task finds it busy and stops
+            Task { await chooseTier(next) }
+            return
+        }
         error = nil
         if next == current.disclosureTier {
             askTier = nil
             return
         }
         if pendingTier == nil {
-            announce(
-                dirty
-                    ? "You\u{2019}ve changed the words. Choose whether to write it again or keep your words."
-                    : "Choose \u{201C}Use this level\u{201D} to change how much it shares."
-            )
+            announce("You\u{2019}ve changed the words. Choose whether to write it again or keep your words.")
         }
         askTier = next
+    }
+
+    /// writes the message again at a new level (a proposal keeps its words), or asks first over typed words
+    func chooseTier(_ next: DisclosureTier) async {
+        guard busy == nil, editable, next != current.disclosureTier else { return }
+        if dirty {
+            pickTier(next)
+            return
+        }
+        await changeTier(next, rewrite: !UrgentWords.isProposal(current))
     }
 
     func cancelTier() {
@@ -362,8 +378,12 @@ final class LetterModel: Identifiable {
         guard busy == nil else { return }
         busy = .tier
         askTier = nil
+        changingTo = next
         error = nil
-        defer { busy = nil }
+        defer {
+            busy = nil
+            changingTo = nil
+        }
         let label = UrgentWords.tierLabel(next, alias: careAlias)
         var note = "Your words are kept."
         do throws(APIError) {
