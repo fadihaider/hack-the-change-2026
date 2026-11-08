@@ -44,11 +44,12 @@ export function buildVoiceAgentConfig(voiceId = DEFAULT_VOICE_ID): AgentCreateRe
           llm: "gpt-oss-120b", temperature: 0, maxTokens: 400,
           enableParallelToolCalls: false, tools: [], toolIds: [], knowledgeBase: [],
           mcpServerIds: [], nativeMcpServerIds: [],
-          builtInTools: { endCall: { name: "end_call", params: { systemToolType: "end_call" } } },
+          builtInTools: { endCall: { type: "system", name: "end_call", params: { systemToolType: "end_call" } } },
         },
       },
       asr: { provider: "scribe_realtime", quality: "high" },
-      tts: { voiceId, modelId: "eleven_flash_v2_5" },
+      // Agents currently accepts v4 Turbo here; direct PRD read-aloud remains Flash v2.5.
+      tts: { voiceId, modelId: "eleven_v4_turbo" },
       turn: { turnEagerness: "patient", silenceEndCallTimeout: 30 },
       conversation: {
         maxDurationSeconds: 180, monitoringEnabled: false,
