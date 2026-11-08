@@ -226,6 +226,87 @@
   }
 }
 
-.actions {
-  margin-top: 20px;
+/* ---------------------------------------------------------------- cards and map, then the folded snapshot summary */
+
+.nearby {
+  margin-top: 18px;
+}
+
+.snapshot {
+  margin-top: 28px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+}
+
+.snapshotSummary {
+  display: grid;
+  gap: 2px;
+  min-height: 52px;
+  padding: 14px 44px 14px 16px;
+  position: relative;
+  border-radius: var(--rr-radius);
+  cursor: pointer;
+  list-style: none;
+}
+
+.snapshotSummary::-webkit-details-marker {
+  display: none;
+}
+
+/* a chevron that turns when the summary opens */
+.snapshotSummary::after {
+  content: "";
+  position: absolute;
+  top: 22px;
+  right: 18px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--rr-muted);
+  border-bottom: 2px solid var(--rr-muted);
+  transform: rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.snapshot[open] > .snapshotSummary::after {
+  transform: rotate(225deg);
+}
+
+.snapshotSummary:focus-visible {
+  outline: 2px solid var(--rr-teal);
+  outline-offset: 2px;
+}
+
+.snapshotTitle {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-ink);
+}
+
+.snapshotHint {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.snapshotBody {
+  padding: 0 16px 16px;
+}
+
+.subtitle {
+  margin-top: 4px;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--rr-ink);
+  text-wrap: pretty;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle,
+  .dim,
+  .snapshotSummary::after {
+    transition: none;
+  }
 }
