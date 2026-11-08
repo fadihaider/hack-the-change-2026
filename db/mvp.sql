@@ -6,3 +6,6 @@ CREATE INDEX IF NOT EXISTS outbox_message_user_sent ON outbox_message (user_id, 
 
 -- the care recipient's name for display ("Rosa"); alias stays the word the user says ("Mom")
 ALTER TABLE care_recipient ADD COLUMN IF NOT EXISTS display_name text;
+
+-- nearby resources: GET /api/care-access/nearby looks up the nearest places of each kind around a point
+CREATE INDEX IF NOT EXISTS resource_kind ON resource (kind);

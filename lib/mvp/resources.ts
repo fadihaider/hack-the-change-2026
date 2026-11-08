@@ -3,6 +3,7 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { ringsOfGeometry, type LonLat } from "../care-access/geometry.ts";
 import { p, type Database, type Param, type SqlRunner } from "../db.ts";
 
 export interface GeoPoint {
@@ -936,4 +937,211 @@ export async function buildGuide(db: SqlRunner, input: GuideInput, options: Reso
     cards,
     attribution: { text: OSM_CREDIT, url: OSM_COPYRIGHT },
   };
+}
+
+// ---------- nearby resource cards and the inline map (PRD 10) ----------
+
+/**
+ * The service types offered by GET /api/care-access/nearby and the resource.kind values behind each. Hospitals look
+ * further than the chosen distance so the nearest one is always listed; transit stops stay within 800 m.
+ */
+export const SERVICE_TYPES = {
+  pharmacy: { label: "Pharmacies", one: "Pharmacy", kinds: ["pharmacy"] },
+  clinic: { label: "Clinics and doctors’ offices", one: "Clinic or doctor’s office", kinds: ["clinic", "doctors"] },
+  hospital: { label: "Hospitals", one: "Hospital", kinds: ["hospital"], minRadiusM: HOSPITAL_RADIUS_M, maxPerType: 2 },
+  public_health: { label: "Public-health clinics", one: "Public-health clinic", kinds: ["health_centre"] },
+  social_support: { label: "Social support centres", one: "Social support centre", kinds: ["social_development_centre"] },
+  community_centre: { label: "Community centres", one: "Community centre", kinds: ["community_centre"] },
+  library: { label: "Libraries", one: "Library", kinds: ["library"] },
+  transit: {
+    label: "Transit stops",
+    one: "Transit stop",
+    kinds: ["transit_stop"],
+    maxRadiusM: STOP_RADIUS_M,
+    maxPerType: STOP_LIMIT,
+  },
+} as const satisfies Record<string, ServiceTypeSpec>;
+export type ServiceType = keyof typeof SERVICE_TYPES;
+export const SERVICE_TYPE_IDS = Object.keys(SERVICE_TYPES) as ServiceType[];
+
+interface ServiceTypeSpec {
+  /** plural, for filters and counts */
+  label: string;
+  /** singular, for a card */
+  one: string;
+  kinds: readonly ResourceKind[];
+  /** look at least this far, so the nearest one is listed even outside the chosen distance */
+  minRadiusM?: number;
+  /** never look further than this */
+  maxRadiusM?: number;
+  maxPerType?: number;
+}
+
+export type WheelchairAccess = "yes" | "limited" | "no" | "unknown";
+
+export interface NearbyRow extends ResourceRow {
+  type: ServiceType;
+  /** false only for the nearest hospital when none is inside the chosen distance */
+  withinRadius: boolean;
+  openStatus: OpenStatus;
+  access: WheelchairAccess;
+}
+
+export interface NearbyOptions {
+  types: readonly ServiceType[];
+  radiusM: number;
+  perType: number;
+  /** only wheelchair yes or designated; a missing tag is unknown and left out */
+  accessibleOnly: boolean;
+  /** app time; opening hours are checked at this instant */
+  now: Date;
+}
+
+export interface NearbyResult {
+  rows: NearbyRow[];
+  /** per type: places inside the type's distance that pass the accessibility filter */
+  withinCounts: Record<ServiceType, number>;
+  /** places inside the distance left out by accessibleOnly because their source has no usable wheelchair tag */
+  excludedUnknownAccess: number;
+}
+
+export interface CommunityOutline {
+  name: string;
+  commCode: string | null;
+  rings: LonLat[][];
+}
+
+const ACCESSIBLE_TAGS = "('yes','designated')";
+const KNOWN_ACCESS_TAGS = "('yes','designated','limited','no')";
+const OUTLINE_DIGITS = 5;
+
+/** wheelchair tag to the card value; anything missing or unusual is unknown, never no */
+export function wheelchairAccess(tag: string | null): WheelchairAccess {
+  switch (tag?.trim().toLowerCase()) {
+    case "yes":
+    case "designated":
+      return "yes";
+    case "limited":
+      return "limited";
+    case "no":
+      return "no";
+    default:
+      return "unknown";
+  }
+}
+
+interface TypeSearch {
+  type: ServiceType;
+  kind: string;
+  /** how far to look for rows */
+  search_m: number;
+  /** the distance that counts as within */
+  within_m: number;
+  max_rows: number;
+}
+
+function typeSearches(options: NearbyOptions): TypeSearch[] {
+  const perType = Math.max(1, Math.trunc(options.perType));
+  const searches: TypeSearch[] = [];
+  for (const type of new Set(options.types)) {
+    const spec: ServiceTypeSpec = SERVICE_TYPES[type];
+    const within = spec.maxRadiusM === undefined ? options.radiusM : Math.min(options.radiusM, spec.maxRadiusM);
+    const search = spec.minRadiusM === undefined ? within : Math.max(within, spec.minRadiusM);
+    const maxRows = spec.maxPerType === undefined ? perType : Math.min(perType, spec.maxPerType);
+    for (const kind of spec.kinds) searches.push({ type, kind, search_m: search, within_m: within, max_rows: maxRows });
+  }
+  return searches;
+}
+
+/**
+ * The nearest places of each service type around point, by straight-line distance, nearest first overall. Each type
+ * returns at most perType rows inside its distance. A type that looks further (hospital) with nothing inside the
+ * distance still returns its single nearest row, marked withinRadius false. Only rows with coordinates are returned.
+ */
+export async function nearbyResources(db: SqlRunner, point: GeoPoint, options: NearbyOptions): Promise<NearbyResult> {
+  const searches = typeSearches(options);
+  const withinCounts = Object.fromEntries(SERVICE_TYPE_IDS.map((type) => [type, 0])) as Record<ServiceType, number>;
+  if (searches.length === 0) return { rows: [], withinCounts, excludedUnknownAccess: 0 };
+  const searchParams = [...pointParams(point), p.text("searches", JSON.stringify(searches))];
+
+  const rows = await db.query<ResourceSqlRow & { type: ServiceType; within_m: number }>(
+    `WITH q AS (SELECT ${POINT} AS pt),
+       t AS (SELECT * FROM jsonb_to_recordset(CAST(:searches AS jsonb))
+         AS t(type text, kind text, search_m double precision, within_m double precision, max_rows int))
+     SELECT x.type, x.within_m, x.id, x.kind, x.name, x.address, x.phone, x.opening_hours, x.wheelchair, x.description,
+       x.source, x.source_url, x.license, x.fetched_at, x.lat, x.lng, x.meters
+     FROM (
+       SELECT t.type, t.within_m, t.max_rows, r.id::text AS id, r.kind, r.name, r.address, r.phone, r.opening_hours,
+         r.wheelchair, r.description, r.source, r.source_url, r.license, r.fetched_at::text AS fetched_at,
+         ST_Y(r.geog::geometry) AS lat, ST_X(r.geog::geometry) AS lng, ST_Distance(r.geog, q.pt) AS meters,
+         row_number() OVER (PARTITION BY t.type ORDER BY ST_Distance(r.geog, q.pt), r.name, r.id) AS rank
+       FROM resource r JOIN t ON t.kind = r.kind CROSS JOIN q
+       WHERE r.geog IS NOT NULL AND ST_DWithin(r.geog, q.pt, t.search_m)
+         AND (CAST(:accessible_only AS boolean) = false OR lower(trim(r.wheelchair)) IN ${ACCESSIBLE_TAGS})
+     ) x
+     WHERE x.rank <= x.max_rows
+     ORDER BY x.meters, x.name, x.id`,
+    [...searchParams, p.bool("accessible_only", options.accessibleOnly)],
+  );
+
+  const counts = await db.query<{ type: ServiceType; total: number; accessible: number; unknown: number }>(
+    `WITH q AS (SELECT ${POINT} AS pt),
+       t AS (SELECT * FROM jsonb_to_recordset(CAST(:searches AS jsonb)) AS t(type text, kind text, within_m double precision))
+     SELECT t.type, count(*)::int AS total,
+       count(*) FILTER (WHERE lower(trim(r.wheelchair)) IN ${ACCESSIBLE_TAGS})::int AS accessible,
+       count(*) FILTER (WHERE r.wheelchair IS NULL OR lower(trim(r.wheelchair)) NOT IN ${KNOWN_ACCESS_TAGS})::int AS unknown
+     FROM resource r JOIN t ON t.kind = r.kind CROSS JOIN q
+     WHERE r.geog IS NOT NULL AND ST_DWithin(r.geog, q.pt, t.within_m)
+     GROUP BY t.type`,
+    searchParams,
+  );
+  let excludedUnknownAccess = 0;
+  for (const row of counts) {
+    withinCounts[row.type] = Number(options.accessibleOnly ? row.accessible : row.total);
+    if (options.accessibleOnly) excludedUnknownAccess += Number(row.unknown);
+  }
+
+  const mapped: NearbyRow[] = rows.map((row) => {
+    const resource = toResource(row);
+    return {
+      ...resource,
+      type: row.type,
+      withinRadius: Number(row.meters) <= Number(row.within_m),
+      openStatus: openingStatus(resource.openingHours, options.now),
+      access: wheelchairAccess(resource.wheelchair),
+    };
+  });
+  // a type that looks further than the chosen distance keeps only its rows inside it, or else its single nearest row
+  const hasWithin = new Set(mapped.filter((row) => row.withinRadius).map((row) => row.type));
+  const nearestOutside = new Set<ServiceType>();
+  const kept = mapped.filter((row) => {
+    if (row.withinRadius) return true;
+    if (hasWithin.has(row.type) || nearestOutside.has(row.type)) return false;
+    nearestOutside.add(row.type);
+    return true;
+  });
+  return { rows: kept, withinCounts, excludedUnknownAccess };
+}
+
+/** City community boundaries that overlap the bounds, with coordinates rounded to 5 decimals (about 1 m) */
+export async function communityOutlines(
+  db: SqlRunner,
+  bounds: { west: number; south: number; east: number; north: number },
+): Promise<CommunityOutline[]> {
+  const rows = await db.query<{ name: string; comm_code: string | null; geojson: string }>(
+    `SELECT name, comm_code, ST_AsGeoJSON(geom::geometry, ${OUTLINE_DIGITS}) AS geojson FROM community
+      WHERE ST_Intersects(geom::geometry, ST_MakeEnvelope(CAST(:west AS double precision),
+        CAST(:south AS double precision), CAST(:east AS double precision), CAST(:north AS double precision), 4326))
+      ORDER BY name`,
+    [num("west", bounds.west), num("south", bounds.south), num("east", bounds.east), num("north", bounds.north)],
+  );
+  return rows.map((row) => ({ name: row.name, commCode: row.comm_code, rings: outlineRings(row.geojson) }));
+}
+
+function outlineRings(geojson: string): LonLat[][] {
+  try {
+    return ringsOfGeometry(JSON.parse(geojson), OUTLINE_DIGITS);
+  } catch {
+    return [];
+  }
 }
