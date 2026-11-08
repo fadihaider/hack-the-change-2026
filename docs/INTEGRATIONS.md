@@ -1,13 +1,138 @@
-# Integration handoff for issue #6
+# Integrations
 
-Status: partial. The workflow services, transport code and tested HTTP handler
-functions exist; Next.js route registration, Auth.js sign-in, the durable store
-adapter and live-provider checks are pending.
-No real email, Calendar read, speech request or deployed Accept flow has passed.
+Everything runs locally with no credentials: demo sign-in, offline demo rules, the demo outbox, seeded calendar events and PGlite. This page says how to switch each live provider on, how to check it is really handling requests, and what each failure looks like. The second half holds the detailed HTTP and store contracts.
 
-## Store boundary (Fadi)
+Items marked "(verify)" describe behaviour being added in the current repair pass; check them against the code after merge. An integration counts as working only after a real request has gone through it. Until then the app must keep saying it is demo or not connected.
 
-Implement `WorkflowStore` from `lib/requests/workflow.ts` using Aurora Data API.
+## Status
+
+| Integration | Switch | State in this repo | Run live here? |
+|---|---|---|---|
+| Speech-to-text (ElevenLabs Scribe v2) | `ELEVENLABS_API_KEY` | Adapter, HTTP handlers and quota exist. `/api/stt` and `/api/tts` are mounted (verify) | No live call yet |
+| Hosted voice companion (ElevenLabs agent) | `RR_VOICE_AGENT=on` | Optional `/voice` page; the session route returns 404 unless switched on (verify) | No conversation yet |
+| Claude API | `RR_AI=anthropic`, `ANTHROPIC_API_KEY` | Adapter exists (`lib/ai/anthropic.ts`, model `claude-opus-5-5`) | Not in this pass |
+| Claude on Amazon Bedrock | `RR_AI=bedrock`, `BEDROCK_REGION`, `BEDROCK_MODEL_ID` | Adapter exists (`lib/ai/bedrock.ts`) | Not in this pass |
+| Gemini | `RR_AI=gemini`, `GEMINI_API_KEY`, `GEMINI_MODEL` | Being added (verify) | No |
+| Fact embeddings (Titan V2) | `RR_EMBED=bedrock` | Being added; keyword retrieval stays the default (verify) | No |
+| Google sign-in | `RR_AUTH=google` | Callbacks are tested (`lib/auth/google.ts`), but no sign-in route is mounted. The adapter returns no user, so every API call is 401 | No |
+| Gmail send | `RR_MAIL=gmail` | Adapter exists (`lib/google.ts`). Needs Google sign-in | No |
+| Google Calendar read | `RR_CALENDAR=google` | Adapter exists (`lib/google.ts`). Needs Google sign-in | No |
+| Aurora PostgreSQL (RDS Data API) | `RR_DB=aurora` | Store adapter exists (`lib/db.ts`, `lib/store/*`). The schema script applies `db/schema.sql` only | `scripts/verify-store-live.ts` exists; rerun it before relying on it |
+| Care Access classifier service | `CARE_ACCESS_INFERENCE_URL` | Optional Python service in `ml/care_access` | No |
+
+`GET /api/session` returns only mode words and `providers:{speech:"elevenlabs"|"off", retrieval:"keyword"|"vector"}`. It never returns keys, ARNs or tokens. Secrets stay in `.env.local` (git-ignored) locally, or in the host's secret store when deployed.
+
+Paid providers have one shared gate (`paidProvidersAllowed` in `lib/mvp/auth.ts`). With `RR_AUTH=demo`, model and speech calls are allowed only when the base URL is plain http on `localhost` or `127.0.0.1`. A deployed origin needs a verified owner (`RR_AUTH=google`), so a public demo can't spend credits for strangers. Every model and speech call reserves quota first (`lib/rateLimit.ts`). Model steps allow 30 calls per 10 minutes per user, with a daily global limit. Voice allows 30 calls per 10 minutes per user, shared by STT and TTS.
+
+### Common failures
+
+| What you see | HTTP and code | Usual cause |
+|---|---|---|
+| Every button fails with a same-address message | 403 `invalid_origin` | `APP_BASE_URL` names a different host than the one in the address bar. Leave it blank locally |
+| Every screen is signed out | 401 `unauthenticated` | `RR_AUTH=google` (stub), or the demo user is missing from the database (an unseeded Aurora) |
+| A live AI or voice action refuses | 403 `verified_owner_required` | A paid provider on a non-local base URL with demo sign-in |
+| A message asking you to wait and try again | 429 `rate_limited` with `Retry-After` | The per-user quota was used up |
+| A model step fails | 503 `model_unavailable` | Missing or wrong key, no model access, or a network or provider error. The provider's message is never shown or logged |
+| A model answer is held back | 422 `model_needs_review` | The model refused, hit max tokens, or returned output that failed the schema or code guards |
+| A feature says it isn't set up | 503 `not_configured` | An adapter was picked without its settings, for example `RR_DB=aurora` without ARNs, or `RR_MAIL=gmail` without Google client settings |
+| Anything else | 503 `temporarily_unavailable` | An unexpected error. The server log shows only the error name and a safe code |
+
+Set `RR_DB_DEBUG=1` to print the Postgres message for database errors on the local console.
+
+## Turn on live speech (ElevenLabs)
+
+1. Get an ElevenLabs API key that can use speech-to-text (and text-to-speech if you want read-aloud), on an account with credit.
+2. Add `ELEVENLABS_API_KEY=<key>` to `.env.local`. `ELEVENLABS_VOICE_ID` is optional (blank means the stock voice in `lib/speech/runtime.ts`).
+3. Keep `RR_AUTH=demo` and leave `APP_BASE_URL` blank, or set it to `http://localhost:3000` or `http://127.0.0.1:3000`. Restart `npm run dev`.
+4. Check: `GET /api/session` should return `providers.speech: "elevenlabs"`. If it says `"off"`, the key is missing or the base URL is not local.
+5. Open `http://localhost:3000/care` or `http://127.0.0.1:3000/care`. Browsers block the microphone on plain-http LAN addresses. Choose **+ Voice note**, give consent, allow the microphone, record, stop, then transcribe. Edit the transcript and choose **Use transcript** (verify labels). The confirmed text is saved as a `voice` source through `POST /api/care/sources`, and the suggested facts appear for approval.
+6. The panel credits ElevenLabs only after `/api/stt` returned 200 (verify). Raw audio stays in memory only. The provider transcript is deleted before the text comes back. Deleting a transcript is not the same as zero retention of every provider log.
+
+What failure looks like:
+
+| What you see | Code |
+|---|---|
+| Care says voice notes aren't connected and offers a typed note | `providers.speech` is `off`; a direct call returns 503 `speech_not_configured` |
+| The microphone prompt was blocked or dismissed | No upload happens; the panel explains the permission and offers the typed note |
+| Transcription isn't available right now | 503 `speech_access_denied` (the key lacks permission or credit) or 502 `speech_provider_failed` |
+| The transcript is withheld | 502 `speech_cleanup_failed`: the provider transcript could not be deleted, so the text is not released |
+| The recording is too large | 413 `payload_too_large` (over 10 MiB on the wire) |
+| The format is wrong | 415 `unsupported_media_type` or 400 `invalid_audio` |
+| Too many tries | 429 `rate_limited` or `speech_rate_limited` |
+
+The optional hosted companion on `/voice` also needs `RR_VOICE_AGENT=on`. `ELEVENLABS_AGENT_ID` overrides the provisioned private agent. See docs/ELEVENLABS_AGENT.md.
+
+## Turn on Claude (Anthropic API)
+
+1. Add `RR_AI=anthropic` and `ANTHROPIC_API_KEY=<key>` to `.env.local`. The SDK reads the key from the environment. The model is fixed in code as `claude-opus-5-5` (`lib/ai/anthropic.ts`).
+2. Keep a local base URL (see the speech steps above), or use Google sign-in when deployed.
+3. Restart and run an intake from `/`. `GET /api/session` shows `mode.ai: "anthropic"`, and Ask answers carry `answeredBy: "anthropic"` (verify).
+
+Failures: a missing or wrong key, no credit or an outage gives 503 `model_unavailable`. A refusal, or a reply that fails validation, gives 422 `model_needs_review`. Nothing silently falls back to demo rules.
+
+## Turn on Claude on Amazon Bedrock
+
+1. Use the project Region `us-east-2`. Set `RR_AI=bedrock`, `BEDROCK_REGION=us-east-2` and `BEDROCK_MODEL_ID=us.anthropic.claude-opus-5-5` (the default in `.env.example`).
+2. Give the server AWS credentials through the default chain, for example `AWS_PROFILE=<profile>` in the shell that runs `npm run dev`. Never put access keys in `.env.example`.
+3. The identity needs `bedrock:InvokeModel` for that model or inference profile, and model access must be enabled for the account.
+4. Restart and run an intake from `/`. With the server stopped, `AWS_PROFILE=<profile> BEDROCK_REGION=us-east-2 npx tsx --conditions=react-server scripts/ai-live-fixtures.ts` checks A1 and A4 against the fictional fixtures.
+
+Failures: missing credentials, access denied, a model that isn't enabled, or throttling all give 503 `model_unavailable`. Only the status and error code are kept, never the provider message.
+
+## Turn on Gemini (verify)
+
+Being added by the AI integration. Expected settings: `RR_AI=gemini`, `GEMINI_API_KEY=<key>`, and optionally `GEMINI_MODEL`. Ask answers would then carry `answeredBy: "gemini"`. Confirm the names in `lib/ai/provider.ts` before relying on this section. Failures should map to the same `model_unavailable` and `model_needs_review` codes as the other providers.
+
+## Turn on fact embeddings (verify)
+
+`RR_EMBED=bedrock` adds pgvector search over the approved, current facts of the owner's care recipient. It uses Amazon Titan Text Embeddings V2 (1024 dimensions) in `EMBED_REGION` (blank means `BEDROCK_REGION`); `EMBED_MODEL_ID` overrides the model. The identity needs `bedrock:InvokeModel` on `amazon.titan-embed-text-v2:0`. Personal care facts and public Calgary resource data are indexed and searched separately. Changing an approved fact makes its old vector unusable. If embedding fails, Ask falls back to keyword retrieval and reports `retrieval.method: "keyword"`. `GET /api/session` reports `providers.retrieval: "vector"` only when embeddings are on.
+
+## Turn on Google sign-in, Gmail and Calendar
+
+Status: not usable end to end yet. `lib/auth/google.ts` has tested NextAuth v4 callbacks, but no `/api/auth/[...nextauth]` route or server-session lookup is mounted, and `createGoogleAuth()` in `lib/mvp/auth.ts` returns no user. With `RR_AUTH=google`, every API call returns 401 `unauthenticated`.
+
+When the sign-in route lands, the steps are:
+
+1. In a Google Cloud project, configure the OAuth consent screen (testing mode with named test users is enough for a demo) and create a Web OAuth client.
+2. Add the redirect URI `<APP_BASE_URL>/api/auth/callback/google` (the NextAuth v4 default; verify against the route when it lands).
+3. Request exactly the scopes in `lib/google.ts`: `openid`, `email`, `profile`, `https://www.googleapis.com/auth/calendar.events.readonly` and `https://www.googleapis.com/auth/gmail.send`. A partial grant is refused at sign-in.
+4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APP_ENC_KEY` (the key for AES-256-GCM encryption of stored refresh tokens), `AUTH_SECRET`, and `NEXTAUTH_URL` equal to `APP_BASE_URL`.
+5. Set `RR_AUTH=google`, then `RR_MAIL=gmail` and `RR_CALENDAR=google`.
+
+Failures: `RR_MAIL=gmail` or `RR_CALENDAR=google` without the client settings or `APP_ENC_KEY` gives 503 `not_configured`. A revoked or missing refresh token gives `google_reauth_required`. A failed send is recorded as `failed` on the request and shown as failed. It is never retried automatically. An uncertain outcome stays `sending`, so it can be checked before anything is sent again.
+
+## Turn on Aurora PostgreSQL (RDS Data API)
+
+1. Use an Aurora PostgreSQL cluster in `us-east-2` with the Data API enabled, plus a Secrets Manager secret for its credentials.
+2. Set `RR_DB=aurora`, `DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME` (default `reliefready`) and `APP_AWS_REGION=us-east-2`. Give the server AWS credentials through the default chain.
+3. Apply the schema: `AWS_PROFILE=<profile> DB_CLUSTER_ARN=... DB_SECRET_ARN=... node --conditions=react-server --import tsx scripts/apply-schema.ts`. Add `--dry-run` first to list the statements.
+4. `scripts/apply-schema.ts` applies only `db/schema.sql`. The demo also needs `db/mvp.sql` (the outbox, display names and later additions), and the Aurora path does not seed the fictional Alex. Until both are handled (verify), `RR_AUTH=demo` on Aurora returns 401 `unauthenticated`.
+5. Check the stores with `scripts/verify-store-live.ts`, using the same environment as step 3. It uses fictional data and a fake Gmail sender.
+
+Failures: missing ARNs give 503 `not_configured`. Postgres errors become `pg_<sqlstate>` codes inside the server and 503 `temporarily_unavailable` in the browser.
+
+## Turn on the Care Access classifier (optional)
+
+The Care page and `/care/access` never need this. It only sorts new resource names into service types. It does not rate care quality.
+
+```bash
+python3 -m venv .venv-care-access
+.venv-care-access/bin/pip install -r ml/care_access/requirements.txt
+.venv-care-access/bin/python -m ml.care_access.inference --port 8091
+```
+
+Then set `CARE_ACCESS_INFERENCE_URL=http://127.0.0.1:8091/classify` in `.env.local`, plus `CARE_ACCESS_INFERENCE_TOKEN` if the service requires a bearer token. Both stay server-side. The service loads the saved classifier once and never trains on requests. `ml/care_access/README.md` covers the optional Lambda and S3 hooks (`CARE_ACCESS_MODEL_PATH`, `CARE_ACCESS_MODEL_BUCKET`, `CARE_ACCESS_MODEL_KEY`).
+
+Failures: `POST /api/care-access/classify` returns 503 `classifier_not_configured` when the URL is unset, and 503 `classifier_unavailable` when the service fails, times out (5 seconds) or returns an invalid shape. Input outside 1 to 20 texts of at most 2,000 characters is 400 `invalid_input`.
+
+---
+
+# Contracts
+
+## Store boundary
+
+Implemented in `lib/store/workflowStore.ts` and `lib/store/requestQueue.ts`; the same SQL runs on PGlite and on the Aurora Data API. They implement `WorkflowStore` from `lib/requests/workflow.ts`, and the rules below still apply to any change.
+
 Both methods must serialize changes using a transaction and a lock on the same
 request row. Commit or roll back state, request_event, tokens and proposals
 together. `transition` is a compare-and-set, writes one evidence row, and returns
@@ -32,11 +157,13 @@ Never wire a memory store to live Gmail. The fixture store in tests is only for
 workflow checks. If Gmail succeeded but the final DB write fails, the request
 stays `sending` for reconciliation; do not automatically send again.
 
-## Frontend HTTP contract (planned; routes not implemented yet)
+## Send, response and speech HTTP contract
+
+These routes are mounted: `app/api/requests/send/route.ts`, `app/r/[token]/page.tsx`, `app/api/responses/[token]/route.ts`, and the speech routes `app/api/stt/route.ts` and `app/api/tts/route.ts` (verify the speech routes after merge).
 
 | Endpoint | Input | Success | Access |
 |---|---|---|---|
-| `POST /api/requests/send` | JSON `{requestId}` only | `{state:"requested",messageId}`; or `{state:"failed",errorCode}`; or `{state:"needs_review"}` | Auth.js owner session plus same Origin |
+| `POST /api/requests/send` | JSON `{requestId}` only | `{state:"requested",messageId}`; or `{state:"failed",errorCode}`; or `{state:"needs_review"}` | Owner session (`RR_AUTH`) plus same Origin |
 | `GET /r/[token]` | Token in URL | Plain-text request preview and confirm button; no state mutation | Unexpired response token |
 | `POST /api/responses/[token]` | Empty JSON for Accept/Decline; `{proposal:{at,note?}}` for Propose | `{state,recorded}`; repeats return the first state and `recorded:false` | Unexpired token plus same Origin |
 | `POST /api/stt` | Exactly one multipart `file`; total request at most 10 MiB including multipart overhead | JSON `{transcript}` | Owner session plus same Origin |
@@ -52,11 +179,11 @@ Keep all existing mock UI results labelled test mode until the live path passes.
 
 `createRequestHttpHandlers` in `lib/requests/http.ts` supplies `send`, `preview`
 and `confirm` functions taking standard `Request` objects and returning
-`Response` objects. It does not register Next.js routes. Compose it with the
+`Response` objects. The Next.js routes listed above compose it with the
 durable `WorkflowStore`, the real Google transport, Fadi's health-term checker,
 an owner-scoped app-clock reader, and a verified server-session resolver returning
 `{userId}` or null. It supplies no memory store, permissive checker or mock send.
-Root auth and route composition remain with Ali after the #7 persistence handoff.
+Google sign-in (`RR_AUTH=google`) is the remaining piece of root auth.
 
 Send accepts only POST JSON `{requestId}` (1 to 128 letters, digits, hyphens or
 underscores); it gets the owner from the session and all message content from the
@@ -93,7 +220,9 @@ The HTTP fixtures exercise the real workflow services with fictional in-memory
 storage and an intercepted Gmail transport. They establish no live send, real
 SQL transaction/locking, protected deployed route, or rendered landing-page result.
 
-## Approval queue and clock contract (planned; not implemented)
+## Approval queue and clock contract
+
+Mounted under `app/api/requests/**` and `app/api/clock/**`.
 
 Request reads return this owner-only shape. Timestamps are ISO UTC strings or
 null; event ids are strings (the database uses bigint). Tokens, refresh tokens,
@@ -137,10 +266,13 @@ type RequestView = {
 | `POST /api/requests/refresh` | Empty JSON | `{requests: RequestView[], appNow: string, expiredRequestIds:string[]}` after the owner-scoped expiry sweep |
 | `GET /api/clock` | No body | `{appNow:string, realNow:string, offsetMilliseconds:number}` |
 | `POST /api/clock/jump` | `{days: number}` (positive integer) | `{appNow:string, realNow:string, offsetMilliseconds:number, expiredRequestIds:string[]}` after audited clock jump and in-process expiry sweep |
+| `POST /api/clock/reset` | `{}` | `{appNow:string, realNow:string, offsetMilliseconds:number}` with the offset back to 0 |
 
 All these routes require an owner session. POSTs require matching Origin; clock
-jump additionally requires the session email in ADMIN_EMAILS. GETs do not write
-state. Recover calls the refresh POST before rendering its recorded results.
+jump and reset additionally require an admin: the session email in ADMIN_EMAILS,
+or the demo user when that list is empty and `RR_AUTH=demo`. GETs do not write
+state. Recover calls `POST /api/recover {}`, which runs the same owner-scoped
+expiry sweep, before rendering its recorded results.
 The list carries only evidence for that owner, with newest evidence first.
 
 Edit loads the contact and its group with owner-scoped SQL; the resulting tier
@@ -259,12 +391,11 @@ Reference: [NextAuth v4 Google](https://next-auth.js.org/providers/google),
 [options](https://next-auth.js.org/configuration/options) and
 [server session](https://next-auth.js.org/configuration/nextjs).
 
-Local setup is blocked on Google test-project/account configuration, ignored
-`.env.local` credentials, ElevenLabs API key/credits, the durable adapter and the
-eventual deployed APP_BASE_URL. Keep all credentials out of issues and logs.
-Speech ownership was handed to Ali on the board; Fadi confirmed no existing
-speech files. Speech HTTP functions are available below; route registration and
-live acceptance remain pending.
+Live Google setup still needs a Google test project and account, ignored
+`.env.local` credentials, the sign-in route and the eventual deployed APP_BASE_URL.
+Live speech needs an ElevenLabs key with credit. Keep all credentials out of issues
+and logs. The speech HTTP functions are below; the routes are mounted (verify), and
+no live speech request has been run yet.
 
 `elevenLabsClient` in `lib/elevenlabs.ts` is the server-only speech adapter. STT
 accepts nonempty supported audio up to 10 MB, uses Scribe v2 and deletes the
@@ -281,7 +412,8 @@ the HTTP routes.
 ### Speech HTTP boundary (#35 / #16)
 
 `createSpeechHttpHandlers` in `lib/speech/http.ts` supplies `stt(Request)` and
-`tts(Request)` functions without registering endpoints. Compose them with a
+`tts(Request)` functions. `app/api/stt` and `app/api/tts` call them through
+`createSpeechRuntimeFromApp` in `lib/speech/runtime.ts` (verify), composed with a
 verified server-session resolver, canonical `APP_BASE_URL`, `elevenLabsClient`
 and the durable reservation below. There is no in-memory quota implementation
 or default successful reservation. Both functions require POST, a server-selected
@@ -311,8 +443,8 @@ reserveCall({ userId, step, model }): Promise<{
 }>
 ```
 
-Bind this to `reserveCall(appStores().database, input)` from `lib/rateLimit.ts`
-when #7 lands. The database owns a fixed ten-minute **real-time** per-user voice
+It is bound to `reserveCall(rt.stores.database, input)` from `lib/rateLimit.ts`
+by `lib/speech/runtime.ts`. The database owns a fixed ten-minute **real-time** per-user voice
 counter, shared by STT/TTS, with a limit of 30. Model steps have their own bucket
 and daily fuse. Counting and inserting `llm_call(user_id,step,model)` with null
 token counts must commit atomically before `allowed:true`. The handler reserves
@@ -340,7 +472,9 @@ results, cleanup and safe failures without retries. It does not establish real
 database quota isolation, deployed routes, live audio quality, credit availability
 or live deletion. Those remain acceptance work in #16.
 
-## Checks so far
+## Fixture checks
+
+These suites have no npm script; README.md lists the command that runs them all, next to the scripted suites. The notes below say what each one does and does not prove.
 
 `node --conditions=react-server --test tests/requests.test.ts tests/integrations.test.ts`
 passes 18 fixture tests on Node 26.4.0. They cover changed approvals,

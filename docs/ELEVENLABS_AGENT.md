@@ -5,10 +5,12 @@ block the core real-email/Accept milestone (#6/#11) or the protected speech rout
 in #16. The server workflow and hosted conversation graph are separate layers.
 The isolated `/voice` page provides explicit-consent recording, transcript review,
 Flash read-aloud and private AI companion controls. STT/TTS and signed-session
-composition consumes the shared runtime's owner identity and durable quota. Thin
-route registration is pending the publication of Fadi's `lib/mvp/runtime.ts`;
-the provider and UI are ready, but the application is not end-to-end ready until
-that dependency is connected. Existing
+composition consumes the shared runtime's owner identity and durable quota
+(`createSpeechRuntimeFromApp` in `lib/speech/runtime.ts`, over `lib/mvp/runtime.ts`).
+The routes are `app/api/stt/route.ts`, `app/api/tts/route.ts` and
+`app/api/voice-agent/session/route.ts`; the session route answers 404 unless
+`RR_VOICE_AGENT=on` (verify after merge). The Care page's voice note uses
+`/api/stt` directly and does not need the hosted agent. Existing
 `lib/elevenlabs.ts` remains unchanged. No substitute access or automatic
 profile/message mutation is added.
 
@@ -167,12 +169,14 @@ The shared `getRuntime()` supplies `rt.auth.currentUserId(request)`,
 `rt.stores.database` and `rt.baseUrl`. The lead-approved local demo can access
 paid providers only at HTTP localhost/127.0.0.1. Deployed origins require Google
 owner mode. No anonymous deployed demo identity can issue a voice session. Fadi
-owns this runtime and the main UI; this change adds only `/voice` and its panel.
+owns this runtime and the main UI; this change adds only `/voice`
+(`app/voice/page.tsx`) and its panel (`components/relief-ready/VoicePanel.tsx`).
 The server uses `ELEVENLABS_AGENT_ID` when supplied, otherwise the provisioned
 project ID above. Credentials stay server-side. There is no AWS secret-loader
 dependency in the current local runtime plan.
 
-Open `/voice` after starting the app. Consent is unchecked by default. Recording
+Set `RR_VOICE_AGENT=on`, then open `/voice` after starting the app. The page sits
+outside the main app shell and nothing links to it. Consent is unchecked by default. Recording
 stays in browser memory until the user chooses Transcribe; transcripts remain
 editable and are not automatically saved as care facts. Read-aloud and companion
 start each require their own user action. The main app's review/approval screens
