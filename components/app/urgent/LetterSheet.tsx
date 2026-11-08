@@ -113,8 +113,10 @@ export function LetterSheet({
   const [error, setError] = useState<string | null>(null);
   // terms the server named when it refused an approval
   const [refused, setRefused] = useState<string[]>([]);
-  // a tier Alex picked but hasn't applied yet; nothing is rewritten or sent until Alex chooses below the picker
+  // a tier Alex picked over typed words; nothing is rewritten or sent until Alex chooses below the picker
   const [askTier, setAskTier] = useState<Tier | null>(null);
+  // the tier being written right now, so the picker holds Alex's pick while the new words load
+  const [changingTo, setChangingTo] = useState<Tier | null>(null);
   // one action at a time, even when a double click lands before the next render
   const lock = useRef(false);
   const subjectRef = useRef<HTMLTextAreaElement>(null);
@@ -379,8 +381,8 @@ export function LetterSheet({
   }
 
   /**
-   * a different tier for this one message. picking only marks it, so stepping through the radios with the arrow keys
-   * rewrites nothing; Alex applies it below (written again at that level, or with typed words, a choice first). either
+   * a different tier for this one message. the message is written again at that level right away, so the words on
+   * screen always match the level picked; typed words are never lost, so with typed words Alex chooses first. either
    * way it goes back for a fresh approval, so the send button is needed again
    */
   function pickTier(next: Tier) {
@@ -390,12 +392,12 @@ export function LetterSheet({
       setAskTier(null);
       return;
     }
+    if (!dirty) {
+      void changeTier(next, !isProposal(current));
+      return;
+    }
     if (pendingTier === null) {
-      announce(
-        dirty
-          ? "You’ve changed the words. Choose whether to write it again or keep your words."
-          : "Choose “Use this level” to change how much it shares.",
-      );
+      announce("You’ve changed the words. Choose whether to write it again or keep your words.");
     }
     setAskTier(next);
   }
@@ -405,6 +407,7 @@ export function LetterSheet({
     lock.current = true;
     setBusy("tier");
     setAskTier(null);
+    setChangingTo(next);
     setError(null);
     const label = tierLabel(next, careAlias);
     let note = "Your words are kept.";
@@ -441,6 +444,7 @@ export function LetterSheet({
       }
     } finally {
       lock.current = false;
+      setChangingTo(null);
       setBusy(null);
     }
   }
@@ -522,7 +526,7 @@ export function LetterSheet({
 
       <div className={s.privacy} ref={privacyRef}>
         <TierPicker
-          value={pendingTier ?? current.disclosureTier}
+          value={changingTo ?? pendingTier ?? current.disclosureTier}
           groupTier={current.defaultDisclosureTier}
           alias={careAlias}
           disabled={!editable || busy !== null}
@@ -560,7 +564,7 @@ export function LetterSheet({
         )}
         <p className={s.tierNote} aria-live="polite">
           {busy === "tier"
-            ? "Changing how much it shares"
+            ? `Writing it again as “${tierLabel(changingTo ?? current.disclosureTier, careAlias)}”`
             : editable
               ? "Changing this needs your OK again before it goes."
               : "Shared at this level when you approved it."}
