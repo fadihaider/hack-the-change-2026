@@ -62,18 +62,23 @@ final class HelpNearbyModel {
         }
     }
 
+    /// the newest load; an older one that finishes late leaves loading, guide and error alone (seq in HelpNearby.tsx)
+    private var sequence = 0
+
     func load() async {
+        sequence += 1
+        let mine = sequence
         loading = true
-        defer { loading = false }
+        defer { if mine == sequence { loading = false } }
         do throws(APIError) {
             let next = try await api.guide(address: query, tenure: tenure)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, mine == sequence else { return }
             guide = next
             error = nil
             locationProblem = false
             if let spoken { AccessibilityNotification.Announcement(spoken).post() }
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, !error.isCancelled, mine == sequence else { return }
             self.error = error.userMessage
             locationProblem = error.status == 422
             if spoken != nil { AccessibilityNotification.Announcement(error.userMessage).post() }
