@@ -98,3 +98,13 @@ test("the seed calendar has 6 events from tomorrow on, and the mom appointment i
   assert.ok(events.every((e) => (e.start?.dateTime ?? "") > "2026-11-08"));
   assert.ok(events.some((e) => e.summary?.includes("Mom") && e.location?.includes("Foothills")));
 });
+
+test("the seed calendar follows a care week that starts after today, so the demo sentence still has clashes", async () => {
+  // Sunday 2026-11-08: "hip surgery on Sunday ... until Saturday" resolves to Sunday 2026-11-15 to Saturday 2026-11-21
+  const now = new Date("2026-11-08T18:00:00Z");
+  const startsAt = new Date("2026-11-15T06:00:00Z");
+  const endsAt = new Date("2026-11-22T06:00:00Z");
+  const events = await createSeedCalendar(() => now).listEvents(userId, startsAt, endsAt);
+  assert.equal(events.length, 6);
+  assert.ok(events.every((e) => (e.start?.dateTime ?? "") > "2026-11-16" && (e.start?.dateTime ?? "") < "2026-11-22"));
+});

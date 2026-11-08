@@ -8,9 +8,9 @@ import { RequestApiError } from "@/lib/frontend/request-api.ts";
 import type { SmsRecipients, SmsRecipientChoice, SmsTier, SmsView } from "@/lib/frontend/sms-api.ts";
 import { formatPhone, normalizePhone, smsParts } from "@/lib/sms/phone.ts";
 import { useApis } from "../session.tsx";
-import { Button, ErrorNote, Sheet, SheetTitle, TonePill, useAnnounce } from "../ui.tsx";
+import { Button, ButtonAnchor, ErrorNote, Sheet, SheetTitle, TonePill, useAnnounce } from "../ui.tsx";
 import { TierPicker } from "./TierPicker.tsx";
-import { DELIVERY_LABEL, DELIVERY_TONE, deliveryNote } from "./smsWords.ts";
+import { DELIVERY_LABEL, DELIVERY_TONE, deliveryNote, messagesLink } from "./smsWords.ts";
 import { quoted } from "./words.ts";
 import s from "./urgent.module.css";
 
@@ -86,6 +86,8 @@ export function SmsSheet({ open, episodeId, careAlias, aiMode, onClose, onChange
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SmsView | null>(null);
+  // the full number after a demo send, for the "Send it from Messages" link; null for real (Twilio) sends
+  const [handoffPhone, setHandoffPhone] = useState<string | null>(null);
   const clientKey = useRef(newKey());
   // the server copy approved for this exact key; a retry after a failed send reuses it instead of approving again
   const approvedText = useRef<{ key: string; text: SmsView } | null>(null);
@@ -123,6 +125,7 @@ export function SmsSheet({ open, episodeId, careAlias, aiMode, onClose, onChange
   function changed() {
     setApproved(false);
     setResult(null);
+    setHandoffPhone(null);
     clientKey.current = newKey();
     approvedText.current = null;
   }
@@ -191,7 +194,9 @@ export function SmsSheet({ open, episodeId, careAlias, aiMode, onClose, onChange
         approvedText.current = { key: clientKey.current, text };
         onChange(text);
       }
-      const sent = (await api.send(text.id)).text;
+      const reply = await api.send(text.id);
+      const sent = reply.text;
+      setHandoffPhone(reply.handoffPhone ?? null);
       setResult(sent);
       onChange(sent);
       announce(`${DELIVERY_LABEL[sent.delivery]}. ${deliveryNote(sent)}`);
@@ -453,7 +458,16 @@ export function SmsSheet({ open, episodeId, careAlias, aiMode, onClose, onChange
           <TonePill tone={DELIVERY_TONE[result.delivery]}>{DELIVERY_LABEL[result.delivery]}</TonePill>
           <p className={s.smsResultNote}>{deliveryNote(result)}</p>
           {result.providerMessageId && <p className={s.smsRef}>Message ID {result.providerMessageId}</p>}
-          <Button variant="primary" onClick={onClose}>
+          {handoffPhone && (
+            <>
+              <p className={s.smsResultNote}>To make it arrive for real, send it from this phone’s Messages app.</p>
+              <ButtonAnchor variant="primary" href={messagesLink(handoffPhone, result.body)}>
+                <MessageSquareText size={18} aria-hidden="true" />
+                Send it from Messages
+              </ButtonAnchor>
+            </>
+          )}
+          <Button variant={handoffPhone ? "secondary" : "primary"} onClick={onClose}>
             Done
           </Button>
         </div>

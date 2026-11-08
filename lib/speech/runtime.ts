@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { elevenLabsClient } from "../elevenlabs.ts";
-import { paidDemoOptIn } from "../mvp/auth.ts";
+import { paidDemoOptIn, trustedLanHosts } from "../mvp/auth.ts";
 import { reserveCall } from "../rateLimit.ts";
 import { requireSameOrigin, WorkflowError } from "../requests/workflow.ts";
 import { createElevenLabsSdkClient, PROVISION_REQUEST_OPTIONS } from "../voice-agent/client.ts";
@@ -123,7 +123,8 @@ interface SpeechAppRuntime {
 
 export function createSpeechRuntimeFromApp(runtime: SpeechAppRuntime) {
   const base = new URL(runtime.baseUrl);
-  const loopbackHttp = base.protocol === "http:" && ["localhost", "127.0.0.1"].includes(base.hostname);
+  // plain http is accepted on loopback, or on an opt-in dev-only RR_TRUSTED_LAN_HOSTS host (lib/mvp/auth.ts)
+  const loopbackHttp = base.protocol === "http:" && ["localhost", "127.0.0.1", ...trustedLanHosts()].includes(base.hostname);
   if ((base.protocol !== "https:" && !loopbackHttp) || base.username || base.password) throw new Error("invalid_app_base_url");
   const localDemo = runtime.auth.mode === "demo" && (loopbackHttp || paidDemoOptIn());
   return createSpeechRuntime({

@@ -38,6 +38,8 @@ export type SmsView = z.infer<typeof smsViewSchema>;
 const provider = z.enum(["twilio", "demo"]);
 const listSchema = z.object({ provider, texts: z.array(smsViewSchema) });
 const oneSchema = z.object({ text: smsViewSchema });
+/** handoffPhone: the full number after a simulated (demo) send, so this phone's Messages app can send it; else null */
+const sentSchema = z.object({ text: smsViewSchema, handoffPhone: z.string().regex(/^\+[1-9]\d{7,14}$/).nullable().optional() });
 const recipientsSchema = z.object({
   provider,
   options: z.array(z.object({
@@ -83,7 +85,7 @@ export function createSmsApi(transport: typeof fetch = fetch) {
       tier: SmsTier;
       healthOverride: boolean;
     }) => call("/api/sms", oneSchema, { body: { ...input, approved: true } }),
-    send: (requestId: string) => call("/api/sms/send", oneSchema, { body: { requestId }, timeoutMs: 30_000 }),
+    send: (requestId: string) => call("/api/sms/send", sentSchema, { body: { requestId }, timeoutMs: 30_000 }),
   };
 }
 export type SmsApi = ReturnType<typeof createSmsApi>;

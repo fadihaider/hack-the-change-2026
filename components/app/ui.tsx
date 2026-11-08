@@ -151,6 +151,15 @@ export function ButtonLink({ href, variant = "secondary", className, children, .
   );
 }
 
+/** a plain link that looks like a button, for other apps (sms:, tel:) that next/link must not route */
+export function ButtonAnchor({ href, variant = "secondary", className, children, ...rest }: ButtonLinkProps) {
+  return (
+    <a href={href} className={cx(s.button, s[variant], className)} {...rest}>
+      {children}
+    </a>
+  );
+}
+
 /** the stack of choices under a question: primary first, then secondary, then quiet */
 export function Actions({ children }: { children: ReactNode }) {
   return <div className={s.actions}>{children}</div>;

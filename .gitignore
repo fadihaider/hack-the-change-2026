@@ -20,3 +20,11 @@ CLAUDE.md
 
 # local MVP database
 .data/
+
+# iOS build output
+ios/build/
+ios/DerivedData/
+.next-*/
+
+# Xcode per-user state
+xcuserdata/

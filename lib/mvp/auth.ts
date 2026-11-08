@@ -56,7 +56,7 @@ export function createAuthAdapter(mode: AuthMode, deps: { sql: SqlRunner }): Aut
 }
 
 /** RR_ALLOW_PAID_DEMO=on: the owner accepts that anyone who can reach a deployed demo spends the shared quotas */
-export function paidDemoOptIn(env: NodeJS.ProcessEnv = process.env): boolean {
+export function paidDemoOptIn(env: Record<string, string | undefined> = process.env): boolean {
   return env.RR_ALLOW_PAID_DEMO === "on";
 }
 
@@ -65,13 +65,26 @@ export function paidDemoOptIn(env: NodeJS.ProcessEnv = process.env): boolean {
  * origin needs a verified owner (mode "google"), unless the owner opted in with RR_ALLOW_PAID_DEMO=on. every visitor
  * of a demo deployment is the same user, so the per-user limits in lib/rateLimit.ts cap the spend for all of them.
  */
-export function paidProvidersAllowed(mode: AuthMode, baseUrl: string, env: NodeJS.ProcessEnv = process.env): boolean {
+export function paidProvidersAllowed(mode: AuthMode, baseUrl: string, env: Record<string, string | undefined> = process.env): boolean {
   if (mode === "google") return true;
   if (mode === "demo" && paidDemoOptIn(env)) return true;
   try {
     const url = new URL(baseUrl);
-    return url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    if (url.protocol !== "http:") return false;
+    return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || trustedLanHosts(env).includes(url.hostname);
   } catch {
     return false;
   }
+}
+
+/**
+ * RR_TRUSTED_LAN_HOSTS: opt-in, dev-only list of LAN hostnames (e.g. the Mac's Wi-Fi IP) that may use paid providers
+ * with the demo identity, so the iPhone app can reach them. Ignored in production; empty when unset.
+ */
+export function trustedLanHosts(env: Record<string, string | undefined> = process.env): string[] {
+  if (env.NODE_ENV === "production") return [];
+  return (env.RR_TRUSTED_LAN_HOSTS ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter((host) => host.length > 0);
 }

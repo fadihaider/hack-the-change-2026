@@ -1,6 +1,6 @@
 // which speech provider handles /api/stt right now, for GET /api/session (never exposes the key)
 import "server-only";
-import { paidProvidersAllowed, type AuthMode } from "../mvp/auth.ts";
+import { paidProvidersAllowed, trustedLanHosts, type AuthMode } from "../mvp/auth.ts";
 
 export type SpeechMode = "elevenlabs" | "off";
 
@@ -9,12 +9,12 @@ export function speechConfigured(env: NodeJS.ProcessEnv = process.env): boolean 
   return Boolean(env.ELEVENLABS_API_KEY?.trim());
 }
 
-/** mirrors createSpeechRuntimeFromApp in lib/speech/runtime.ts: https, or plain http on localhost/127.0.0.1 only */
+/** mirrors createSpeechRuntimeFromApp in lib/speech/runtime.ts: https, or plain http on localhost/127.0.0.1 or an RR_TRUSTED_LAN_HOSTS host */
 export function speechBaseAccepted(baseUrl: string): boolean {
   try {
     const url = new URL(baseUrl);
     if (url.username || url.password) return false;
-    return url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
+    return url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", ...trustedLanHosts()].includes(url.hostname));
   } catch {
     return false;
   }

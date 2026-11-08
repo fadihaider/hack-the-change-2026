@@ -27,6 +27,7 @@ Boot applies `db/schema.sql` once to a new PGlite folder, then runs `db/mvp.sql`
 | `ELEVENLABS_API_KEY` | unset: `providers.speech` is `off` and Care offers a typed note | set: `/api/stt` transcribes with Scribe v2 | `lib/speech/status.ts`, `lib/elevenlabs.ts` |
 | `CARE_ACCESS_INFERENCE_URL` | unset: classify returns 503 `classifier_not_configured` | the optional Python service in `ml/care_access` | `app/api/care-access/classify/route.ts` |
 | `APP_BASE_URL` | blank: `http://localhost:3000`, and in dev the request's own origin plus its localhost or 127.0.0.1 twin pass the Origin check | the https URL. It then becomes the only accepted origin | `lib/mvp/runtime.ts`, `app/api/_lib/http.ts` |
+| `RR_TRUSTED_LAN_HOSTS` | blank: paid providers need a loopback base URL | dev only, ignored in production: comma list of LAN hostnames (the Mac's Wi-Fi IP) whose plain-http `APP_BASE_URL` may use paid providers with the demo identity, for the iPhone app in `ios/` | `lib/mvp/auth.ts` (`trustedLanHosts`), `lib/speech/status.ts`, `lib/speech/runtime.ts` |
 
 Paid providers (model calls and ElevenLabs) accept the demo identity only when the base URL is plain http on `localhost` or `127.0.0.1` (`paidProvidersAllowed` in `lib/mvp/auth.ts`). Any deployed origin needs a verified owner (`RR_AUTH=google`). Otherwise the call returns 403 `verified_owner_required` and nothing is sent to a provider.
 

@@ -40,6 +40,10 @@ The main navigation is **Urgent · Care · Recover**.
 
 The Demo menu in the top bar opens the outbox and moves the demo clock. Moved time is labelled as demo time.
 
+## iPhone app
+
+`ios/` holds a native SwiftUI client that calls the same `/api/*` routes, so it works against a local server or the deployed demo. Build and run steps are in [ios/README.md](ios/README.md).
+
 ## What is real and what is demo
 
 | Part | Real | Demo (the default) |
