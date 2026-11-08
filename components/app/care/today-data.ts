@@ -1,5 +1,7 @@
 // today's care: which items show first, each item's status and reminder time. pure, so it can be tested
-import type { TimelineItemView } from "@/lib/frontend/live-api.ts";
+import { formatAlberta, type TimelineItemView } from "@/lib/frontend/live-api.ts";
+import { isLockedWording } from "@/lib/care/lockedWording.ts";
+import { plural } from "./care-data.ts";
 
 /** how many items the day shows before "Open full day" */
 export const DAY_PREVIEW = 4;
@@ -79,6 +81,29 @@ export function daySummary<T extends Item & Pick<TimelineItemView, "title">>(ite
     earlier: nowMs === null ? 0 : open.filter((item) => startOf(item) < nowMs).length,
     next: nowMs === null ? null : (open.find((item) => startOf(item) >= nowMs) ?? null),
   };
+}
+
+/** "4 things on this day. 1 marked done. Next: 8:00 a.m." with one period after a time that already ends in "a.m." */
+export function overviewLine(summary: DaySummary): string {
+  const parts = [`${plural(summary.total, "thing", "things")} on this day.`];
+  if (summary.done > 0) parts.push(`${summary.done} marked done.`);
+  if (summary.earlier > 0) parts.push(`${plural(summary.earlier, "earlier item isn’t", "earlier items aren’t")} marked done.`);
+  if (summary.next) {
+    const at = formatAlberta(summary.next.startsAt, "time");
+    parts.push(`Next: ${at}${at.endsWith(".") ? "" : "."}`);
+  }
+  return parts.join(" ");
+}
+
+/**
+ * the line an item shows before it is expanded. locked wording (medication, doses, wound care, written
+ * instructions) is shown whole, never the short title (PRD 15); everything else, and any urgent appointment,
+ * shows its short title.
+ */
+export function dayItemText(item: Pick<TimelineItemView, "factId" | "category" | "fullText" | "title">): string {
+  if (item.factId === null) return item.title;
+  const exact = item.fullText ?? item.title;
+  return isLockedWording(item.category, exact) || isLockedWording(item.category, item.title) ? exact : item.title;
 }
 
 /** replaces one occurrence's completion in a list of items */

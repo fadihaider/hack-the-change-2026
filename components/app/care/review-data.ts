@@ -2,7 +2,8 @@
 // no react here so the node test runner can load it.
 import { albertaDateOf, formatAlberta, formatDate, rruleLabel, sourceLabel, type CareFactView } from "@/lib/frontend/live-api.ts";
 import { PASSPORT_SECTIONS, sectionOf } from "@/lib/frontend/passport.ts";
-import { possessive, type ReviewStep } from "./care-data.ts";
+import { isLockedWording } from "@/lib/care/lockedWording.ts";
+import { possessive, shorten, type ReviewStep } from "./care-data.ts";
 
 /** what alex decided on one step */
 export type Outcome =
@@ -58,19 +59,48 @@ export function wholeSourceLabel(kind: string | null): string {
 }
 
 /**
- * what approving a timed suggestion does, e.g. "Approving adds it to Rosa’s day at 8:00 a.m. every day."
- * a consequence of the caregiver's choice, never an instruction. null when the suggestion has no time.
+ * what approving a timed suggestion does, e.g. "Approving adds it to Rosa’s day at 8:00 a.m. every day, with a
+ * reminder at 7:45 a.m." the reminder is named so approving covers it too (AC7). a consequence of the caregiver's
+ * choice, never an instruction. null when the suggestion has no time.
  */
 export function consequenceLine(name: string, fact: Pick<CareFactView, "events">): string | null {
   const event = fact.events.find((item) => item.startsAt !== null);
   if (!event?.startsAt) return null;
   const time = formatAlberta(event.startsAt, "time");
   const day = `${possessive(name)} day`;
+  let line: string;
+  if (!event.rrule) {
+    line = `Approving adds it to ${day} on ${formatAlberta(event.startsAt, "day")} at ${time}`;
+  } else {
+    const repeat = rruleLabel(event.rrule);
+    line =
+      repeat === "Repeats"
+        ? `Approving adds it to ${day} at ${time}, repeating`
+        : `Approving adds it to ${day} at ${time} ${repeat.charAt(0).toLowerCase()}${repeat.slice(1)}`;
+  }
+  const remind = reminderTime(event.startsAt, event.remindMinutes);
+  if (remind) line = `${line}, with a reminder at ${remind}`;
   // "8:00 a.m." already ends the sentence
-  if (!event.rrule) return `Approving adds it to ${day} on ${formatAlberta(event.startsAt, "day")} at ${time}`.replace(/([^.])$/, "$1.");
-  const repeat = rruleLabel(event.rrule);
-  if (repeat === "Repeats") return `Approving adds it to ${day} at ${time}, repeating.`;
-  return `Approving adds it to ${day} at ${time} ${repeat.charAt(0).toLowerCase()}${repeat.slice(1)}.`;
+  return line.endsWith(".") ? line : `${line}.`;
+}
+
+/** "7:45 a.m.": when the reminder goes off; null when no lead time is set */
+function reminderTime(startsAt: string, remindMinutes: number | null): string | null {
+  if (remindMinutes === null || !(remindMinutes > 0)) return null;
+  const ms = Date.parse(startsAt);
+  if (!Number.isFinite(ms)) return null;
+  return formatAlberta(ms - remindMinutes * 60_000, "time");
+}
+
+/** the step label in the progress list; a written care instruction is named, never cut short (PRD 15) */
+export function stepLabel(fact: Pick<CareFactView, "category" | "textExact" | "displayText">, max = 60): string {
+  if (isLockedWording(fact.category, fact.textExact)) return "Written care instruction";
+  return shorten(fact.displayText ?? fact.textExact, max);
+}
+
+/** a fact quoted in a receipt or heading: shortened, unless its wording is locked (PRD 15) */
+export function quoteOf(fact: Pick<CareFactView, "category" | "textExact">, max: number): string {
+  return isLockedWording(fact.category, fact.textExact) ? fact.textExact : shorten(fact.textExact, max);
 }
 
 /**

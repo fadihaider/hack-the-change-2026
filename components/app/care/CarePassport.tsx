@@ -5,13 +5,13 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { ChevronDown, CircleHelp, Clock, FileText, History } from "lucide-react";
 import { liveErrorMessage, type CareFactView, type CareProfileView } from "@/lib/frontend/live-api.ts";
 import { PASSPORT_SECTIONS, sectionOf, type PassportSectionId } from "@/lib/frontend/passport.ts";
+import { isLockedWording } from "@/lib/care/lockedWording.ts";
 import { useApis } from "../session.tsx";
 import { Button, ErrorNote, Note, TextArea, VisuallyHidden, useAnnounce } from "../ui.tsx";
 import { EmergencyHelp } from "./EmergencyHelp.tsx";
 import { SourceSheet } from "./SourceSheet.tsx";
 import {
   factSummary,
-  isWrittenInstruction,
   openItems,
   passportGroups,
   plural,
@@ -144,7 +144,7 @@ export function CarePassport({ name, profile, onReview, onChanged, onAdd }: Care
           >
             {section.id === "contacts" && (
               <div className={s.inlineHelp}>
-                <EmergencyHelp name={name} placement="inline" />
+                <EmergencyHelp name={name} placement="inline" level={4} />
               </div>
             )}
             {facts.length === 0 ? (
@@ -152,7 +152,13 @@ export function CarePassport({ name, profile, onReview, onChanged, onAdd }: Care
             ) : (
               <ul className={s.facts} role="list">
                 {facts.map((fact) => (
-                  <PassportFact key={fact.id} fact={fact} onSource={setSourceFact} onChanged={onChanged} />
+                  <PassportFact
+                    key={fact.id}
+                    fact={fact}
+                    earlier={earlierVersions(fact, profile.facts)}
+                    onSource={setSourceFact}
+                    onChanged={onChanged}
+                  />
                 ))}
               </ul>
             )}
@@ -231,24 +237,44 @@ function Accordion({ id, title, count, hint, expanded, onToggle, children }: Acc
 
 type FactProps = {
   fact: CareFactView;
+  /** the versions this fact replaced, newest first; empty for an original */
+  earlier: CareFactView[];
   onSource: (fact: CareFactView) => void;
   onChanged: () => Promise<unknown>;
 };
 
-function PassportFact({ fact, onSource, onChanged }: FactProps) {
+/** the earlier versions an edited fact replaced, newest first, by following supersedes back to the original */
+function earlierVersions(fact: CareFactView, facts: CareFactView[]): CareFactView[] {
+  if (fact.version <= 1 || !fact.supersedes) return [];
+  const byId = new Map(facts.map((item) => [item.id, item]));
+  const chain: CareFactView[] = [];
+  const seen = new Set([fact.id]);
+  let previous = byId.get(fact.supersedes);
+  while (previous && previous.status === "superseded" && !seen.has(previous.id)) {
+    chain.push(previous);
+    seen.add(previous.id);
+    previous = previous.supersedes ? byId.get(previous.supersedes) : undefined;
+  }
+  return chain;
+}
+
+function PassportFact({ fact, earlier, onSource, onChanged }: FactProps) {
   const { live } = useApis();
   const announce = useAnnounce();
   const fullId = useId();
   const editRef = useRef<HTMLButtonElement>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const [showFull, setShowFull] = useState(false);
+  const [showEarlier, setShowEarlier] = useState(false);
+  const earlierId = useId();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(fact.textExact);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const written = isWrittenInstruction(fact);
-  const summary = factSummary(fact);
+  // medication, dose and wound wording is locked whatever its category (PRD 15): never shortened, never edited here
+  const written = isLockedWording(fact.category, fact.textExact);
+  const summary = written ? fact.textExact : factSummary(fact);
   const when = timeLine(fact);
   const version = versionLabel(fact);
   const named = shorten(summary, 48);
@@ -345,16 +371,43 @@ function PassportFact({ fact, onSource, onChanged }: FactProps) {
         )}
       </ul>
 
-      {editing ? (
+      {earlier.length > 0 && (
+        <div className={s.full}>
+          <button
+            type="button"
+            className={s.linkButton}
+            aria-expanded={showEarlier}
+            aria-controls={earlierId}
+            onClick={() => setShowEarlier((value) => !value)}
+          >
+            Earlier wording
+            <ChevronDown size={16} className={s.chevron} aria-hidden="true" />
+          </button>
+          <ul id={earlierId} className={s.earlier} role="list" hidden={!showEarlier}>
+            {earlier.map((previous, at) => (
+              <li key={previous.id} className={s.earlierItem}>
+                <blockquote className={s.fullWording}>{previous.textExact}</blockquote>
+                <p className={s.earlierMeta}>
+                  {previous.version > 1 ? `Version ${previous.version}` : "Original"}. {provenanceLine(previous)}
+                </p>
+                {previous.sourceId && (
+                  <button type="button" className={s.smallButton} onClick={() => onSource(previous)}>
+                    {at === earlier.length - 1 ? "View original source" : "View its source"}
+                    <VisuallyHidden>{previous.version > 1 ? ` for version ${previous.version}` : ""}</VisuallyHidden>
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {editing && !written ? (
         <form className={s.editForm} onSubmit={(event) => void save(event)} noValidate>
           <TextArea
             ref={fieldRef}
-            label={written ? "Replace the whole instruction" : "Change the wording"}
-            hint={
-              written
-                ? "Write it exactly as the care document says. This replaces the whole instruction; the earlier version is kept."
-                : "Saving makes a new approved version. The earlier wording is kept."
-            }
+            label="Change the wording"
+            hint="Saving makes a new approved version. The earlier wording is kept."
             value={draft}
             rows={4}
             maxLength={MAX_FACT_CHARS}
@@ -378,11 +431,16 @@ function PassportFact({ fact, onSource, onChanged }: FactProps) {
               <VisuallyHidden> for “{named}”</VisuallyHidden>
             </button>
           )}
-          <button type="button" ref={editRef} className={s.smallButton} onClick={startEdit}>
-            Edit
-            <VisuallyHidden> “{named}”</VisuallyHidden>
-          </button>
+          {!written && (
+            <button type="button" ref={editRef} className={s.smallButton} onClick={startEdit}>
+              Edit
+              <VisuallyHidden> “{named}”</VisuallyHidden>
+            </button>
+          )}
         </div>
+      )}
+      {written && (
+        <p className={s.lockedNote}>Written care instructions stay word for word. Add the corrected document instead.</p>
       )}
     </li>
   );

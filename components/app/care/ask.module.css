@@ -214,6 +214,21 @@
   padding-top: 12px;
 }
 
+/* a missed question still shows where to call, small and calm */
+.missingHelp {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-ink);
+}
+
+.missingHelp a {
+  color: var(--rr-teal-ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .basedTitle {
   padding-top: 4px;
   font-size: 14px;
@@ -366,13 +381,21 @@ details[open] > summary .chevron {
 /* ---------------------------------------------------------------- medical redirect */
 
 .calls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
   padding-top: 4px;
   border: 1px solid var(--rr-bad-ink);
   border-top: 0;
   background: var(--rr-bad-tint);
+}
+
+.callGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+/* matching approved facts under the call buttons, word for word */
+.calls .basedTitle {
+  padding-top: 14px;
 }
 
 .call {

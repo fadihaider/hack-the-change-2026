@@ -260,6 +260,39 @@
   display: none;
 }
 
+/* earlier versions of an edited fact, with their own sources (PRD 5: the original is kept) */
+.earlier,
+.earlier[role="list"] {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.earlier[hidden] {
+  display: none;
+}
+
+.earlierItem .fullWording {
+  margin: 0;
+}
+
+.earlierMeta {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+/* why a written care instruction has no edit button */
+.lockedNote {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
 .meta,
 .meta[role="list"] {
   display: flex;

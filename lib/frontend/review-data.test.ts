@@ -5,9 +5,11 @@ import { pendingSteps } from "../../components/app/care/care-data.ts";
 import {
   consequenceLine,
   noteLabel,
+  quoteOf,
   reviewSourceLine,
   sectionTitle,
   sourceContext,
+  stepLabel,
   summarize,
   summaryRows,
   summarySentence,
@@ -110,6 +112,41 @@ test("a timed suggestion says what approving adds, never an instruction", () => 
   const once = { ...breakfast, events: [{ ...breakfast.events[0], rrule: null }] };
   assert.equal(consequenceLine("Rosa", once), "Approving adds it to Rosa’s day on Sun, Nov 8 at 8:00 a.m.");
   assert.equal(consequenceLine("Rosa", fact({ id: "f2", textExact: "She prefers instructions written down." })), null);
+});
+
+test("approving a timed suggestion names its reminder, so the reminder is approved too", () => {
+  const event = {
+    id: "e1",
+    title: "Breakfast",
+    startsAt: "2026-11-08T14:00:00.000Z",
+    rrule: "FREQ=DAILY",
+    remindMinutes: 15,
+    locationText: null,
+    status: "suggested",
+  };
+  const daily = fact({ id: "f1", textExact: "Rosa usually has breakfast at eight.", events: [event] });
+  assert.equal(
+    consequenceLine("Rosa", daily),
+    "Approving adds it to Rosa’s day at 8:00 a.m. every day, with a reminder at 7:45 a.m.",
+  );
+  const once = fact({ id: "f2", textExact: "Rosa usually has breakfast at eight.", events: [{ ...event, rrule: null }] });
+  assert.equal(
+    consequenceLine("Rosa", once),
+    "Approving adds it to Rosa’s day on Sun, Nov 8 at 8:00 a.m., with a reminder at 7:45 a.m.",
+  );
+  const none = fact({ id: "f3", textExact: "Rosa usually has breakfast at eight.", events: [{ ...event, remindMinutes: 0 }] });
+  assert.equal(consequenceLine("Rosa", none), "Approving adds it to Rosa’s day at 8:00 a.m. every day.");
+});
+
+test("locked wording is never cut short in step labels or quotes, whatever its category", () => {
+  const long = "Give two 500 mg tablets with breakfast, then check her blood pressure and write it down in the blue book.";
+  const dose = fact({ id: "f1", category: "routine", textExact: long });
+  assert.equal(stepLabel(dose), "Written care instruction");
+  assert.equal(quoteOf(dose, 40), long);
+  const plain = fact({ id: "f2", textExact: TRANSCRIPT });
+  assert.ok(stepLabel(plain).endsWith("…"));
+  assert.ok(stepLabel(plain).length <= 61);
+  assert.ok(quoteOf(plain, 40).endsWith("…"));
 });
 
 test("conflict notes are labelled by the provider that wrote them; demo rules are never called AI", () => {

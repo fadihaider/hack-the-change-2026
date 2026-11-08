@@ -4,9 +4,11 @@ import { test } from "node:test";
 import {
   DAY_PREVIEW,
   STATUS_LABEL,
+  dayItemText,
   dayPreview,
   daySummary,
   itemStatus,
+  overviewLine,
   reminderAt,
   withCompletion,
 } from "../../components/app/care/today-data.ts";
@@ -108,4 +110,22 @@ test("marking one occurrence done changes only that item", () => {
   assert.equal(next[1].completedAt, "2026-11-08T15:01:00.000Z");
   assert.equal(items[1].completedAt, null);
   assert.equal(withCompletion(next, "b", null)[1].completedAt, null);
+});
+
+test("the overview ends a time that already ends in a.m. or p.m. with one period", () => {
+  const line = overviewLine({ total: 4, done: 1, earlier: 0, next: { startsAt: "2026-11-08T14:00:00.000Z", title: "Breakfast" } });
+  assert.equal(line, "4 things on this day. 1 marked done. Next: 8:00 a.m.");
+  assert.doesNotMatch(line, /\.\.$/);
+  assert.equal(overviewLine({ total: 1, done: 0, earlier: 0, next: null }), "1 thing on this day.");
+});
+
+test("medication and dose wording shows whole in the day whatever its category; other items show the short title", () => {
+  const dose = { factId: "f1", category: "routine", title: "Breakfast", fullText: "Breakfast at 8:30 with her 500 mg tablet." };
+  assert.equal(dayItemText(dose), dose.fullText);
+  const written = { factId: "f2", category: "medical_instruction", title: "Keep the area dry", fullText: "Keep the area dry for two days." };
+  assert.equal(dayItemText(written), written.fullText);
+  const breakfast = { factId: "f3", category: "routine", title: "Breakfast", fullText: "Rosa usually has breakfast at eight." };
+  assert.equal(dayItemText(breakfast), "Breakfast");
+  const appointment = { factId: null, category: null, title: "Wound check", fullText: "Wound check at the clinic, bring the dressing list." };
+  assert.equal(dayItemText(appointment), "Wound check");
 });

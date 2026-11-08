@@ -191,24 +191,27 @@ type DetailsProps = {
 };
 
 function AnswerDetails({ name, result, factById, onAdd }: DetailsProps) {
-  // a medical question gets the redirect and the two numbers, nothing else
+  // a medical question gets the redirect and the two numbers, then any matching approved fact word for word
   if (result.medicalRedirect) {
     return (
       <div className={a.calls}>
-        <a className={`${a.call} ${a.callEmergency}`} href={EMERGENCY_LINES.emergency.href}>
-          <Phone size={18} aria-hidden="true" />
-          <span>
-            Call 911
-            <span className={a.callNote}>Emergency</span>
-          </span>
-        </a>
-        <a className={a.call} href={EMERGENCY_LINES.healthLink.href}>
-          <Phone size={18} aria-hidden="true" />
-          <span>
-            Call 811
-            <span className={a.callNote}>Health Link, 24/7 nurse advice</span>
-          </span>
-        </a>
+        <div className={a.callGrid}>
+          <a className={`${a.call} ${a.callEmergency}`} href={EMERGENCY_LINES.emergency.href}>
+            <Phone size={18} aria-hidden="true" />
+            <span>
+              Call 911
+              <span className={a.callNote}>Emergency</span>
+            </span>
+          </a>
+          <a className={a.call} href={EMERGENCY_LINES.healthLink.href}>
+            <Phone size={18} aria-hidden="true" />
+            <span>
+              Call 811
+              <span className={a.callNote}>Health Link, 24/7 nurse advice</span>
+            </span>
+          </a>
+        </div>
+        <CitedList name={name} cited={result.citedFacts} factById={factById} />
       </div>
     );
   }
@@ -231,20 +234,14 @@ function AnswerDetails({ name, result, factById, onAdd }: DetailsProps) {
               Add the answer
             </Button>
           </div>
+          {/* a missed health question still shows where to call */}
+          <p className={a.missingHelp}>
+            For health advice, call <a href={EMERGENCY_LINES.healthLink.href}>Health Link at 811</a>. In an
+            emergency, call <a href={EMERGENCY_LINES.emergency.href}>911</a>.
+          </p>
         </>
       ) : (
-        result.citedFacts.length > 0 && (
-          <>
-            <h3 className={a.basedTitle}>
-              Based on {result.citedFacts.length === 1 ? "this approved fact" : `these ${result.citedFacts.length} approved facts`}
-            </h3>
-            <ul className={a.cited} role="list">
-              {result.citedFacts.map((cited) => (
-                <Citation key={cited.id} name={name} cited={cited} fact={factById.get(cited.id) ?? null} />
-              ))}
-            </ul>
-          </>
-        )
+        <CitedList name={name} cited={result.citedFacts} factById={factById} />
       )}
       {result.healthNotice && (
         <p className={a.health}>
@@ -259,6 +256,29 @@ function AnswerDetails({ name, result, factById, onAdd }: DetailsProps) {
         </ul>
       )}
     </div>
+  );
+}
+
+type CitedListProps = {
+  name: string;
+  cited: CitedFactView[];
+  factById: Map<string, CareFactView>;
+};
+
+/** the approved facts behind an answer, word for word; nothing when there are none */
+function CitedList({ name, cited, factById }: CitedListProps) {
+  if (cited.length === 0) return null;
+  return (
+    <>
+      <h3 className={a.basedTitle}>
+        Based on {cited.length === 1 ? "this approved fact" : `these ${cited.length} approved facts`}
+      </h3>
+      <ul className={a.cited} role="list">
+        {cited.map((item) => (
+          <Citation key={item.id} name={name} cited={item} fact={factById.get(item.id) ?? null} />
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -279,17 +299,17 @@ function fromLine(cited: CitedFactView, fact: CareFactView | null): string {
   return "Source not recorded";
 }
 
-/** opens the passport section holding this fact and moves focus to it; false when it is not on the page */
+/**
+ * opens the passport section holding this fact and moves focus to it; false when it is not on the page.
+ * passport sections are react accordions, so this goes through the passport's own #fact-{id} handler,
+ * which expands the section first and then focuses the row.
+ */
 function revealFact(factId: string): boolean {
-  const target = document.getElementById(`fact-${factId}`);
-  if (!target) return false;
-  for (let node: HTMLElement | null = target; node; node = node.parentElement) {
-    if (node instanceof HTMLDetailsElement) node.open = true;
-  }
-  if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  target.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
-  target.focus({ preventScroll: true });
+  if (!document.getElementById(`fact-${factId}`)) return false;
+  const hash = `#fact-${encodeURIComponent(factId)}`;
+  // replace rather than push, so a citation tap does not add a back-button step; keep the router's state
+  if (window.location.hash !== hash) window.history.replaceState(window.history.state, "", hash);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
   return true;
 }
 

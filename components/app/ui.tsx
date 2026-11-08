@@ -426,6 +426,9 @@ type Announcer = {
 
 const AnnounceContext = createContext<Announcer | null>(null);
 
+// how long a delivered announcement stays in the live region before it is cleared
+const ANNOUNCE_CLEAR_MS = 1500;
+
 /**
  * the polite live region. wrap the app in it once (the app layout does); call useAnnounce() anywhere inside.
  * while a Sheet is open the message is read from inside the sheet, because the page behind a modal is inert.
@@ -434,19 +437,37 @@ export function LiveRegion({ children }: { children?: ReactNode }) {
   const [message, setMessage] = useState("");
   const [sheets, setSheets] = useState(0);
   const timer = useRef<number | undefined>(undefined);
+  const clearTimer = useRef<number | undefined>(undefined);
 
   const announce = useCallback((next: string) => {
     window.clearTimeout(timer.current);
+    window.clearTimeout(clearTimer.current);
     // clear first so the same sentence twice is read twice
     setMessage("");
-    timer.current = window.setTimeout(() => setMessage(next), 80);
+    timer.current = window.setTimeout(() => {
+      setMessage(next);
+      // once read, the sentence goes, so a region that mounts or reappears later never repeats it
+      clearTimer.current = window.setTimeout(() => setMessage(""), ANNOUNCE_CLEAR_MS);
+    }, 80);
   }, []);
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current);
+      window.clearTimeout(clearTimer.current);
+    },
+    [],
+  );
 
+  // a sheet opening or closing moves where the message is read, so an earlier sentence is never re-read there.
+  // a sentence still waiting on its 80ms timer is new, so it is kept and lands in whichever region is current.
   const addSheet = useCallback(() => {
+    setMessage("");
     setSheets((n) => n + 1);
-    return () => setSheets((n) => Math.max(0, n - 1));
+    return () => {
+      setMessage("");
+      setSheets((n) => Math.max(0, n - 1));
+    };
   }, []);
 
   const value = useMemo(() => ({ announce, message, sheets, addSheet }), [announce, message, sheets, addSheet]);

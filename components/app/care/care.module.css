@@ -146,10 +146,20 @@
   color: var(--rr-muted);
 }
 
-.factMeta li {
+.factMeta li,
+.dayMeta li {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* a long calendar link wraps instead of widening the page */
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.factMeta li svg,
+.dayMeta li svg {
+  flex: none;
 }
 
 /* ---------------------------------------------------------------- the day */
@@ -246,12 +256,6 @@
   font-size: 14px;
   line-height: 1.45;
   color: var(--rr-muted);
-}
-
-.dayMeta li {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .dayMeta .soon {
@@ -841,6 +845,27 @@
   font-weight: 600;
   cursor: pointer;
   list-style-position: inside;
+}
+
+.daySummary::-webkit-details-marker {
+  display: none;
+}
+
+/* the chevron shows whether the exact wording is open */
+.dayChevron {
+  flex: none;
+  margin-left: 6px;
+  transition: transform 160ms ease;
+}
+
+.dayDetails[open] > .daySummary .dayChevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dayChevron {
+    transition: none;
+  }
 }
 
 .daySummary:focus-visible {
