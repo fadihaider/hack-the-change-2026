@@ -85,4 +85,7 @@ nonisolated extension TolerantEnum {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
+
+    /// false for the fallback, which the server would refuse as input
+    var isKnown: Bool { self != Self.fallback }
 }

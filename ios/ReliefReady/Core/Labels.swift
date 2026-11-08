@@ -246,6 +246,16 @@ nonisolated enum AlbertaTime {
         }
     }
 
+    /// yyyy-MM-ddTHH:mm:ss-06:00 in alberta time, which both the reply link's proposal.at (zod iso datetime with an
+    /// offset) and the edit route's respondBy accept; the web form sends the same shape (`${at}:00-06:00`)
+    static func isoString(_ date: Date) -> String {
+        let p = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        return String(
+            format: "%04d-%02d-%02dT%02d:%02d:%02d-06:00",
+            p.year ?? 0, p.month ?? 0, p.day ?? 0, p.hour ?? 0, p.minute ?? 0, p.second ?? 0
+        )
+    }
+
     /// albertaDateOf: the YYYY-MM-DD alberta calendar day of an instant
     static func dateString(of date: Date) -> String {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
@@ -352,5 +362,33 @@ nonisolated struct PassportSection: Sendable, Hashable, Identifiable {
     /// sectionOf: unknown categories fall back to practical
     static func section(of category: String) -> PassportSectionID {
         all.first { $0.categories.contains(category) }?.id ?? .practical
+    }
+}
+
+// ---- the reply link page (app/r/[token]/ResponseForm.tsx)
+
+nonisolated enum ResponseLabels {
+    /// STATE_LABELS: the recorded answer
+    static let stateLabels: [String: String] = [
+        "accepted": "Accepted",
+        "rejected": "Declined",
+        "needs_review": "Another time was proposed",
+        "completed": "Completed",
+    ]
+
+    /// CLOSED_MESSAGES: closed without an answer
+    static let closedMessages: [String: String] = [
+        "expired": "This request expired before an answer was recorded.",
+        "cancelled": "The sender cancelled this request.",
+    ]
+
+    /// the label for a state, or the raw state when it has none
+    static func state(_ state: String) -> String {
+        stateLabels[state] ?? state
+    }
+
+    /// closedMessage: the page text for a link that can no longer be answered
+    static func closedMessage(_ state: String) -> String {
+        closedMessages[state] ?? "This request already has a recorded answer: \(Self.state(state))."
     }
 }

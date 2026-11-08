@@ -14,8 +14,7 @@ struct UrgentView: View {
             lead: weekLead,
             detail: "Commitments that clash with the care week, and who to tell, will be here."
         )
-        .navigationTitle("Urgent")
-        .toolbarTitleDisplayMode(.inline)
+        .screenTitle("Urgent")
         .accessibilityIdentifier("screen.urgent")
     }
 

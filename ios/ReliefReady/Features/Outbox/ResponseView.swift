@@ -16,8 +16,7 @@ struct ResponseView: View {
             lead: "Nothing is recorded until you confirm.",
             detail: "The reply page for this link will be here."
         )
-        .navigationTitle("Reply")
-        .toolbarTitleDisplayMode(.inline)
+        .screenTitle("Reply")
         .accessibilityIdentifier("screen.response")
     }
 }

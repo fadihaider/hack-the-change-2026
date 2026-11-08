@@ -107,6 +107,8 @@ nonisolated struct OpenQuestion: Codable, Sendable, Hashable, Identifiable {
 nonisolated enum CareTextKind: String, TolerantEnum {
     case note, voice, unrecognized
     static var fallback: Self { .unrecognized }
+    /// only what the server accepts, so a picker never offers the fallback
+    static let allCases: [CareTextKind] = [.note, .voice]
 }
 
 // POST /api/care/sources
@@ -297,6 +299,8 @@ nonisolated enum CareContactKind: String, TolerantEnum {
     case trusted
     case unrecognized
     static var fallback: Self { .unrecognized }
+    /// only what the server accepts, so a picker never offers the fallback
+    static let allCases: [CareContactKind] = [.emergency, .trusted]
 }
 
 nonisolated struct CareContact: Codable, Sendable, Hashable, Identifiable {
@@ -321,12 +325,12 @@ nonisolated struct CareContactEnvelope: Codable, Sendable, Hashable {
 /// the body of POST /api/care/contacts
 nonisolated struct NewCareContact: Sendable, Hashable {
     var name: String
-    /// nil leaves it out; .some(nil) sends null
-    var relationship: String??
+    /// nil leaves it out; a new contact has no stored value to clear, so null is never needed
+    var relationship: String?
     var phone: String
     var kind: CareContactKind
 
-    init(name: String, relationship: String?? = nil, phone: String, kind: CareContactKind) {
+    init(name: String, relationship: String? = nil, phone: String, kind: CareContactKind) {
         self.name = name
         self.relationship = relationship
         self.phone = phone

@@ -73,6 +73,8 @@ final class ServerConfig {
         else { return nil }
         parts.scheme = scheme
         parts.host = host.lowercased()
+        // the server compares against WHATWG URL.origin, which drops a default port
+        if parts.port == Self.defaultPort(of: scheme) { parts.port = nil }
         parts.path = ""
         parts.query = nil
         parts.fragment = nil
@@ -85,7 +87,15 @@ final class ServerConfig {
         let scheme = url.scheme ?? "http"
         let host = url.host(percentEncoded: false) ?? ""
         let shownHost = host.contains(":") ? "[\(host)]" : host
-        if let port = url.port { return "\(scheme)://\(shownHost):\(port)" }
+        if let port = url.port, port != defaultPort(of: scheme) { return "\(scheme)://\(shownHost):\(port)" }
         return "\(scheme)://\(shownHost)"
+    }
+
+    nonisolated static func defaultPort(of scheme: String) -> Int? {
+        switch scheme.lowercased() {
+        case "http": 80
+        case "https": 443
+        default: nil
+        }
     }
 }

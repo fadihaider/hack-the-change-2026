@@ -24,10 +24,11 @@ targets:
         UIAppFonts: [Figtree-Variable.ttf]
         UIUserInterfaceStyle: Light
         NSLocalNetworkUsageDescription: ReliefReady connects to the ReliefReady server on your local network.
+        NSMicrophoneUsageDescription: ReliefReady records your voice so it can turn what you say into text.
         NSAppTransportSecurity:
-          # the dev server is plain http on 127.0.0.1 or a LAN address
+          # the dev server is plain http on 127.0.0.1 or a LAN address. NSAllowsLocalNetworking covers those;
+          # NSAllowsArbitraryLoads is left out because ATS ignores it whenever NSAllowsLocalNetworking is present
           NSAllowsLocalNetworking: true
-          NSAllowsArbitraryLoads: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fadihaider.reliefready

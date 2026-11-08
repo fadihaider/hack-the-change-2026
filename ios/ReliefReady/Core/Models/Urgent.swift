@@ -71,6 +71,8 @@ nonisolated struct IntakePartial: Codable, Sendable, Hashable {
 nonisolated enum Decision: String, TolerantEnum {
     case notify, reschedule, `extension`, coverage, `defer`, keep, unrecognized
     static var fallback: Self { .unrecognized }
+    /// only what the server accepts, so a picker never offers the fallback
+    static let allCases: [Decision] = [.notify, .reschedule, .extension, .coverage, .defer, .keep]
 }
 
 nonisolated enum ModelStatus: String, TolerantEnum {
@@ -288,6 +290,8 @@ nonisolated enum Tenure: String, TolerantEnum {
     case notSure = "not_sure"
     case unrecognized
     static var fallback: Self { .unrecognized }
+    /// only what the server accepts, so a picker never offers the fallback
+    static let allCases: [Tenure] = [.yes, .no, .notSure]
 }
 
 nonisolated struct GuideResponse: Codable, Sendable, Hashable {

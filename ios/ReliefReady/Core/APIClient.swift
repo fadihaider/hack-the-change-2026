@@ -51,11 +51,19 @@ nonisolated struct MultipartFile: Sendable, Hashable {
     var encoded: Data {
         var out = Data()
         out.append(Data("--\(boundary)\r\n".utf8))
-        out.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".utf8))
+        out.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"\(Self.escaped(filename))\"\r\n".utf8))
         out.append(Data("Content-Type: \(contentType)\r\n\r\n".utf8))
         out.append(data)
         out.append(Data("\r\n--\(boundary)--\r\n".utf8))
         return out
+    }
+
+    /// a filename as browsers put it in a part header: quote, cr and lf percent-encoded (whatwg multipart rules)
+    static func escaped(_ filename: String) -> String {
+        filename
+            .replacingOccurrences(of: "\"", with: "%22")
+            .replacingOccurrences(of: "\r", with: "%0D")
+            .replacingOccurrences(of: "\n", with: "%0A")
     }
 }
 
@@ -124,7 +132,7 @@ nonisolated final class APIClient: Sendable {
     func decide(_ input: DecideInput) async throws(APIError) -> DecideResponse {
         var body: [String: JSONValue] = [
             "commitmentId": .string(input.commitmentId),
-            "decision": .string(input.decision.rawValue),
+            "decision": .string(try Self.wire(input.decision)),
         ]
         if let contactId = input.contactId { body["contactId"] = .string(contactId) }
         if let contactIds = input.contactIds { body["contactIds"] = .array(contactIds.map(JSONValue.string)) }
@@ -144,7 +152,7 @@ nonisolated final class APIClient: Sendable {
 
     /// GET /api/guide?tenure=&address=; a blank address is left out
     func guide(address: String, tenure: Tenure) async throws(APIError) -> GuideResponse {
-        var query = [URLQueryItem(name: "tenure", value: tenure.rawValue)]
+        var query = [URLQueryItem(name: "tenure", value: try Self.wire(tenure))]
         let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { query.append(URLQueryItem(name: "address", value: trimmed)) }
         return try await send(APIRequest("/api/guide", query: query, timeout: Timeout.model))
@@ -173,8 +181,12 @@ nonisolated final class APIClient: Sendable {
         if let subject = changes.subject { body["subject"] = .string(subject) }
         if let text = changes.body { body["body"] = .string(text) }
         if let contactId = changes.contactId { body["contactId"] = .string(contactId) }
-        if let respondBy = changes.respondBy { body["respondBy"] = .string(orNull: respondBy) }
-        if let tier = changes.disclosureTier { body["disclosureTier"] = .string(tier.rawValue) }
+        switch changes.respondBy {
+        case .keep: break
+        case .clear: body["respondBy"] = .null
+        case .set(let iso): body["respondBy"] = .string(iso)
+        }
+        if let tier = changes.disclosureTier { body["disclosureTier"] = .string(try Self.wire(tier)) }
         return try await send(APIRequest("/api/requests/edit", body: .json(.object(body))))
     }
 
@@ -182,7 +194,7 @@ nonisolated final class APIClient: Sendable {
     func redraftRequest(id: String, tier: DisclosureTier) async throws(APIError) -> RedraftResult {
         try await send(APIRequest(
             "/api/requests/redraft",
-            body: .json(["requestId": .string(id), "disclosureTier": .string(tier.rawValue)]),
+            body: .json(["requestId": .string(id), "disclosureTier": .string(try Self.wire(tier))]),
             timeout: Timeout.model
         ))
     }
@@ -248,7 +260,7 @@ nonisolated final class APIClient: Sendable {
     func addCareText(kind: CareTextKind, text: String) async throws(APIError) -> CareSourceResult {
         try await send(APIRequest(
             "/api/care/sources",
-            body: .json(["kind": .string(kind.rawValue), "text": .string(text)]),
+            body: .json(["kind": .string(try Self.wire(kind)), "text": .string(text)]),
             timeout: Timeout.model
         ))
     }
@@ -312,9 +324,9 @@ nonisolated final class APIClient: Sendable {
         var body: [String: JSONValue] = [
             "name": .string(input.name),
             "phone": .string(input.phone),
-            "kind": .string(input.kind.rawValue),
+            "kind": .string(try Self.wire(input.kind)),
         ]
-        if let relationship = input.relationship { body["relationship"] = .string(orNull: relationship) }
+        if let relationship = input.relationship { body["relationship"] = .string(relationship) }
         return try await send(APIRequest("/api/care/contacts", body: .json(.object(body))))
     }
 
@@ -327,8 +339,10 @@ nonisolated final class APIClient: Sendable {
 
     /// GET /api/care-access/nearby?types=&radiusKm=&accessible=&perType=&address=
     func nearby(_ query: NearbyQuery) async throws(APIError) -> NearbyResponse {
+        var types: [String] = []
+        for type in query.types { types.append(try Self.wire(type)) }
         var items = [
-            URLQueryItem(name: "types", value: query.types.map(\.rawValue).joined(separator: ",")),
+            URLQueryItem(name: "types", value: types.joined(separator: ",")),
             URLQueryItem(name: "radiusKm", value: String(query.radiusKm.rawValue)),
             URLQueryItem(name: "accessible", value: query.accessible.rawValue),
         ]
@@ -354,14 +368,14 @@ nonisolated final class APIClient: Sendable {
     /// GET /api/care-access?mode=&threshold=&categories=&stepFree=&view=scores
     func careAccessScores(_ query: AccessQuery) async throws(APIError) -> AccessScores {
         try await send(APIRequest(
-            "/api/care-access", query: Self.accessParams(query, extra: URLQueryItem(name: "view", value: "scores"))
+            "/api/care-access", query: try Self.accessParams(query, extra: URLQueryItem(name: "view", value: "scores"))
         ))
     }
 
     /// GET /api/care-access?mode=&threshold=&categories=&stepFree=&area=ID: one community's places, nearest first
     func careAccessPlaces(_ query: AccessQuery, areaId: String) async throws(APIError) -> AccessAreaPlaces {
         try await send(APIRequest(
-            "/api/care-access", query: Self.accessParams(query, extra: URLQueryItem(name: "area", value: areaId))
+            "/api/care-access", query: try Self.accessParams(query, extra: URLQueryItem(name: "area", value: areaId))
         ))
     }
 
@@ -385,7 +399,7 @@ nonisolated final class APIClient: Sendable {
             "recipientName": .string(orNull: input.recipientName),
             "senderName": .string(orNull: input.senderName),
             "note": .string(orNull: input.note),
-            "tier": .string(input.tier.rawValue),
+            "tier": .string(try Self.wire(input.tier)),
         ]
         return try await send(APIRequest("/api/sms/draft", body: .json(body), timeout: Timeout.model))
     }
@@ -398,7 +412,7 @@ nonisolated final class APIClient: Sendable {
             "to": input.to.json,
             "senderName": .string(orNull: input.senderName),
             "body": .string(input.body),
-            "tier": .string(input.tier.rawValue),
+            "tier": .string(try Self.wire(input.tier)),
             "healthOverride": .bool(input.healthOverride),
             "approved": true,
         ]
@@ -498,6 +512,12 @@ nonisolated final class APIClient: Sendable {
         return (try? encoder.encode(value)) ?? Data("{}".utf8)
     }
 
+    /// the raw value of an input enum; the fallback case is refused before any call, as zod would refuse it
+    static func wire<E: TolerantEnum>(_ value: E) throws(APIError) -> String {
+        guard value.isKnown else { throw APIError(code: "invalid_input", status: 0) }
+        return value.rawValue
+    }
+
     static func isRevision(_ value: String) -> Bool {
         value.wholeMatch(of: /[a-f0-9]{64}/) != nil
     }
@@ -524,9 +544,9 @@ nonisolated final class APIClient: Sendable {
     }
 
     /// accessParams in access-data.ts
-    static func accessParams(_ query: AccessQuery, extra: URLQueryItem) -> [URLQueryItem] {
+    static func accessParams(_ query: AccessQuery, extra: URLQueryItem) throws(APIError) -> [URLQueryItem] {
         [
-            URLQueryItem(name: "mode", value: query.mode.rawValue),
+            URLQueryItem(name: "mode", value: try wire(query.mode)),
             URLQueryItem(name: "threshold", value: number(query.threshold)),
             URLQueryItem(name: "categories", value: query.categories.joined(separator: ",")),
             URLQueryItem(name: "stepFree", value: query.stepFree ? "true" : "false"),

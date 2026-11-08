@@ -27,6 +27,8 @@ nonisolated enum RequestAction: String, TolerantEnum {
 nonisolated enum DisclosureTier: String, TolerantEnum {
     case minimal, general, detailed, unrecognized
     static var fallback: Self { .unrecognized }
+    /// only what the server accepts, so a picker never offers the fallback
+    static let allCases: [DisclosureTier] = [.minimal, .general, .detailed]
 }
 
 nonisolated enum EvidenceKind: String, TolerantEnum {
@@ -147,18 +149,33 @@ nonisolated enum SendResult: Codable, Sendable, Hashable {
 }
 
 /// the fields an edit may change; nil leaves a field out of the body
+/// what an edit does to the reply-by date. omitting the key keeps it; null clears it (requestQueue.ts keep_respond_by)
+nonisolated enum RespondByChange: Sendable, Hashable {
+    /// leaves the stored date as it is; the key is not sent
+    case keep
+    /// removes the date; sent as null
+    case clear
+    /// a new date; use AlbertaTime.isoString(_:) to build it
+    case set(String)
+
+    /// .set for a date, .clear for nil
+    static func to(_ date: Date?) -> RespondByChange {
+        date.map { .set(AlbertaTime.isoString($0)) } ?? .clear
+    }
+}
+
 nonisolated struct RequestChanges: Sendable, Hashable {
     var subject: String?
     var body: String?
     var contactId: String?
-    /// .some(nil) clears the date (sent as null); nil leaves it unchanged
-    var respondBy: String??
+    /// .keep unless the caregiver changed or removed the reply-by date
+    var respondBy: RespondByChange
     /// this request only; it needs a fresh approval
     var disclosureTier: DisclosureTier?
 
     init(
         subject: String? = nil, body: String? = nil, contactId: String? = nil,
-        respondBy: String?? = nil, disclosureTier: DisclosureTier? = nil
+        respondBy: RespondByChange = .keep, disclosureTier: DisclosureTier? = nil
     ) {
         self.subject = subject
         self.body = body

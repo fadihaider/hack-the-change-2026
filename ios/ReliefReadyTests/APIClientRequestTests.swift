@@ -60,7 +60,13 @@ struct APIClientRequestTests {
         },
         RequestCase(name: "edit", fixture: "request-edit", method: "POST", path: "/api/requests/edit",
                     body: ["requestId": "r1", "body": "Hi", "respondBy": nil, "disclosureTier": "minimal"]) {
-            _ = try await $0.editRequest(id: "r1", changes: RequestChanges(body: "Hi", respondBy: .some(nil), disclosureTier: .minimal))
+            _ = try await $0.editRequest(id: "r1", changes: RequestChanges(body: "Hi", respondBy: .clear, disclosureTier: .minimal))
+        },
+        RequestCase(name: "edit new reply-by", fixture: "request-edit", method: "POST", path: "/api/requests/edit",
+                    body: ["requestId": "r1", "respondBy": "2026-11-10T09:00:00-06:00"]) {
+            // 15:00 utc is 09:00 in alberta
+            let date = Date(timeIntervalSince1970: 1_794_322_800)
+            _ = try await $0.editRequest(id: "r1", changes: RequestChanges(respondBy: .to(date)))
         },
         RequestCase(name: "edit subject only", fixture: "request-edit", method: "POST", path: "/api/requests/edit",
                     body: ["requestId": "r1", "subject": "New"]) {
@@ -247,6 +253,52 @@ struct APIClientRequestTests {
             _ = try await client.approveRequest(id: "r1", revision: "not-a-revision")
         }
         #expect(StubProtocol.requests(host: host).isEmpty)
+    }
+
+    @Test func inputEnumsNeverOfferTheFallback() {
+        #expect(!Decision.allCases.contains(.unrecognized))
+        #expect(!Tenure.allCases.contains(.unrecognized))
+        #expect(!DisclosureTier.allCases.contains(.unrecognized))
+        #expect(!CareTextKind.allCases.contains(.unrecognized))
+        #expect(!CareContactKind.allCases.contains(.unrecognized))
+        #expect(!TravelMode.allCases.contains(.unrecognized))
+        #expect(!NearbyType.allCases.contains(.unrecognized))
+        // every listed case still round-trips through its raw value
+        #expect(Decision.allCases.map(\.rawValue) == ["notify", "reschedule", "extension", "coverage", "defer", "keep"])
+        #expect(Tenure.allCases.map(\.rawValue) == ["yes", "no", "not_sure"])
+        #expect(NearbyType.allCases.count == 8)
+    }
+
+    static let fallbackCalls: [@Sendable (APIClient) async throws -> Void] = [
+        { _ = try await $0.decide(DecideInput(commitmentId: "c1", decision: .unrecognized)) },
+        { _ = try await $0.guide(address: "", tenure: .unrecognized) },
+        { _ = try await $0.editRequest(id: "r1", changes: RequestChanges(disclosureTier: .unrecognized)) },
+        { _ = try await $0.redraftRequest(id: "r1", tier: .unrecognized) },
+        { _ = try await $0.addCareText(kind: .unrecognized, text: "x") },
+        { _ = try await $0.addCareContact(NewCareContact(name: "x", phone: "403", kind: .unrecognized)) },
+        { _ = try await $0.nearby(NearbyQuery(types: [.pharmacy, .unrecognized], radiusKm: .three)) },
+        { _ = try await $0.careAccessScores(AccessQuery(mode: .unrecognized)) },
+        { _ = try await $0.careAccessPlaces(AccessQuery(mode: .unrecognized), areaId: "DNE") },
+        { _ = try await $0.smsDraft(SmsDraftInput(episodeId: nil, recipientName: nil, senderName: nil, note: nil, tier: .unrecognized)) },
+        { _ = try await $0.smsApprove(SmsApproveInput(clientKey: "abcdefabcdef12345678", episodeId: nil, to: .phone("4035550142"),
+                                                      senderName: nil, body: "Hi", tier: .unrecognized, healthOverride: false)) },
+    ]
+
+    @Test(arguments: 0..<fallbackCalls.count)
+    func fallbackInputIsRefusedWithoutCalling(_ index: Int) async {
+        let (client, host) = StubProtocol.client()
+        await #expect(throws: APIError(code: "invalid_input", status: 0)) { try await Self.fallbackCalls[index](client) }
+        #expect(StubProtocol.requests(host: host).isEmpty)
+    }
+
+    @Test func pdfFilenameIsEscapedInThePartHeader() async throws {
+        let (client, host) = StubProtocol.client(reply: StubProtocol.Reply(body: try Fixtures.data("care-add-note")))
+        let pdf = Data("%PDF-1.4 test".utf8)
+        _ = try await client.uploadCarePDF(pdf, filename: "Rosa \"discharge\"\r\nX-Evil: 1.pdf")
+        let sent = try #require(StubProtocol.requests(host: host).first)
+        try Self.expectMultipart(sent, host: host, path: "/api/care/sources", filename: "Rosa %22discharge%22%0D%0AX-Evil: 1.pdf",
+                                 contentType: "application/pdf", payload: pdf, timeout: 120)
+        #expect(MultipartFile.escaped("Café notes.pdf") == "Café notes.pdf")
     }
 
     @Test func pdfUploadIsMultipartWithOneFileField() async throws {

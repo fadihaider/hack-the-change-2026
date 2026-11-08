@@ -13,8 +13,7 @@ struct RecoverView: View {
             lead: "When the week is over.",
             detail: "What was handled, what is still waiting and what needs a follow-up will be here."
         )
-        .navigationTitle("Recover")
-        .toolbarTitleDisplayMode(.inline)
+        .screenTitle("Recover")
         .accessibilityIdentifier("screen.recover")
     }
 }

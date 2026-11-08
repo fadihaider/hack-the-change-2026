@@ -98,9 +98,7 @@ nonisolated extension APIError {
 
     /// apiErrorMessage in request-api.ts: the approval queue's own wording
     var requestMessage: String {
-        if code == "network_error" && status == 0 {
-            return "The live service could not be reached. Refresh before taking another action."
-        }
+        // a fetch failure in the web client is RequestApiError("network_error", 0), so it falls through to the last line
         switch status {
         case 401:
             return "A signed-in session is required. Live sign-in must be connected before you can continue."
@@ -122,6 +120,24 @@ nonisolated extension APIError {
             return "The live service returned an unexpected response. No success is assumed; refresh to reconcile."
         }
         return "The action could not be confirmed. Refresh the recorded state before trying again."
+    }
+
+    /// errorMessage in app/r/[token]/ResponseForm.tsx: the reply link page's own wording; no session is involved there
+    var responseMessage: String {
+        if code == "network_error" && status == 0 {
+            return "The connection dropped before your answer was recorded. Try again."
+        }
+        switch status {
+        case 404: return "This link is invalid or has expired."
+        case 429: return "Too many tries from this network. Wait a few minutes, then try again."
+        case 400:
+            return code == "invalid_response" || code == "invalid_input"
+                ? "Check the date and time, and keep the note to 300 characters."
+                : "This answer couldn\u{2019}t be read. Try again."
+        case 403: return "Open this page from the link in the email, then try again."
+        case 409: return "This request changed while you were answering. Reload the page to see where it stands."
+        default: return "Your answer wasn\u{2019}t recorded. Nothing was saved, so try again."
+        }
     }
 
     /// homeErrorMessage in access-data.ts, for a failed home access lookup

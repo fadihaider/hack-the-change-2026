@@ -13,8 +13,7 @@ struct CareAccessView: View {
             lead: "Calgary communities, by what\u{2019}s in reach.",
             detail: "The map and the community scores will be here."
         )
-        .navigationTitle("Care access")
-        .toolbarTitleDisplayMode(.inline)
+        .screenTitle("Care access")
         .accessibilityIdentifier("screen.careAccess")
     }
 }

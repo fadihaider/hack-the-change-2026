@@ -206,9 +206,20 @@ nonisolated struct ResponseLink: Sendable, Hashable, Identifiable {
 
 /// {proposal:{at, note?}} for a "propose another time" link
 nonisolated struct ResponseProposal: Sendable, Hashable {
-    /// iso time with Z or an explicit offset, e.g. 2026-11-10T09:00:00-06:00
+    /// iso time with seconds and an explicit offset, e.g. 2026-11-10T09:00:00-06:00
     var at: String
     var note: String?
+
+    init(at: String, note: String? = nil) {
+        self.at = at
+        self.note = note
+    }
+
+    /// the proposal for a picked date, in alberta time; a blank note is left out, as the web form does
+    init(at date: Date, note: String? = nil) {
+        let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.init(at: AlbertaTime.isoString(date), note: trimmed.isEmpty ? nil : trimmed)
+    }
 }
 
 // POST /api/responses/[token]

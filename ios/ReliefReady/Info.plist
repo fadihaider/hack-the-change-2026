@@ -20,13 +20,13 @@
 	<string>1</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ReliefReady connects to the ReliefReady server on your local network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ReliefReady records your voice so it can turn what you say into text.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Figtree-Variable.ttf</string>

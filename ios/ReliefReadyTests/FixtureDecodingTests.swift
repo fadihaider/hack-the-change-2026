@@ -158,6 +158,23 @@ struct FixtureDecodingTests {
         #expect(places.areas[0].resources.first?.resource.wheelchair == nil)
     }
 
+    @Test func basemapGeometrySkipsUnusablePoints() throws {
+        // zod takes any coordinates array; the web map skips points that are not two finite numbers
+        let polygon = Data(#"{"type":"Polygon","coordinates":[[[-114.1,51.0,1048],null,[-114.2],["x",1],[-114.3,51.1]],"bad"]}"#.utf8)
+        let geometry = try JSONDecoder().decode(AreaGeometry.self, from: polygon)
+        #expect(geometry.polygons == [[[LonLat(lon: -114.1, lat: 51.0), LonLat(lon: -114.3, lat: 51.1)], []]])
+        let multi = Data(#"{"type":"MultiPolygon","coordinates":[[[[-114,51],[-114.5,51.5,3]]],7]}"#.utf8)
+        let many = try JSONDecoder().decode(AreaGeometry.self, from: multi)
+        #expect(many.polygons == [[[LonLat(lon: -114, lat: 51), LonLat(lon: -114.5, lat: 51.5)]], []])
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(AreaGeometry.self, from: Data(#"{"type":"Polygon","coordinates":{}}"#.utf8))
+        }
+        // nearby outlines mirror z.tuple, so they stay strict
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(CommunityOutline.self, from: Data(#"{"name":"A","rings":[[[-114,51,3]]]}"#.utf8))
+        }
+    }
+
     @Test func smsModels() throws {
         let draft = try Fixtures.decode(SmsDraft.self, "sms-draft")
         #expect(draft.parts.encoding == .gsm)

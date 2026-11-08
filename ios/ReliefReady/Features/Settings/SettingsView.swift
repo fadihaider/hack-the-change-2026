@@ -28,8 +28,7 @@ struct SettingsView: View {
                 }
             }
         }
-        .navigationTitle("Settings")
-        .toolbarTitleDisplayMode(.inline)
+        .screenTitle("Settings")
         .accessibilityIdentifier("screen.settings")
     }
 }

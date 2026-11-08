@@ -23,6 +23,18 @@ struct LabelsTests {
         #expect(AlbertaTime.format("nope") == "No time set")
     }
 
+    @Test func albertaISOStringFitsBothServerValidators() throws {
+        // zod iso.datetime({offset:true}) needs seconds and a colon offset; the web form sends `${at}:00-06:00`
+        let date = try #require(AlbertaTime.parse("2026-11-10T15:00:00Z"))
+        #expect(AlbertaTime.isoString(date) == "2026-11-10T09:00:00-06:00")
+        #expect(AlbertaTime.isoString(try #require(AlbertaTime.parse("2026-11-11T05:59:59.900Z"))) == "2026-11-10T23:59:59-06:00")
+        #expect(AlbertaTime.parse(AlbertaTime.isoString(date)) == date)
+        let proposal = ResponseProposal(at: date, note: "  ")
+        #expect(proposal.at == "2026-11-10T09:00:00-06:00")
+        #expect(proposal.note == nil)
+        #expect(ResponseProposal(at: date, note: " Tuesday works ").note == "Tuesday works")
+    }
+
     @Test func albertaDates() throws {
         #expect(AlbertaTime.dateString(of: try #require(AlbertaTime.parse("2026-11-09T05:59:00Z"))) == "2026-11-08")
         #expect(AlbertaTime.dateString(of: try #require(AlbertaTime.parse("2026-11-09T06:00:00Z"))) == "2026-11-09")
@@ -127,7 +139,8 @@ struct APIErrorMessageTests {
         #expect(APIError(code: "precondition_required", status: 428).userMessage.hasPrefix("This approval preview is out of date."))
         #expect(APIError(code: "health_terms", status: 422).userMessage.hasPrefix("Health terms need your review."))
         #expect(APIError(code: "not_found", status: 404).userMessage == "The live workspace is not available yet. The demo remains available.")
-        #expect(APIError.network.userMessage == "The live service could not be reached. Refresh before taking another action.")
+        // the web turns a fetch failure into RequestApiError("network_error", 0): apiErrorMessage's last line
+        #expect(APIError.network.userMessage == "The action could not be confirmed. Refresh the recorded state before trying again.")
         #expect(APIError.invalidResponse().userMessage.hasPrefix("The live service returned an unexpected response."))
     }
 
@@ -138,6 +151,20 @@ struct APIErrorMessageTests {
         #expect(APIError(code: "speech_off", status: 503).isSpeechUnavailable)
         #expect(!APIError(code: "invalid_audio", status: 400).canRetrySameRecording)
         #expect(APIError.network.canRetrySameRecording)
+    }
+
+    @Test func responsePageMessages() {
+        #expect(APIError(code: "not_found", status: 404).responseMessage == "This link is invalid or has expired.")
+        #expect(APIError(code: "rate_limited", status: 429).responseMessage.hasPrefix("Too many tries from this network."))
+        #expect(APIError(code: "invalid_input", status: 400).responseMessage == "Check the date and time, and keep the note to 300 characters.")
+        #expect(APIError(code: "x", status: 400).responseMessage == "This answer couldn\u{2019}t be read. Try again.")
+        #expect(APIError(code: "invalid_origin", status: 403).responseMessage == "Open this page from the link in the email, then try again.")
+        #expect(APIError(code: "state_conflict", status: 409).responseMessage.hasPrefix("This request changed while you were answering."))
+        #expect(APIError.invalidResponse().responseMessage == "Your answer wasn\u{2019}t recorded. Nothing was saved, so try again.")
+        #expect(APIError.network.responseMessage == "The connection dropped before your answer was recorded. Try again.")
+        #expect(ResponseLabels.closedMessage("expired") == "This request expired before an answer was recorded.")
+        #expect(ResponseLabels.closedMessage("needs_review") == "This request already has a recorded answer: Another time was proposed.")
+        #expect(ResponseLabels.closedMessage("odd") == "This request already has a recorded answer: odd.")
     }
 
     @Test func homeMessages() {
@@ -186,5 +213,14 @@ struct ServerConfigTests {
 
     @Test func originOmitsADefaultPort() {
         #expect(ServerConfig.origin(of: URL(string: "https://relief.example")!) == "https://relief.example")
+        // new URL(x).origin drops 80 for http and 443 for https
+        #expect(ServerConfig.origin(of: URL(string: "http://h:80")!) == "http://h")
+        #expect(ServerConfig.origin(of: URL(string: "https://abc.ngrok.app:443")!) == "https://abc.ngrok.app")
+        #expect(ServerConfig.origin(of: URL(string: "https://h:80")!) == "https://h:80")
+        #expect(ServerConfig.origin(of: URL(string: "http://h:443")!) == "http://h:443")
+        #expect(ServerConfig.normalized("http://h:80/x")?.absoluteString == "http://h")
+        #expect(ServerConfig.normalized("HTTPS://Abc.ngrok.app:443")?.absoluteString == "https://abc.ngrok.app")
+        #expect(ServerConfig.normalized("h:80")?.absoluteString == "http://h")
+        #expect(ServerConfig.normalized("http://127.0.0.1:3107")?.absoluteString == "http://127.0.0.1:3107")
     }
 }

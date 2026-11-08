@@ -13,8 +13,7 @@ struct OutboxView: View {
             lead: "Nothing here was really sent.",
             detail: "Messages the demo stored, with their reply links, will be here."
         )
-        .navigationTitle("Outbox")
-        .toolbarTitleDisplayMode(.inline)
+        .screenTitle("Outbox")
         .accessibilityIdentifier("screen.outbox")
     }
 }

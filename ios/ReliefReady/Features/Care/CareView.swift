@@ -15,8 +15,7 @@ struct CareView: View {
             lead: "Everything about \(model.careRecipientName), in one place.",
             detail: "The care passport, today\u{2019}s timeline and Ask will be here."
         )
-        .navigationTitle("Care")
-        .toolbarTitleDisplayMode(.inline)
+        .screenTitle("Care")
         .accessibilityIdentifier("screen.care")
     }
 }

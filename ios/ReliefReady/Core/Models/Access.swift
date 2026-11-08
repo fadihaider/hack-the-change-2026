@@ -10,11 +10,10 @@ nonisolated enum NearbyType: String, TolerantEnum {
     case library, transit, unrecognized
     static var fallback: Self { .unrecognized }
 
-    /// every type the server knows, in its order
-    static let known: [NearbyType] = [
+    /// every type the server knows, in its order; never the fallback
+    static let allCases: [NearbyType] = [
         .pharmacy, .clinic, .hospital, .publicHealth, .socialSupport, .communityCentre, .library, .transit,
-    ]
-}
+    ]}
 
 nonisolated enum HoursStatus: String, TolerantEnum {
     case open, closed, unknown
@@ -158,6 +157,8 @@ nonisolated struct NearbyCount: Codable, Sendable, Hashable {
 nonisolated enum TravelMode: String, TolerantEnum {
     case driving, proximity, unrecognized
     static var fallback: Self { .unrecognized }
+    /// only what the explorer sends (TravelMode in access-data.ts), so a picker never offers the fallback
+    static let allCases: [TravelMode] = [.driving, .proximity]
 }
 
 nonisolated enum AccessMatch: String, TolerantEnum {
@@ -257,7 +258,9 @@ nonisolated enum GeometryKind: String, TolerantEnum {
     static var fallback: Self { .unrecognized }
 }
 
-/// a geojson polygon or multipolygon, kept as polygons of rings of points
+/// a geojson polygon or multipolygon, kept as polygons of rings of points.
+/// zod only checks that coordinates is an array (access-data.ts), and the web map skips unusable points, so decoding
+/// keeps the first two finite numbers of each position (an altitude is dropped) and skips anything else
 nonisolated struct AreaGeometry: Codable, Sendable, Hashable {
     var type: GeometryKind
     /// every polygon as rings of [lon, lat]; a Polygon has one entry
@@ -273,11 +276,33 @@ nonisolated struct AreaGeometry: Codable, Sendable, Hashable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         type = try c.decode(GeometryKind.self, forKey: .type)
+        let coordinates = try c.decode(JSONValue.self, forKey: .coordinates)
+        guard case .array(let items) = coordinates else {
+            throw DecodingError.dataCorruptedError(forKey: .coordinates, in: c, debugDescription: "coordinates is an array")
+        }
         switch type {
-        case .polygon: polygons = [try c.decode([[LonLat]].self, forKey: .coordinates)]
-        case .multiPolygon: polygons = try c.decode([[[LonLat]]].self, forKey: .coordinates)
+        case .polygon: polygons = [Self.rings(items)]
+        case .multiPolygon: polygons = items.map { Self.rings(Self.list($0)) }
         case .unrecognized: polygons = []
         }
+    }
+
+    private static func list(_ value: JSONValue) -> [JSONValue] {
+        if case .array(let items) = value { return items }
+        return []
+    }
+
+    /// usable() in access-data.ts: a point needs two finite numbers first
+    private static func point(_ value: JSONValue) -> LonLat? {
+        let items = list(value)
+        guard items.count >= 2, case .number(let lon) = items[0], case .number(let lat) = items[1],
+            lon.isFinite, lat.isFinite
+        else { return nil }
+        return LonLat(lon: lon, lat: lat)
+    }
+
+    private static func rings(_ items: [JSONValue]) -> [[LonLat]] {
+        items.map { list($0).compactMap(point) }
     }
 
     func encode(to encoder: Encoder) throws {
