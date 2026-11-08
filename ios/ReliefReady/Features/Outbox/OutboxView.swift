@@ -120,19 +120,25 @@ private struct OutboxHeadRow: View {
     var label: String
     var value: String
     var isStrong = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(spacing: 0) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(label).foregroundStyle(Theme.muted).frame(width: 72, alignment: .leading)
-                    valueText.frame(maxWidth: .infinity, alignment: .leading)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label).foregroundStyle(Theme.muted)
-                    valueText
+            Group {
+                // the web's 72 pt label column; accessibility sizes stack the label over the value
+                if typeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(label).foregroundStyle(Theme.muted)
+                        valueText
+                    }
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(label).foregroundStyle(Theme.muted).frame(width: 72, alignment: .leading)
+                        valueText
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .font(Fonts.figtree(15, relativeTo: .subheadline))
             .padding(.vertical, 8)
             Rectangle().fill(Theme.hairline).frame(height: 1)
@@ -147,6 +153,7 @@ private struct OutboxHeadRow: View {
             .monospacedDigit()
             .foregroundStyle(Theme.ink)
             .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

@@ -18,6 +18,11 @@ struct RecoverView: View {
                 recover.announce = { text in AccessibilityNotification.Announcement(text).post() }
                 await recover.load(api: model.api)
             }
+            // the web reloads the list on each visit; a tab stays alive, so coming back to it asks again
+            .onAppear {
+                guard recover.data != nil else { return }
+                Task { await recover.load(api: model.api) }
+            }
     }
 
     @ViewBuilder
