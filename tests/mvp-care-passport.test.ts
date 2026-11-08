@@ -297,3 +297,77 @@ test("editing a timed fact moves its event only to a time the new wording states
   assert.deepEqual(untimed.data.fact.events, []);
   assert.deepEqual(await breakfastTimes(day), []);
 });
+
+async function itemTimes(date: string, pattern: RegExp): Promise<string[]> {
+  const timeline = await call("GET", "care/timeline", { query: `?date=${date}` });
+  assert.equal(timeline.status, 200);
+  return timeline.data.items.filter((item: any) => pattern.test(item.title)).map((item: any) => item.localTime);
+}
+
+const nextDay = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
+test("AC5: resolving a conflict between three notes sets aside every other note, not just one", async () => {
+  const first = await call("POST", "care/sources", { body: { kind: "note", text: "Rosa has lunch at 12:00." } });
+  const firstId = first.data.facts[0].id;
+  assert.equal((await post("care/facts/[id]/approve", firstId)).status, 200);
+  const second = await call("POST", "care/sources", { body: { kind: "note", text: "Rosa has lunch at 12:30." } });
+  const secondId = second.data.facts[0].id;
+  assert.deepEqual(second.data.conflicts.map((conflict: any) => conflict.existingFactId), [firstId]);
+  const third = await call("POST", "care/sources", { body: { kind: "voice", text: "Rosa has lunch at 12:15." } });
+  const thirdId = third.data.facts[0].id;
+  assert.deepEqual(third.data.conflicts.map((conflict: any) => conflict.existingFactId).sort(), [firstId, secondId].sort());
+  assert.deepEqual(await itemTimes(day, /lunch/i), []);
+
+  const resolved = await call("POST", "care/conflicts/resolve", { body: { keepFactId: thirdId } });
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.data.kept.id, thirdId);
+  assert.equal(resolved.data.kept.status, "approved");
+  assert.deepEqual(resolved.data.superseded.map((fact: any) => fact.id).sort(), [firstId, secondId].sort());
+  // nothing is left conflicting on its own, and only the kept time is on the timeline
+  const facts = await profileFacts();
+  assert.deepEqual(facts.filter((fact) => fact.status === "conflicting"), []);
+  assert.equal(facts.find((fact) => fact.id === secondId).status, "superseded");
+  assert.deepEqual(await itemTimes(day, /lunch/i), ["12:15"]);
+});
+
+test("editing to wording that says every day makes the event repeat; a vaguer repeat is never invented", async () => {
+  const added = await call("POST", "care/sources", { body: { kind: "note", text: "Rosa takes a short walk at 10:00." } });
+  const walk = added.data.facts[0];
+  assert.equal(walk.events.length, 1);
+  assert.equal(walk.events[0].rrule, null);
+  assert.equal((await post("care/facts/[id]/approve", walk.id)).status, 200);
+  assert.deepEqual(await itemTimes(nextDay(day), /walk/i), []);
+
+  const daily = await post("care/facts/[id]/edit", walk.id, { text: "Rosa takes a short walk at 10:00 every day." });
+  assert.equal(daily.status, 200);
+  assert.equal(daily.data.fact.events.length, 1);
+  assert.equal(daily.data.fact.events[0].rrule, "FREQ=DAILY");
+  assert.deepEqual(await itemTimes(day, /walk/i), ["10:00"]);
+  assert.deepEqual(await itemTimes(nextDay(day), /walk/i), ["10:00"]);
+
+  // "every other day" is not every day, so the daily rule is not kept
+  const vaguer = await post("care/facts/[id]/edit", daily.data.fact.id, { text: "Rosa takes a short walk at 10:00 every other day." });
+  assert.equal(vaguer.status, 200);
+  assert.equal(vaguer.data.fact.events[0].rrule, null);
+  assert.deepEqual(await itemTimes(nextDay(day), /walk/i), []);
+  // "each morning on weekdays" names days, so no daily rule is added
+  const weekdays = await post("care/facts/[id]/edit", vaguer.data.fact.id, { text: "Rosa takes a short walk at 10:00 each morning on weekdays." });
+  assert.equal(weekdays.status, 200);
+  assert.equal(weekdays.data.fact.events[0].rrule, null);
+});
+
+test("wording about medication or wound care stays locked whatever its category, and an edit can't introduce it", async () => {
+  const meal = await call("POST", "care/sources", { body: { kind: "note", text: "Breakfast at 8:30 with medication." } });
+  const routine = meal.data.facts[0];
+  assert.equal(routine.category, "routine");
+  const rewritten = await post("care/facts/[id]/edit", routine.id, { text: "Breakfast at 8:30." });
+  assert.equal(rewritten.status, 409);
+  assert.equal(rewritten.data.error.code, "exact_wording_locked");
+  assert.equal((await profileFacts()).find((fact) => fact.id === routine.id).textExact, "Breakfast at 8:30 with medication.");
+
+  const glasses = (await profileFacts()).find((fact) => fact.category === "practical" && fact.status === "approved");
+  const introduced = await post("care/facts/[id]/edit", glasses.id, { text: "Her spare glasses and her pills are in the drawer." });
+  assert.equal(introduced.status, 409);
+  assert.equal(introduced.data.error.code, "exact_wording_locked");
+  assert.equal((await profileFacts()).find((fact) => fact.id === glasses.id).status, "approved");
+});

@@ -9,7 +9,7 @@ import {
   type ExistingFact,
 } from "../careCompiler";
 import { normalizeText } from "../text";
-import { spokenClockTimes, timesMentioned } from "../time";
+import { spokenClockTimes, statedDailyRule, timesMentioned } from "../time";
 import {
   CARE_OUTPUT_DISCHARGE,
   CARE_OUTPUT_VOICE,
@@ -440,4 +440,19 @@ test("A4 keeps a model time for a spoken time and builds the same event as for d
   const invented = guard("Rosa usually has breakfast at eight.", [fact("Rosa usually has breakfast at eight.", { time: "07:30" })], [], []);
   assert.equal(invented.facts[0].time, null);
   assert.equal(invented.facts[0].event, null);
+});
+
+test("statedDailyRule reads a plain daily repeat and never invents one from a partial or vague repeat", () => {
+  for (const text of ["Rosa has breakfast at 8:00 every day.", "Breakfast is at eight daily.", "She walks each morning at 10:00."]) {
+    assert.equal(statedDailyRule(text), "FREQ=DAILY", text);
+  }
+  for (const text of [
+    "Rosa usually has breakfast at eight.",
+    "She walks every other day at 10:00.",
+    "She walks each morning on weekdays.",
+    "Every Monday at 2 pm the nurse visits.",
+    "Breakfast at 8:00 every day from tomorrow.",
+  ]) {
+    assert.equal(statedDailyRule(text), null, text);
+  }
 });

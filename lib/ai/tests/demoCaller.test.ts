@@ -166,3 +166,34 @@ test("demo A4 flags 8:30 against an 08:00 breakfast, and a shared name alone is 
   const same = await runCareCompiler({ fullText: "Rosa has breakfast at eight.", existingFacts: existing, episodeStart: EPISODE_START }, deps);
   assert.deepEqual(same.conflicts, []);
 });
+
+test("demo A4 never reads an evening or afternoon time as morning, and leaves an unclear half of the day unset", async () => {
+  const result = await runCareCompiler(
+    {
+      fullText:
+        "Rosa has dinner at 6:00. Bedtime is at ten. Her afternoon nap starts at 2:00. She goes to bed at 9:30 at night. " +
+        "Rosa naps at 1:30. Breakfast at 8:00 and dinner at 6:00 most days. Rosa wakes up at 7:00. " +
+        "Rosa has a walk at 10:00 before dinner. Rosa has supper at 08:00.",
+      existingFacts: [],
+      episodeStart: EPISODE_START,
+    },
+    deps,
+  );
+  const times = Object.fromEntries(result.facts.map((fact) => [fact.textExact, fact.time]));
+  assert.deepEqual(times, {
+    "Rosa has dinner at 6:00.": "18:00",
+    "Bedtime is at ten.": "22:00",
+    "Her afternoon nap starts at 2:00.": "14:00",
+    "She goes to bed at 9:30 at night.": "21:30",
+    // a nap can be morning or afternoon, a sentence with breakfast and dinner names both halves, and 22:00 is no
+    // time for a walk before dinner, so none of these gets a guessed time
+    "Rosa naps at 1:30.": null,
+    "Breakfast at 8:00 and dinner at 6:00 most days.": null,
+    "Rosa wakes up at 7:00.": "07:00",
+    "Rosa has a walk at 10:00 before dinner.": null,
+    // a leading zero is a 24-hour time and stays as written
+    "Rosa has supper at 08:00.": "08:00",
+  });
+  // no timed event for a sentence whose time was left unset
+  assert.equal(result.facts.find((fact) => fact.textExact === "Rosa naps at 1:30.")?.event, null);
+});

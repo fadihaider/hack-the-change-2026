@@ -375,14 +375,32 @@ function demoCare(content: string): CareCompilerOutput {
   return { facts, conflicts };
 }
 
+// a time without am or pm ("6:00", "at six") can mean morning or evening; these words say the sentence means the later
+// half, each with the clock hours (1 to 11) where that reading is plausible, so "a walk at 10:00 before dinner" is
+// never read as 22:00. "nap" can be either half, so a nap time with no other cue is left for a person
+const LATER_IN_DAY: [RegExp, number, number][] = [
+  [/\b(?:dinner|supper)\b/i, 4, 9],
+  [/\b(?:bed|bedtime|night|nightly)\b/i, 7, 11],
+  [/\b(?:evening|tonight)\b/i, 4, 11],
+  [/\bafternoon\b/i, 1, 5],
+];
+const EARLY_IN_DAY = /\b(?:breakfast|morning|wakes?|waking)\b/i;
+const EITHER_HALF = /\bnaps?\b/i;
+
 /**
- * the first clock time written in the text as HH:MM, digits ("8:30") or words ("at eight", "half past eight"),
- * morning reading when am or pm is missing; null when none. never a time the guard would not find in the text.
+ * the first clock time written in the text as HH:MM, digits ("8:30") or words ("at eight", "half past eight"); null
+ * when none. without am or pm it is the evening reading when the sentence speaks only of the evening or afternoon at a
+ * plausible hour ("dinner at 6:00" is 18:00), the morning reading when it gives no such cue, and null when it names
+ * both halves, a later-half cue at an unlikely hour, or only a nap. never a time the guard would not find in the text.
  */
 function firstTime(text: string): string | null {
   const lower = text.toLowerCase();
   const mentioned = timesMentioned(text);
-  const candidates: { index: number; time: string }[] = spokenClockTimes(text);
+  // a spoken time with no am or pm comes back as its morning reading; both readings are then in mentioned
+  const candidates: { index: number; time: string; bare: boolean }[] = spokenClockTimes(text).map((spoken) => ({
+    ...spoken,
+    bare: mentioned.has(laterReading(spoken.time) ?? ""),
+  }));
   const match = /(?<![\d:])(\d{1,2})(?::([0-5]\d))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)?(?![\w:])/g;
   for (const found of lower.matchAll(match)) {
     const [, hourText, minutes, meridiem] = found;
@@ -399,13 +417,37 @@ function firstTime(text: string): string | null {
     } else if (hour > 23) {
       continue;
     }
-    candidates.push({ index: found.index, time: `${String(hour).padStart(2, "0")}:${minutes ?? "00"}` });
+    // "08:00" with a leading zero is a 24-hour time; "8:00" can be either half of the day
+    const bare = meridiem === undefined && hour >= 1 && hour <= 11 && !hourText.startsWith("0");
+    candidates.push({ index: found.index, time: `${String(hour).padStart(2, "0")}:${minutes ?? "00"}`, bare });
   }
   const first = candidates.sort((a, b) => a.index - b.index).find((candidate) => mentioned.has(candidate.time));
   if (first !== undefined) {
-    return first.time;
+    return first.bare ? halfOfDay(text, first.time, mentioned) : first.time;
   }
   return /\b(?:noon|midday)\b/.test(lower) ? "12:00" : null;
+}
+
+/** the 13:00 to 23:59 reading of a morning HH:MM, or null */
+function laterReading(time: string): string | null {
+  const hour = Number(time.slice(0, 2));
+  return hour >= 1 && hour <= 11 ? `${String(hour + 12).padStart(2, "0")}${time.slice(2)}` : null;
+}
+
+/** the reading of a time without am or pm that the sentence supports, or null when it does not say which */
+function halfOfDay(text: string, morning: string, mentioned: Set<string>): string | null {
+  const cues = LATER_IN_DAY.filter(([pattern]) => pattern.test(text));
+  const early = EARLY_IN_DAY.test(text);
+  if (cues.length > 0 && early) {
+    return null;
+  }
+  if (cues.length > 0) {
+    const hour = Number(morning.slice(0, 2));
+    const evening = laterReading(morning);
+    const plausible = cues.some(([, from, to]) => hour >= from && hour <= to);
+    return plausible && evening !== null && mentioned.has(evening) ? evening : null;
+  }
+  return !early && EITHER_HALF.test(text) ? null : morning;
 }
 
 /** FREQ=DAILY for "every morning", FREQ=WEEKLY;BYDAY=MO,TH for "Every Monday and Thursday"; otherwise null */
