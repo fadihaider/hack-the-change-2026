@@ -1,20 +1,35 @@
 "use client";
 // one community up close: its access metric in plain words, counts per kind, its access group, and the places behind
-// the numbers with their published category, the model's suggestion when it differs, and a link to the source
-import { useMemo, useState, type Ref } from "react";
-import type { AccessSnapshot, compareAreas } from "@/lib/care-access/engine.ts";
-import { classifierLabels, modelSuggestion } from "@/lib/care-access/home.ts";
+// the numbers with their published category, the name-based type prediction when it differs, and a link to the source
+import { useState, type Ref } from "react";
+import { modelSuggestion } from "@/lib/care-access/home.ts";
 import { safeHref } from "@/lib/frontend/live-api.ts";
-import { Button, VisuallyHidden } from "../ui.tsx";
-import { costText, kindLabel, kindTitle, possessive, type GroupName, type TravelMode } from "./access-data.ts";
+import { Button, ErrorNote, VisuallyHidden } from "../ui.tsx";
+import {
+  costText,
+  kindLabel,
+  kindTitle,
+  possessive,
+  type GroupName,
+  type Place,
+  type ScoreRow,
+  type TravelMode,
+} from "./access-data.ts";
 import s from "./AccessMap.module.css";
-
-type Row = ReturnType<typeof compareAreas>[number];
 
 type Props = {
   headingRef: Ref<HTMLHeadingElement>;
-  snapshot: AccessSnapshot;
-  row: Row;
+  area: { id: string; name: string };
+  /** the community's score row for the current choices */
+  row: ScoreRow;
+  /** its places in reach, nearest first; null while they load */
+  places: Place[] | null;
+  placesFailed: boolean;
+  onRetryPlaces: () => void;
+  /** the types the classifier was trained on; null when the report doesn't list them */
+  labels: ReadonlySet<string> | null;
+  /** how many communities share its access group */
+  groupSize: number;
   mode: TravelMode;
   threshold: number;
   categories: string[];
@@ -27,17 +42,30 @@ type Props = {
 // the first few places show at once; the rest wait behind one quiet button
 const PLACES_SHOWN = 8;
 
-export function AccessDetail({ headingRef, snapshot, row, mode, threshold, categories, stepFree, isHome, name, groups }: Props) {
+export function AccessDetail({
+  headingRef,
+  area,
+  row,
+  places: loaded,
+  placesFailed,
+  onRetryPlaces,
+  labels,
+  groupSize,
+  mode,
+  threshold,
+  categories,
+  stepFree,
+  isHome,
+  name,
+  groups,
+}: Props) {
   const [all, setAll] = useState(false);
-  const labels = useMemo(() => classifierLabels(snapshot.benchmark.classification), [snapshot]);
-  const area = row.area;
-  const cluster = snapshot.clusters[row.index];
+  const cluster = row.cluster;
   const group = cluster === null || cluster < 0 ? null : (groups.get(cluster) ?? null);
-  const groupSize = cluster === null ? 0 : snapshot.clusters.filter((value) => value === cluster).length;
   const reach = mode === "driving" ? `${threshold} minutes by car` : `${threshold} km in a straight line`;
   const how = mode === "driving" ? "by car" : "in a straight line";
   const kinds = categories.length === 1 ? "the 1 kind" : `the ${categories.length} kinds`;
-  const places = row.resources;
+  const places = loaded ?? [];
   const shown = all ? places : places.slice(0, PLACES_SHOWN);
   const hidden = places.length - shown.length;
   const firstExtraId = `place-${area.id}-${PLACES_SHOWN}`;
@@ -83,7 +111,17 @@ export function AccessDetail({ headingRef, snapshot, row, mode, threshold, categ
           : "none, because the driving routes weren’t fully mapped."}
       </p>
 
-      {row.score !== null && (
+      {row.score !== null && placesFailed && (
+        <ErrorNote message={`The places for ${area.name} didn’t load.`} onRetry={onRetryPlaces} />
+      )}
+
+      {row.score !== null && !placesFailed && loaded === null && (
+        <p className={s.hint} role="status">
+          Loading the places in reach
+        </p>
+      )}
+
+      {row.score !== null && !placesFailed && loaded !== null && (
         <>
           <h3 className={s.placesTitle}>
             {places.length === 0
@@ -111,7 +149,9 @@ export function AccessDetail({ headingRef, snapshot, row, mode, threshold, categ
                     </p>
                     <p className={s.placeAddress}>{resource.address}</p>
                     {suggestion && (
-                      <p className={s.placeModel}>Model suggestion: {suggestion} (published category kept)</p>
+                      <p className={s.placeModel}>
+                        Type predicted from the name: {suggestion} (the published type is used)
+                      </p>
                     )}
                     <p className={s.placeSource}>
                       Source:{" "}

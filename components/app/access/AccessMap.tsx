@@ -1,11 +1,11 @@
 "use client";
 // compare calgary communities: what to measure, a map of every community coloured by the access metric or by the two
-// unordered access groups, the chosen community's places, and how it all works. the public snapshot loads here only.
+// unordered access groups, the chosen community's places, and how it all works. the slim basemap loads once; scores
+// and the chosen community's places come from the server per choice. the full snapshot is only a fallback.
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronDown, ChevronLeft } from "lucide-react";
-import { compareAreas, type AccessSnapshot } from "@/lib/care-access/engine.ts";
-import { areaIndexByName, clusterSizes } from "@/lib/care-access/home.ts";
+import { areaIndexByName, classifierLabels } from "@/lib/care-access/home.ts";
 import { safeHref } from "@/lib/frontend/live-api.ts";
 import { recipientName, useSession } from "../session.tsx";
 import { ErrorNote, Question, VisuallyHidden, useAnnounce } from "../ui.tsx";
@@ -18,10 +18,14 @@ import {
   groupFill,
   groupNames,
   kindTitle,
-  loadSnapshot,
+  openAccessSource,
   possessive,
   projectAreas,
   scoreFill,
+  type AccessQuery,
+  type AccessSource,
+  type Place,
+  type ScoreRow,
   type TravelMode,
 } from "./access-data.ts";
 import s from "./AccessMap.module.css";
@@ -58,9 +62,15 @@ export function AccessMap() {
   const community = session?.careRecipient?.community ?? null;
   const hasRecipient = Boolean(session?.careRecipient);
 
-  const [snapshot, setSnapshot] = useState<AccessSnapshot | null>(null);
+  const [source, setSource] = useState<AccessSource | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [scores, setScores] = useState<{ key: string; rows: ScoreRow[] } | null>(null);
+  const [scoresFailed, setScoresFailed] = useState(false);
+  const [scoresAttempt, setScoresAttempt] = useState(0);
+  const [places, setPlaces] = useState<{ key: string; list: Place[] } | null>(null);
+  const [placesFailed, setPlacesFailed] = useState<string | null>(null);
+  const [placesAttempt, setPlacesAttempt] = useState(0);
   const [mode, setMode] = useState<TravelMode>("driving");
   const [threshold, setThreshold] = useState(DEFAULT_WINDOW.driving);
   const [categories, setCategories] = useState<string[]>([...CATEGORIES]);
@@ -73,11 +83,18 @@ export function AccessMap() {
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const speakAfterChange = useRef(false);
 
+  const basemap = source?.basemap ?? null;
+  const query = useMemo<AccessQuery>(
+    () => ({ mode, threshold, categories, stepFree }),
+    [mode, threshold, categories, stepFree],
+  );
+  const queryKey = `${mode}|${threshold}|${categories.join(",")}|${stepFree}`;
+
   useEffect(() => {
     const controller = new AbortController();
     setLoadError(null);
-    loadSnapshot(controller.signal)
-      .then(setSnapshot)
+    openAccessSource(controller.signal)
+      .then(setSource)
       .catch(() => {
         if (!controller.signal.aborted) {
           setLoadError("The Calgary map data didn’t load. Check your connection, then try again.");
@@ -86,12 +103,32 @@ export function AccessMap() {
     return () => controller.abort();
   }, [attempt]);
 
+  // scores for every community under the current choices; an older answer never replaces a newer one
+  useEffect(() => {
+    if (!source) return;
+    let current = true;
+    setScoresFailed(false);
+    source
+      .scores(query)
+      .then((rows) => {
+        if (current) setScores({ key: queryKey, rows });
+      })
+      .catch(() => {
+        if (current) setScoresFailed(true);
+      });
+    return () => {
+      current = false;
+    };
+    // queryKey stands for query
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, queryKey, scoresAttempt]);
+
   // rosa's community by name; when the name isn't in the list, the server matches her home point instead
   useEffect(() => {
-    if (!snapshot) return;
-    const byName = areaIndexByName(snapshot.areas, community);
+    if (!basemap) return;
+    const byName = areaIndexByName(basemap.areas, community);
     if (byName >= 0) {
-      setHomeId(snapshot.areas[byName].id);
+      setHomeId(basemap.areas[byName].id);
       return;
     }
     if (!hasRecipient) return;
@@ -106,39 +143,63 @@ export function AccessMap() {
     return () => {
       current = false;
     };
-  }, [snapshot, community, hasRecipient]);
+  }, [basemap, community, hasRecipient]);
 
-  const layout = useMemo(() => (snapshot ? projectAreas(snapshot.areas) : null), [snapshot]);
-  const comparison = useMemo(
-    () => (snapshot ? compareAreas(snapshot, { mode, threshold, categories, stepFree }) : []),
-    [snapshot, mode, threshold, categories, stepFree],
-  );
-  const sizes = useMemo(() => (snapshot ? clusterSizes(snapshot.clusters) : []), [snapshot]);
+  const layout = useMemo(() => (basemap ? projectAreas(basemap.areas) : null), [basemap]);
+  const rowsById = useMemo(() => new Map((scores?.rows ?? []).map((row) => [row.id, row])), [scores]);
+  const areaById = useMemo(() => new Map((basemap?.areas ?? []).map((area) => [area.id, area])), [basemap]);
+  const sizes = useMemo(() => basemap?.clusterSizes ?? [], [basemap]);
   const groups = useMemo(() => groupNames(sizes), [sizes]);
+  const labels = useMemo(() => (basemap ? classifierLabels(basemap.benchmark.classification) : null), [basemap]);
   const sortedAreas = useMemo(
-    () => (snapshot ? [...snapshot.areas].sort((a, b) => a.name.localeCompare(b.name, "en-CA")) : []),
-    [snapshot],
+    () => (basemap ? [...basemap.areas].sort((a, b) => a.name.localeCompare(b.name, "en-CA")) : []),
+    [basemap],
   );
 
-  const firstRouted = snapshot ? (snapshot.areas.find((_, i) => snapshot.drivingCoverage[i] === 1)?.id ?? null) : null;
+  const firstRouted = basemap ? (basemap.areas.find((_, i) => basemap.drivingCoverage[i] === 1)?.id ?? null) : null;
   const shownId = selected ?? homeId ?? firstRouted;
-  const shownRow = comparison.find((row) => row.area.id === shownId) ?? null;
+  const shownRow = shownId ? (rowsById.get(shownId) ?? null) : null;
+  const shownArea = shownId ? (areaById.get(shownId) ?? null) : null;
+  // the map keeps the last answer, dimmed, until the scores for the new choices arrive
+  const stale = scores !== null && scores.key !== queryKey;
+  const placesKey = shownId ? `${shownId}|${queryKey}` : null;
+
+  // the chosen community's places for the current choices
+  useEffect(() => {
+    if (!source || !shownId || !placesKey) return;
+    let current = true;
+    setPlacesFailed(null);
+    source
+      .places(query, shownId)
+      .then((list) => {
+        if (current) setPlaces({ key: placesKey, list });
+      })
+      .catch(() => {
+        if (current) setPlacesFailed(placesKey);
+      });
+    return () => {
+      current = false;
+    };
+    // placesKey stands for shownId and query
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, placesKey, placesAttempt]);
 
   function rowText(id: string): string {
-    const row = comparison.find((item) => item.area.id === id);
-    if (!row) return "";
+    const row = rowsById.get(id);
+    const area = areaById.get(id);
+    if (!row || !area) return "";
     const home = id === homeId ? `, ${possessive(name)} community` : "";
     const score = row.score === null ? "not scored, driving routes incomplete" : `access ${row.score} out of 100`;
-    return `${row.area.name}${home}: ${score}, ${row.resources.length} ${row.resources.length === 1 ? "place" : "places"} in reach.`;
+    return `${area.name}${home}: ${score}, ${row.inReach} ${row.inReach === 1 ? "place" : "places"} in reach.`;
   }
 
-  // after a filter change, read out what it did to the community on screen
+  // after a filter change, read out what it did to the community on screen, once its new scores are in
   useEffect(() => {
-    if (!speakAfterChange.current || !shownId) return;
+    if (!speakAfterChange.current || !shownId || stale) return;
     speakAfterChange.current = false;
     announce(`Map updated. ${rowText(shownId)}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comparison]);
+  }, [scores]);
 
   function select(id: string) {
     setSelected(id);
@@ -170,13 +231,20 @@ export function AccessMap() {
     }
   }
 
-  const homeArea = snapshot && homeId ? snapshot.areas.find((area) => area.id === homeId) : null;
+  const homeArea = homeId ? (areaById.get(homeId) ?? null) : null;
 
   let body;
-  if (!snapshot || !layout) {
+  if (!basemap || !layout || !scores) {
     body = loadError ? (
       <div className={s.state}>
         <ErrorNote message={loadError} onRetry={() => setAttempt((n) => n + 1)} />
+      </div>
+    ) : scoresFailed ? (
+      <div className={s.state}>
+        <ErrorNote
+          message="The Calgary access scores didn’t load. Check your connection, then try again."
+          onRetry={() => setScoresAttempt((n) => n + 1)}
+        />
       </div>
     ) : (
       <p className={s.loading} role="status">
@@ -188,10 +256,12 @@ export function AccessMap() {
     const homeShape = homeId ? byId.get(homeId) : undefined;
     const shownShape = shownId ? byId.get(shownId) : undefined;
     const focusShape = focused ? byId.get(focused) : undefined;
-    const unrouted = snapshot.drivingCoverage.filter((value) => value !== 1).length;
-    const ungrouped = snapshot.clusters.filter((value) => value === null || value < 0).length;
+    const unrouted = basemap.drivingCoverage.filter((value) => value !== 1).length;
+    const ungrouped = basemap.clusters.filter((value) => value === null || value < 0).length;
     const unit = mode === "driving" ? "min" : "km";
-    const confirmedStepFree = snapshot.resources.filter((resource) => resource.wheelchair === true).length;
+    const confirmedStepFree = basemap.resources.stepFreeConfirmed;
+    const shownCluster = shownRow?.cluster ?? null;
+    const groupSize = shownCluster === null ? 0 : (sizes.find((size) => size.cluster === shownCluster)?.areas ?? 0);
 
     body = (
       <>
@@ -362,11 +432,21 @@ export function AccessMap() {
               Skip the map, go to the details
             </a>
 
+            {scoresFailed && (
+              <div className={s.state}>
+                <ErrorNote
+                  message="The map didn’t update for your latest choices, so it still shows the last ones."
+                  onRetry={() => setScoresAttempt((n) => n + 1)}
+                />
+              </div>
+            )}
+
             <svg
               viewBox={`0 0 ${layout.width} ${layout.height}`}
-              className={s.map}
+              className={stale ? `${s.map} ${s.stale}` : s.map}
               role="group"
-              aria-label={`Map of ${snapshot.areas.length} Calgary communities. Tab to a community, then press Enter to see its details.`}
+              aria-busy={stale}
+              aria-label={`Map of ${basemap.areas.length} Calgary communities. Tab to a community, then press Enter to see its details.`}
             >
               <defs>
                 <pattern id={hatchId} width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -375,17 +455,18 @@ export function AccessMap() {
                 </pattern>
               </defs>
               {layout.shapes.map((shape, index) => {
-                const row = comparison[index];
-                const cluster = snapshot.clusters[index];
-                const unknown = view === "groups" ? cluster === null || cluster < 0 : row.score === null;
+                const score = rowsById.get(shape.id)?.score ?? null;
+                const area = basemap.areas[index];
+                const cluster = basemap.clusters[index];
+                const unknown = view === "groups" ? cluster === null || cluster < 0 : score === null;
                 const fill = unknown
                   ? `url(#${hatchId})`
                   : view === "groups"
                     ? groupFill(cluster as number)
-                    : scoreFill(row.score as number);
+                    : scoreFill(score as number);
                 const label =
                   view === "groups"
-                    ? `${row.area.name}${shape.id === homeId ? `, ${possessive(name)} community` : ""}: ${
+                    ? `${area.name}${shape.id === homeId ? `, ${possessive(name)} community` : ""}: ${
                         unknown ? "no group, driving routes incomplete" : (groups.get(cluster as number)?.label ?? "a group")
                       }`
                     : rowText(shape.id);
@@ -494,17 +575,22 @@ export function AccessMap() {
           </section>
 
           <div id={`${safeId}-detail`} className={s.detailPane}>
-            {shownRow && (
+            {shownRow && shownArea && (
               <AccessDetail
-                key={`${shownRow.area.id}-${mode}-${threshold}`}
+                key={`${shownArea.id}-${mode}-${threshold}`}
                 headingRef={detailHeading}
-                snapshot={snapshot}
+                area={shownArea}
                 row={shownRow}
+                places={places && places.key === placesKey ? places.list : null}
+                placesFailed={placesFailed !== null && placesFailed === placesKey}
+                onRetryPlaces={() => setPlacesAttempt((n) => n + 1)}
+                labels={labels}
+                groupSize={groupSize}
                 mode={mode}
                 threshold={threshold}
                 categories={categories}
                 stepFree={stepFree}
-                isHome={shownRow.area.id === homeId}
+                isHome={shownArea.id === homeId}
                 name={name}
                 groups={groups}
               />
@@ -512,7 +598,7 @@ export function AccessMap() {
           </div>
         </div>
 
-        <HowThisWorks snapshot={snapshot} />
+        <HowThisWorks basemap={basemap} />
       </>
     );
   }
