@@ -1,28 +1,86 @@
-# Browser demo
+# Five-minute demo: Alex and Rosa
 
-Run `npm ci && npm run dev`, then open http://localhost:3000. Use fictional information only. All changes live in browser memory and reset on refresh.
+Alex is a University of Calgary student with a part-time job. Their mother Rosa is coming home after surgery, and Alex is caring for her for seven days. Alex is the caregiver and Rosa is the care recipient. Everyone and everything in this story is fictional except the public Calgary resource data.
 
-1. In Urgent, confirm the November 10 to 17 window and continue. Four fixture calendar events appear. Keep the appointment and choose requests for the other three. You can add a contact, choose them as a recipient and set their disclosure tier.
-2. Prepare drafts. Review or edit each exact message, email address, tier and response deadline. Approve each individually. Editing resets approval; health-term hits block minimal/general approval unless explicitly overridden.
-3. Click **Simulate delivery** for approved requests. No email is sent. Recover lists these under Waiting, not Handled.
-4. In Recover, simulate Accept for one request and Propose time for another. The accepted item is Handled; the proposal needs review and creates a New commitment. Jump seven days: the remaining unanswered request expires and needs follow-up. All clock changes are labelled simulated.
-5. In Care, choose the 8:30 breakfast source. The 8:00 source becomes superseded. Approve the tea preference. Only the approved timed instruction appears on the day timeline, with its full exact text one click away.
-6. Ask the profile about breakfast: exact approved facts and their source references appear. Ask about a spare key: the demo says the answer is absent and records an open question. This is keyword lookup, not a model response.
-7. Open the first-72-hours guide. The leave card stays hidden until tenure is Yes or Not sure, and hides for No. Dated Alberta, Canada and AHS cards link to their official sources. Prepare an employer notice: it enters Urgent as awaiting approval and sends nothing.
+Button and heading names below follow the current design. Care screens are being finished in this repair pass, so check any label marked "(verify)" in the browser before presenting.
 
-## Verification
+## Before you start
 
-The initial scaffold was checked with eight passing Node workflow tests, TypeScript, a production build on Next.js 15.5.29, a clean dependency audit, and browser interaction checks for the steps above. The mobile intake view was inspected at 390 CSS pixels with no horizontal overflow. These checks do not verify live integrations.
+1. Stop the server, run `npm run mvp:reset`, then `npm run dev`. That gives a clean database with the fictional Alex, Rosa and six calendar events.
+2. Open `http://localhost:3000` or `http://127.0.0.1:3000` in a desktop browser. Use one of these two addresses, not a LAN IP: the microphone works only there or on https.
+3. Decide on voice. With `ELEVENLABS_API_KEY` in `.env.local`, the voice note is transcribed live by ElevenLabs Scribe. Without it, Care says voice notes aren't connected and offers a typed note. Use the typed note and say so. Never present typed text as a transcript.
+4. Say which AI mode is running. With the default `RR_AI=demo`, suggestions and answers come from offline keyword rules, and the app labels them as demo rules. Present them that way, not as Claude. With `RR_AI=anthropic` or `RR_AI=bedrock` configured, the same steps call Claude.
 
-The first deliverable is a clickable frontend. Google sign-in/calendar/sending, response-link endpoints, AI extraction, transcription, uploads, persistent storage and resource retrieval need their live adapters. PDF selection is local only; it does not upload or extract facts. The guide has sourced rule summaries and a tenure filter, without determining eligibility or claiming verified distance, hours or accessibility. The local demo clock is available to every demo visitor; the live admin clock must be protected server-side.
+## Walkthrough
 
-## Integration boundaries
+### 1. Start (0:00 to 0:30)
 
-The **Open live workspace** control opens a separate server-records panel. Its browser client follows `docs/INTEGRATIONS.md` and validates every response; it never loads fixture records. The panel supports the planned edit/approve/cancel/send/Recover flows. Until protected HTTP routes and durable storage are connected, it shows unavailable and locks mutation controls. Returning to the fictional demo preserves the demo workspace. Missing Gmail evidence, authentication failures, unconfigured adapters and malformed responses never count as successful live delivery. Nine browser-client contract tests cover these boundaries; the real email/Accept milestone remains open in #11.
+On `/`, type the crisis in one sentence:
 
-Approval uses the exact rendered server revision in one strong quoted `If-Match` header. HTTP 412/428 refreshes the preview and clears disclosure overrides, requiring a new explicit approval. It never retries approval automatically. A temporary localhost HTTP fixture verified the browser changed from preview A to B after a 412, kept the request awaiting approval, cleared the disclosure checkbox and made exactly one approval POST. No provider call or real send occurred in that check.
+> My mom Rosa has hip surgery on Sunday and I’m caring for her until Saturday.
 
-- UI and fixture-only workflow: `components/relief-ready/` and `lib/demo/` (Haris).
-- Live state/send/response logic: Ali's integration modules; do not use the browser fixture workflow to authorize real actions.
-- Model facts and proposals: Fadi's `lib/ai/contracts.ts` when merged.
-- Database and resource loaders: Haris's Data and infra stream, issue #7.
+ReliefReady confirms the care window (seven days) and opens Urgent. The heading takes keyboard focus.
+
+### 2. Urgent: one clash at a time (0:30 to 1:30)
+
+Urgent checks Alex's calendar for the week. These are six seeded demo events, not a real calendar. It shows each clash on its own, with the reason it clashes: the ENGG 513 group project meeting, the assignment 4 deadline, the bookstore shift, the food bank shift, dinner at Lucia's, and Rosa's own follow-up appointment.
+
+- For the group project meeting, accept the suggested decision (for example, ask to reschedule). "Change the plan" is saved on the server, so a refresh keeps it (verify).
+- Open the letter. It shows the exact recipient, the exact message and what it discloses about Rosa. Health words trigger a warning. Edit a line to show that editing resets approval.
+- Approve this exact message. Approval is bound to the text you saw, through a SHA-256 approval hash and a revision check. If the text changed in the meantime, approval is refused and the new preview is shown.
+- Send. In demo mode it goes to the demo outbox. The screen says no real email was sent.
+- Keep Rosa's follow-up appointment and add it to her care timeline.
+
+### 3. The recipient says yes (1:30 to 2:00)
+
+- In the top bar, open **Demo → Open the outbox**. The message is there with its reply links. This page exists only in demo mode.
+- Open the Accept link. The reply page changes nothing on its own. Choose **Accept the request** to record the reply.
+- Back in Urgent, "Here’s who you asked" shows the request as accepted. It changes only because the recipient clicked.
+
+### 4. Care: a voice note about Rosa (2:00 to 3:00)
+
+Open **Care**. Rosa's day comes first: today's schedule, the Ask bar and **Emergency / Help**.
+
+- Choose **+ Voice note** (verify). Give consent, allow the microphone, then record something like:
+
+  > Her spare glasses are in the top drawer of the hallway dresser. She has breakfast at 8:00 every morning. Speak slowly and face her, she reads lips a bit. She likes the radio on in the afternoon.
+
+- Stop, then transcribe. The transcript appears for review. Fix any misheard word, then choose **Use transcript** (verify). Without a speech key, type the same text as a note instead.
+- ReliefReady suggests facts. Each one quotes the exact words from the note and names its source. Nothing is saved as settled yet.
+- Approve the glasses fact and the breakfast routine. Reject or edit one suggestion to show that the caregiver decides. An edit is saved as a new version, and the old wording is kept as superseded (verify).
+- Optional: add a typed note that says "Breakfast at 8:30 with medication." The clash with 8:00 is shown as a conflict, and neither time wins until Alex picks one. The timeline then follows the time Alex kept.
+
+### 5. The Care Passport and the day (3:00 to 3:30)
+
+- Open the **Care Passport**. Approved facts sit in collapsed sections. The glasses fact is under "Practical needs & belongings", breakfast under "Daily routine", the lip-reading tip under "Communication & accessibility" and the radio under "Preferences & interests". Conflicts and unanswered questions collect under "Open questions & conflicts". Expand one to show the original wording, the source and when it was added. Suggested facts never appear as settled.
+- Today's schedule shows breakfast at 8:00 with its reminder, if one was approved. Expanding it shows the exact original instruction. **Done** records that Alex marked it done; it is not a verified completion (verify).
+
+### 6. Ask the Care Passport (3:30 to 4:00)
+
+- Ask: **Where are her spare glasses?** The answer cites the approved glasses fact. The citation opens the exact text and its source. In demo mode the answer is labelled as demo rules.
+- Ask something the passport doesn't hold, for example **What is her pharmacy’s phone number?** The answer is "Not in profile", and an open question is recorded. Nothing is invented.
+- Optional: ask a question that needs medical advice, such as **Should she take more pain medicine?** ReliefReady does not advise. It points to Health Link 811, or 911 in an emergency (verify).
+
+### 7. Help nearby, with the map right below (4:00 to 4:30)
+
+- Open **Emergency / Help**. Call 911 and Call 811 are ordinary phone links; nothing dials by itself. Add Aunt Lucia (fictional, 403-555-0142) as a trusted contact. Only contacts Alex enters appear.
+- Scroll to the nearby resources near Rosa (verify heading). Each card shows the name, type, address, straight-line distance, hours and step-free access when the source lists them (otherwise Unknown), the source and the fetch date. The map directly below plots exactly those places. Selecting a card highlights its marker, and selecting a marker brings its card into focus. Filter by service type or distance.
+- Follow **Explore all Calgary access** to `/care/access` for the area comparison. The access score is a plain count of reachable services, not a prediction. Area groups compare reachability patterns and are not a ranking of care. The service-type labels come from a classifier trained on facility names, not on care quality.
+
+### 8. Recover (4:30 to 5:00)
+
+- Open **Recover**. The accepted request is under Handled ("Said yes"). Requests that were sent and not answered are under Waiting.
+- In **Demo**, choose **Move time forward a day** until the 48-hour reply deadline passes (usually three times). Every request still unanswered moves to Needs follow-up with "No reply in time" (verify wording). Each status comes from a record: the outbox entry, a reply-link click or a passed deadline. Email replies are not read.
+- Choose **Reset the clock** when you finish.
+
+## What to say about real and demo
+
+- Real: request state and evidence, approval hashing, single-use reply links, the local Postgres database, the exact-quote and citation checks, the Calgary resource data with sources, and the trained Care Access artifacts.
+- Demo by default: sign-in (everyone is the fictional Alex), the calendar (six seeded events), email (the demo outbox), AI (offline keyword rules unless a live provider is configured) and the movable clock.
+- Live only when configured: ElevenLabs transcription, Claude or Claude on Bedrock, and the optional classifier service. If one is not configured, the app says so.
+
+## If something goes wrong
+
+- Every button fails: `APP_BASE_URL` is probably set to a different address than the browser's. Clear it and restart.
+- Recover is crowded with old runs: stop the server and run `npm run mvp:reset`.
+- The voice note says it isn't connected: no speech key is set, or the page isn't on `localhost` or `127.0.0.1`. Use the typed note.
