@@ -25,6 +25,7 @@ export interface RequestHttpDependencies {
   realNow?: () => Date;
   findHealthTerms: Parameters<typeof sendApprovedRequest>[0]["findHealthTerms"];
   send: Parameters<typeof sendApprovedRequest>[0]["send"];
+  allowHttpLinks?: boolean;
 }
 
 class HttpError extends Error {
@@ -118,7 +119,7 @@ export function createRequestHttpHandlers(deps: RequestHttpDependencies) {
         const result = await sendApprovedRequest({
           userId: identity.userId, requestId: parsed.data.requestId,
           store: deps.store, baseUrl: deps.baseUrl,
-          findHealthTerms: deps.findHealthTerms, send: deps.send,
+          findHealthTerms: deps.findHealthTerms, send: deps.send, allowHttpLinks: deps.allowHttpLinks,
           appTime: await deps.appNow(identity.userId),
         });
         return json(result);

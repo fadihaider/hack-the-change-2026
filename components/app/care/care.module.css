@@ -1,0 +1,635 @@
+/* care: the overview, adding a note, checking facts one at a time. only --rr-* tokens. */
+
+.loading {
+  padding: 24px 0;
+  font-size: 16px;
+  color: var(--rr-muted);
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+/* ---------------------------------------------------------------- meta lines above a question */
+
+.meta,
+.meta[role="list"] {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.metaItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.metaItem svg {
+  margin-top: 3px;
+}
+
+/* a long fact under the question, word for word */
+.quote {
+  margin: -8px 0 28px;
+  padding: 14px 18px;
+  border-left: 3px solid var(--rr-teal);
+  border-radius: 0 var(--rr-radius-sm) var(--rr-radius-sm) 0;
+  background: var(--rr-page);
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+}
+
+.quoteMeta {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--rr-muted);
+}
+
+.stepError {
+  margin: -8px 0 20px;
+}
+
+/* ---------------------------------------------------------------- overview sections */
+
+.section {
+  margin-top: 44px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.sectionTitle {
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  font-weight: 600;
+  color: var(--rr-ink);
+  text-wrap: pretty;
+}
+
+.sectionHint {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.empty {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-page);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.dim {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+.group {
+  margin-top: 24px;
+}
+
+.groupTitle {
+  margin: 0;
+  padding-bottom: 2px;
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--rr-muted);
+}
+
+.factList,
+.factList[role="list"] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fact {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rr-hairline);
+}
+
+.fact:last-child {
+  border-bottom: 0;
+}
+
+.factText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+}
+
+.factMeta,
+.factMeta[role="list"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.factMeta li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------------------------------------------------------------- the day */
+
+.dayNav {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 4px;
+}
+
+.dayName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 10px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--rr-ink);
+  text-align: center;
+}
+
+.today {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--rr-teal-tint);
+  color: var(--rr-teal-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dayList,
+.dayList[role="list"] {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dayItem {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rr-hairline);
+}
+
+.dayItem:last-child {
+  border-bottom: 0;
+}
+
+.dayItemSoon {
+  margin: 4px -12px;
+  padding: 14px 12px;
+  border-bottom-color: transparent;
+  border-radius: var(--rr-radius);
+  background: var(--rr-teal-tint);
+}
+
+.dayTime {
+  padding-top: 1px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--rr-ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dayBody {
+  min-width: 0;
+}
+
+.dayText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+}
+
+.dayMeta,
+.dayMeta[role="list"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.dayMeta li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dayMeta .soon {
+  color: var(--rr-teal-ink);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- ask */
+
+.askForm {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.askActions {
+  display: flex;
+}
+
+.answer {
+  margin-top: 20px;
+  padding: 18px 20px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-page);
+}
+
+.answerMissing {
+  background: var(--rr-warn-tint);
+}
+
+.answerAsked {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+  overflow-wrap: break-word;
+}
+
+.answerLead {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-warn-ink);
+}
+
+.answerLead svg {
+  margin-top: 2px;
+}
+
+.answerBody {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+}
+
+.answerActions {
+  display: flex;
+  margin-top: 14px;
+}
+
+.answerText {
+  margin-top: 8px;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+}
+
+.basedTitle {
+  margin-top: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-muted);
+}
+
+.cited,
+.cited[role="list"] {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.citedItem {
+  padding: 10px 0 10px 14px;
+  border-left: 3px solid var(--rr-teal);
+}
+
+.citedItem + .citedItem {
+  margin-top: 8px;
+}
+
+.citedText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+}
+
+.health {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rr-hairline);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--rr-ink);
+}
+
+.health svg {
+  margin-top: 1px;
+  color: var(--rr-teal-ink);
+}
+
+.open {
+  margin-top: 24px;
+}
+
+.openList {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0 0 0 20px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+}
+
+/* ---------------------------------------------------------------- add what you know */
+
+.example {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  margin-top: -4px;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--rr-radius);
+  background: var(--rr-teal-tint);
+  text-align: start;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease;
+}
+
+.exampleLabel {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-teal-ink);
+}
+
+.exampleText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .example:hover {
+    border-color: rgb(14 124 134 / 35%);
+    transform: translateY(-1px);
+  }
+}
+
+.example:active {
+  transform: none;
+}
+
+.notice {
+  padding: 14px 16px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-warn-tint);
+  color: var(--rr-warn-ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.pdf {
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.pdfTitle {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--rr-ink);
+}
+
+.pdfHint {
+  margin: 4px 0 16px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  opacity: 0;
+}
+
+/* ---------------------------------------------------------------- two notes disagree */
+
+.modelNote {
+  margin: -12px 0 20px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+  overflow-wrap: break-word;
+}
+
+.modelNoteLabel {
+  font-weight: 600;
+}
+
+.options,
+.options[role="list"] {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+  color: var(--rr-ink);
+  text-align: start;
+  box-shadow: 0 1px 2px rgb(29 36 51 / 6%);
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .option:hover:not([aria-disabled="true"]) {
+    border-color: var(--rr-teal);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgb(29 36 51 / 8%);
+  }
+}
+
+.option:active {
+  transform: none;
+}
+
+.option[aria-disabled="true"] {
+  cursor: default;
+}
+
+.option[aria-busy="true"] {
+  border-color: var(--rr-teal);
+  cursor: progress;
+}
+
+.optionText {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+
+.optionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.optionMeta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.optionKeep {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--rr-teal-ink);
+}
+
+.spin {
+  animation: careSpin 900ms linear infinite;
+}
+
+@keyframes careSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (min-width: 720px) {
+  .dayItemSoon {
+    margin: 4px -14px;
+    padding: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .example:hover,
+  .example:active,
+  .option:hover,
+  .option:active {
+    transform: none;
+  }
+  .spin {
+    animation: none;
+  }
+}
+
+/* a day button at the edge of the care week: still focusable, visibly not available */
+.navOff {
+  display: inline-flex;
+  opacity: 0.4;
+}
+
+.navOff > * {
+  pointer-events: none;
+}
+
+/* back to the overview, above the card */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  margin: -6px 0 4px -10px;
+  padding: 0 14px 0 6px;
+  border-radius: var(--rr-radius-sm);
+  color: var(--rr-muted);
+  font-size: 15px;
+  font-weight: 500;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.back:disabled {
+  opacity: 0.5;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .back:hover:not(:disabled) {
+    color: var(--rr-ink);
+    background: var(--rr-page);
+  }
+}
+
+@media (min-width: 720px) {
+  .back {
+    margin: 0 0 0 -6px;
+  }
+}

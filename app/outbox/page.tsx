@@ -1,10 +1,15 @@
 // GET /outbox: the local demo outbox (RR_MAIL=outbox). messages were stored, not sent; response links work locally
 import "server-only";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { Info } from "lucide-react";
 import { getRuntime } from "../../lib/mvp/runtime.ts";
 import { listOutbox, type OutboxMessage } from "../../lib/mvp/mail.ts";
+import { MinimalHeader } from "@/components/app/recover/MinimalHeader.tsx";
+import { Column, Note, Question } from "@/components/app/ui.tsx";
+import { formatAlberta } from "@/lib/frontend/live-api.ts";
+import s from "./outbox.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -17,24 +22,6 @@ export const metadata: Metadata = {
 // only the app's own response links become clickable; any other text stays plain
 const RESPONSE_LINK = /(https?:\/\/[^\s/]+\/r\/[A-Za-z0-9_-]{43})(?![A-Za-z0-9_-])/g;
 
-const shell: CSSProperties = { maxWidth: 820, margin: "40px auto", padding: "0 20px", display: "grid", gap: 18 };
-const card: CSSProperties = {
-  background: "var(--white, #fff)",
-  border: "1px solid var(--line, #e9e3db)",
-  borderRadius: 20,
-  padding: 22,
-  display: "grid",
-  gap: 10,
-};
-const banner: CSSProperties = {
-  background: "var(--clay-soft, #fff0e9)",
-  color: "var(--clay, #9a442d)",
-  border: "1px solid var(--line, #e9e3db)",
-  borderRadius: 14,
-  padding: "12px 16px",
-  fontWeight: 700,
-};
-
 function linkify(body: string): ReactNode[] {
   const parts: ReactNode[] = [];
   let last = 0;
@@ -42,7 +29,7 @@ function linkify(body: string): ReactNode[] {
     const start = match.index ?? 0;
     parts.push(body.slice(last, start));
     parts.push(
-      <a key={start} href={match[1]} rel="noreferrer">
+      <a key={start} href={match[1]} rel="noreferrer" className={s.responseLink}>
         {match[1]}
       </a>,
     );
@@ -52,9 +39,9 @@ function linkify(body: string): ReactNode[] {
   return parts;
 }
 
+/** "Sun, Nov 8, 1:37 a.m." in Alberta time (UTC-6 all year in this product) */
 function albertaTime(iso: string): string {
-  const local = new Date(Date.parse(iso) - 6 * 60 * 60 * 1000).toISOString();
-  return `${local.slice(0, 10)} ${local.slice(11, 16)} Alberta Time`;
+  return formatAlberta(iso);
 }
 
 async function loadMessages(): Promise<{ mail: string; messages: OutboxMessage[] } | null> {
@@ -72,43 +59,70 @@ async function loadMessages(): Promise<{ mail: string; messages: OutboxMessage[]
 
 export default async function OutboxPage() {
   const loaded = await loadMessages();
+  const count = loaded?.messages.length ?? 0;
   return (
-    <main style={shell}>
-      <p style={{ fontWeight: 700 }}>
-        <a href="/">ReliefReady</a> / Outbox
-      </p>
-      <p role="note" style={banner}>
-        Local demo outbox: no real email was sent
-      </p>
-      {loaded === null ? (
-        <section style={card}>
-          <p>The outbox is not available. Sign in and make sure the local workspace is running.</p>
-        </section>
-      ) : loaded.mail !== "outbox" ? (
-        <section style={card}>
-          <p>Mail is set to {loaded.mail}, so messages go out through that adapter and are not kept here.</p>
-        </section>
-      ) : loaded.messages.length === 0 ? (
-        <section style={card}>
-          <p>No messages yet. Approved requests appear here when they are sent.</p>
-        </section>
-      ) : (
-        loaded.messages.map((message) => (
-          <article key={message.id} style={card} aria-label={`Message to ${message.to}`}>
-            <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", margin: 0 }}>
-              <dt style={{ color: "var(--muted, #6e675f)" }}>To</dt>
-              <dd style={{ margin: 0 }}>{message.to}</dd>
-              <dt style={{ color: "var(--muted, #6e675f)" }}>Subject</dt>
-              <dd style={{ margin: 0, fontWeight: 700 }}>{message.subject}</dd>
-              <dt style={{ color: "var(--muted, #6e675f)" }}>Sent</dt>
-              <dd style={{ margin: 0 }}>
-                <time dateTime={message.sentAt}>{albertaTime(message.sentAt)}</time>
-              </dd>
-            </dl>
-            <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{linkify(message.body)}</div>
-          </article>
-        ))
-      )}
-    </main>
+    <div className={s.page}>
+      <MinimalHeader href="/" trailing="Demo outbox" />
+      <main id="main" className={s.main}>
+        <Column>
+          <p role="note" className={s.banner}>
+            <Info size={18} aria-hidden="true" />
+            <span>Local demo outbox: no real email was sent</span>
+          </p>
+          {loaded === null ? (
+            <>
+              <Question>The outbox isn’t available.</Question>
+              <Note align="start">Sign in and make sure the local workspace is running, then reload this page.</Note>
+            </>
+          ) : loaded.mail !== "outbox" ? (
+            <>
+              <Question>Nothing is kept here.</Question>
+              <Note align="start">
+                Mail is set to {loaded.mail}, so messages go out through that adapter and are not kept here.
+              </Note>
+            </>
+          ) : count === 0 ? (
+            <>
+              <Question>No messages yet.</Question>
+              <Note align="start">Approved requests show up here when they are sent.</Note>
+            </>
+          ) : (
+            <>
+              <Question>
+                {count === 1
+                  ? "Here’s the message that would have gone out."
+                  : `Here are the ${count} messages that would have gone out.`}
+              </Question>
+              <p className={s.count}>Newest first. The reply links work on this computer.</p>
+              <ol className={s.list} role="list">
+                {loaded.messages.map((message) => (
+                  <li key={message.id}>
+                    <article className={s.letter} aria-label={`Message to ${message.to}`}>
+                      <dl className={s.head}>
+                        <div className={s.row}>
+                          <dt>To</dt>
+                          <dd>{message.to}</dd>
+                        </div>
+                        <div className={s.row}>
+                          <dt>Subject</dt>
+                          <dd className={s.subject}>{message.subject}</dd>
+                        </div>
+                        <div className={s.row}>
+                          <dt>Sent</dt>
+                          <dd>
+                            <time dateTime={message.sentAt}>{albertaTime(message.sentAt)}</time>
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className={s.body}>{linkify(message.body)}</div>
+                    </article>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+        </Column>
+      </main>
+    </div>
   );
 }

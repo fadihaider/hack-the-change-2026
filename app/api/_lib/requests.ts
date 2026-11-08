@@ -17,6 +17,8 @@ export function requestHandlers(rt: Runtime, baseUrl: string = rt.baseUrl) {
     appNow: (userId) => rt.stores.appNow(userId),
     findHealthTerms: rt.findHealthTerms,
     send: (message) => rt.mail.send(message),
+    // demo mail stays in the local outbox, so response links may use the LAN http address
+    allowHttpLinks: rt.mode.mail === "outbox",
   });
 }
 

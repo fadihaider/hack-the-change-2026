@@ -1,0 +1,130 @@
+/* the reply link page: one question, the message as a letter, one confirm button. only --rr-* tokens. */
+
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.main {
+  display: block;
+}
+
+.main:focus-visible {
+  outline: none;
+}
+
+/* the message, set like a letter on paper */
+.letter {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-page);
+}
+
+.letterLabel {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--rr-muted);
+}
+
+.subject {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rr-hairline);
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--rr-ink);
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+.body {
+  padding-top: 2px;
+  font-size: 16px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.due {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 24px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.due svg {
+  margin-top: 3px;
+}
+
+.form {
+  display: grid;
+  gap: 20px;
+  margin-top: 8px;
+}
+
+.fields {
+  display: grid;
+  gap: 18px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.label {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-ink);
+}
+
+.input {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid #8a92a0;
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+  color: var(--rr-ink);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.input:focus {
+  border-color: var(--rr-teal);
+  box-shadow: 0 0 0 3px var(--rr-teal-tint);
+}
+
+.input:focus-visible {
+  outline: none;
+}
+
+.error {
+  margin-top: -4px;
+}
+
+.after {
+  margin-top: 24px;
+}
+
+.about {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rr-hairline);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}

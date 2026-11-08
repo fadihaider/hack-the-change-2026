@@ -1,12 +1,15 @@
 // GET /r/[token]: the recipient's response page. read-only preview; the client form makes the one confirming POST
 import "server-only";
-import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { getRuntime } from "../../../lib/mvp/runtime.ts";
 import { RateLimitedError } from "../../api/_lib/http.ts";
 import { limitResponseLinks, requestHandlers } from "../../api/_lib/requests.ts";
+import { MinimalHeader } from "@/components/app/recover/MinimalHeader.tsx";
+import { Column, Note, Question } from "@/components/app/ui.tsx";
+import { formatAlberta } from "@/lib/frontend/live-api.ts";
 import ResponseForm from "./ResponseForm.tsx";
+import s from "./respond.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -29,33 +32,19 @@ interface Preview {
 
 type Loaded = { ok: true; preview: Preview } | { ok: false; reason: "not_found" | "rate_limited" | "unavailable" };
 
-const CHOICE_LABELS: Record<Choice, string> = {
-  accept: "Accept",
-  decline: "Decline",
-  propose: "Propose another time",
-};
-
-const STATE_LABELS: Record<string, string> = {
-  accepted: "Accepted",
-  rejected: "Declined",
-  needs_review: "Another time was proposed",
-  completed: "Completed",
-};
-
-// closed without an answer: these read as a full sentence, not as "a recorded answer"
-const CLOSED_MESSAGES: Record<string, string> = {
-  expired: "This request expired before an answer was recorded.",
-  cancelled: "The sender cancelled this request.",
-};
-
-const shell: CSSProperties = { maxWidth: 640, margin: "48px auto", padding: "0 20px", display: "grid", gap: 20 };
-const card: CSSProperties = {
-  background: "var(--white, #fff)",
-  border: "1px solid var(--line, #e9e3db)",
-  borderRadius: 20,
-  padding: 24,
-  display: "grid",
-  gap: 14,
+const FAILURES: Record<Extract<Loaded, { ok: false }>["reason"], { title: string; next: string }> = {
+  not_found: {
+    title: "This link is invalid or has expired.",
+    next: "If you still need to answer, ask the person who sent it for a new message.",
+  },
+  rate_limited: {
+    title: "Too many tries from this network.",
+    next: "Wait a few minutes, then open the link again.",
+  },
+  unavailable: {
+    title: "This page isn’t available right now.",
+    next: "Nothing was recorded. Open the link again a little later.",
+  },
 };
 
 async function loadPreview(token: string): Promise<Loaded> {
@@ -73,63 +62,38 @@ async function loadPreview(token: string): Promise<Loaded> {
   }
 }
 
-function albertaTime(iso: string): string {
-  const local = new Date(Date.parse(iso) - 6 * 60 * 60 * 1000);
-  const date = local.toISOString().slice(0, 10);
-  return `${date} ${local.toISOString().slice(11, 16)} Alberta Time`;
+/** "Mon, Nov 9, 7:37 p.m." in Alberta time (UTC-6 all year in this product) */
+function albertaTime(iso: string): string | null {
+  return Number.isFinite(Date.parse(iso)) ? formatAlberta(iso) : null;
 }
 
 export default async function ResponsePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const loaded = await loadPreview(token);
 
-  if (!loaded.ok) {
-    const message = {
-      not_found: "This link is invalid or has expired.",
-      rate_limited: "Too many attempts from this network. Please wait a few minutes and try again.",
-      unavailable: "This page is not available right now. Please try again later.",
-    }[loaded.reason];
-    return (
-      <main style={shell}>
-        <p style={{ fontWeight: 700 }}>ReliefReady</p>
-        <section style={card}>
-          <p>{message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  const { preview } = loaded;
-  const answered = preview.state !== "requested";
   return (
-    <main style={shell}>
-      <p style={{ fontWeight: 700 }}>ReliefReady</p>
-      <section style={card} aria-labelledby="request-subject">
-        <p style={{ color: "var(--muted, #6e675f)" }}>A request sent to you</p>
-        {/* plain text only: subject and body are rendered as text, never as html */}
-        <h1 id="request-subject" style={{ fontSize: 20 }}>
-          {preview.subject}
-        </h1>
-        <div style={{ whiteSpace: "pre-wrap" }}>{preview.body}</div>
-        {preview.respondBy && (
-          <p style={{ color: "var(--muted, #6e675f)" }}>Please respond by {albertaTime(preview.respondBy)}.</p>
-        )}
-      </section>
-      <section style={card} aria-label="Your response">
-        {answered ? (
-          <p role="status" style={{ fontWeight: 600 }}>
-            {CLOSED_MESSAGES[preview.state] ??
-              `This request already has a recorded answer: ${STATE_LABELS[preview.state] ?? preview.state}.`}
-          </p>
+    <div className={s.page}>
+      <MinimalHeader />
+      <main id="main" className={s.main}>
+        {loaded.ok ? (
+          <Column>
+            {/* plain text only: subject and body are rendered as text, never as html */}
+            <ResponseForm
+              token={token}
+              choice={loaded.preview.choice}
+              state={loaded.preview.state}
+              subject={loaded.preview.subject}
+              body={loaded.preview.body}
+              respondBy={loaded.preview.respondBy ? albertaTime(loaded.preview.respondBy) : null}
+            />
+          </Column>
         ) : (
-          <>
-            <p>
-              This link answers <strong>{CHOICE_LABELS[preview.choice]}</strong>. Nothing is recorded until you confirm.
-            </p>
-            <ResponseForm token={token} choice={preview.choice} />
-          </>
+          <Column>
+            <Question>{FAILURES[loaded.reason].title}</Question>
+            <Note align="start">{FAILURES[loaded.reason].next}</Note>
+          </Column>
         )}
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }

@@ -1,0 +1,122 @@
+/* the start screen: intake, clarifying details, welcome back */
+
+.loading {
+  padding: 24px 0;
+  font-size: 16px;
+  color: var(--rr-muted);
+}
+
+.meta {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.metaItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.metaItem svg {
+  margin-top: 3px;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.count {
+  margin-top: -8px;
+  font-size: 13px;
+  color: var(--rr-muted);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the tap-to-fill example: a quoted sentence that reads like something Alex might say */
+.example {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  margin-top: -4px;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--rr-radius);
+  background: var(--rr-teal-tint);
+  text-align: start;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease;
+}
+
+.exampleLabel {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-teal-ink);
+}
+
+.exampleText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .example:hover {
+    border-color: rgb(14 124 134 / 35%);
+    transform: translateY(-1px);
+  }
+}
+
+.example:active {
+  transform: none;
+}
+
+.moreQuestions {
+  display: grid;
+  gap: 8px;
+  margin: -12px 0 24px;
+  padding: 0 0 0 20px;
+  font-size: 18px;
+  line-height: 1.45;
+  color: var(--rr-ink);
+}
+
+.worth {
+  margin: -8px 0 28px;
+  padding: 16px 18px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-page);
+}
+
+.worthTitle {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--rr-ink);
+}
+
+.worthList {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 20px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .example:hover,
+  .example:active {
+    transform: none;
+  }
+}

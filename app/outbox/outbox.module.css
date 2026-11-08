@@ -1,0 +1,90 @@
+/* the demo outbox: each stored message set as a letter. only --rr-* tokens. */
+
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.main {
+  display: block;
+}
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 24px;
+  padding: 12px 14px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-warn-tint);
+  color: var(--rr-warn-ink);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.banner svg {
+  margin-top: 2px;
+}
+
+.count {
+  margin: -12px 0 20px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.list {
+  display: grid;
+  gap: 16px;
+}
+
+.letter {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 20px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+}
+
+.head {
+  display: grid;
+  gap: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rr-hairline);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.row dt {
+  color: var(--rr-muted);
+}
+
+.row dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.subject {
+  font-weight: 600;
+}
+
+.body {
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.responseLink {
+  font-weight: 500;
+}

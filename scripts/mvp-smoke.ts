@@ -165,7 +165,7 @@ async function main(): Promise<void> {
     const response = await fetch(`${BASE}/r/${need(state.token, "token")}`, { signal: AbortSignal.timeout(120_000) });
     const html = await response.text();
     expect(response.status === 200, `HTTP ${response.status}`);
-    expect(html.includes("Confirm: Accept"), "no confirm button on the page");
+    expect(html.includes("Accept the request"), "no confirm button on the page");
     return "preview only, nothing recorded";
   });
 

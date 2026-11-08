@@ -190,3 +190,11 @@ test("app clock, recovery grouping, and mutation origin preserve spec boundaries
   assert.throws(() => requireSameOrigin(null, "https://app.example.test"), { code: "invalid_origin" });
   assert.throws(() => requireSameOrigin("https://other.example.test", "https://app.example.test"), { code: "invalid_origin" });
 });
+
+test("plain HTTP response links are refused on a LAN address unless the demo outbox allows them", async () => {
+  const f = fixture();
+  await assert.rejects(sendApprovedRequest({ ...f.input, baseUrl: "http://10.0.0.5:3107" }), /HTTPS/);
+  assert.equal(f.messages.length, 0);
+  assert.equal((await sendApprovedRequest({ ...f.input, baseUrl: "http://10.0.0.5:3107", allowHttpLinks: true })).state, "requested");
+  assert.ok(f.messages[0].text.includes("http://10.0.0.5:3107/r/"));
+});

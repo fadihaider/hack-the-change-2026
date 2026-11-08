@@ -198,7 +198,7 @@ const EPISODE_DEPENDENCIES = `SELECT d.id::text AS id, d.from_commitment::text A
     d.evidence, d.origin, d.confirmed
   FROM dependency d JOIN commitment c ON c.id = d.from_commitment
   WHERE c.user_id = CAST(:user_id AS uuid) AND c.episode_id = CAST(:episode_id AS uuid)
-  ORDER BY d.confirmed DESC, d.id`;
+  ORDER BY d.confirmed DESC, lower(d.to_ref), d.id`;
 
 const EPISODE_REQUESTS = `SELECT r.id::text AS id, r.commitment_id::text AS commitment_id, r.state, r.contact_id::text AS contact_id
   FROM request r JOIN commitment c ON c.id = r.commitment_id
