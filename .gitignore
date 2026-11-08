@@ -24,3 +24,4 @@ CLAUDE.md
 # iOS build output
 ios/build/
 ios/DerivedData/
+ios/ReliefReady.xcodeproj/
