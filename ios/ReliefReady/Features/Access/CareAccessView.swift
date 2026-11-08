@@ -42,16 +42,6 @@ struct CareAccessView: View {
                 access.select(id, name: name)
             }
         }
-        .toolbar {
-            #if DEBUG
-                if NearbyHarnessView.isEnabled {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink("Near Rosa") { NearbyHarnessView() }
-                            .accessibilityIdentifier("access.harness.nearby")
-                    }
-                }
-            #endif
-        }
         .accessibilityIdentifier("screen.careAccess")
     }
 

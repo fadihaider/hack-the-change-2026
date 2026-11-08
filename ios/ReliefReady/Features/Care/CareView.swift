@@ -219,25 +219,8 @@ private struct CareHome: View {
 
     @ViewBuilder private var bottom: some View {
         Rectangle().fill(Theme.hairline).frame(height: 1).padding(.top, 12)
+        // its own "Explore all Calgary access" leads to the explorer, as NearbyResourcesAndMap.tsx does
         NearbySection()
-        NavigationLink {
-            CareAccessView()
-        } label: {
-            HStack {
-                Label("Explore all Calgary access", systemImage: "map")
-                    .font(.rrButtonSecondary)
-                Spacer()
-                Image(systemName: "chevron.right").accessibilityHidden(true)
-            }
-            .foregroundStyle(Theme.tealInk)
-            .padding(.horizontal, 16)
-            .frame(minHeight: 52)
-            .background(Theme.tealTint, in: .rect(cornerRadius: Theme.radius))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Explore all Calgary access")
-        .accessibilityHint("Opens the care access map")
-        .accessibilityIdentifier("care.accessLink")
     }
 
     /// an Ask citation: open the passport section holding the fact and scroll to it

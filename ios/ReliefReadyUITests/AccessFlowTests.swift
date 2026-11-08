@@ -1,6 +1,7 @@
 import XCTest
 
-/// walks the care access explorer and the Near Rosa section against a live demo server with a care week.
+/// walks the care access explorer (from More) and the Near Rosa section (at the foot of Care) against a live demo
+/// server with a care week.
 /// the server defaults to the shared 3200 one; set TEST_RUNNER_ACCESS_SERVER to use another. set
 /// TEST_RUNNER_ACCESS_SHOTS to a folder to also write each step's screenshot there as access-<step>.png
 @MainActor
@@ -11,11 +12,11 @@ final class AccessFlowTests: XCTestCase {
         ProcessInfo.processInfo.environment["ACCESS_SERVER"] ?? "http://127.0.0.1:3200"
     }
 
-    private func launch() throws {
+    private func launch(tab: String = "more") throws {
         continueAfterFailure = false
         try XCTSkipUnless(Self.hasEpisode(), "the demo server at \(Self.server) has no care week, so the tabs don't show")
         app = XCUIApplication()
-        app.launchArguments = ["-ServerURL", Self.server, "-StartTab", "more", "-AccessHarness", "nearby"]
+        app.launchArguments = ["-ServerURL", Self.server, "-StartTab", tab]
         app.launch()
     }
 
@@ -162,14 +163,11 @@ final class AccessFlowTests: XCTestCase {
     }
 
     func testNearbyFlow() throws {
-        try launch()
-        openExplorer()
-        let harness = element("access.harness.nearby")
-        XCTAssertTrue(harness.waitForExistence(timeout: 10))
-        harness.tap()
-        XCTAssertTrue(element("screen.nearbyHarness").waitForExistence(timeout: 10))
+        try launch(tab: "care")
+        XCTAssertTrue(element("screen.care").waitForExistence(timeout: 30), "the care tab never showed")
 
-        // 1. the filters and the numbered cards, closest of each kind first
+        // 1. the section at the foot of Care: the filters and the numbered cards, closest of each kind first
+        reveal(element("nearby.title"), maxSwipes: 40)
         XCTAssertTrue(element("nearby.summary").waitForExistence(timeout: 60), "the nearby places never loaded")
         XCTAssertTrue(element("nearby.card.1").exists)
         shot("nearby-1-filters")
@@ -202,7 +200,7 @@ final class AccessFlowTests: XCTestCase {
         app.swipeDown(velocity: .fast)
         app.swipeDown(velocity: .fast)
         let oneKm = element("nearby.radius.1")
-        reveal(oneKm)
+        reveal(oneKm, maxSwipes: 40)
         oneKm.tap()
         element("nearby.type.transit").tap()
         XCTAssertTrue(element("nearby.summary").waitForExistence(timeout: 30))
