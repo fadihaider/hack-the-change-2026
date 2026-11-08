@@ -11,9 +11,8 @@ struct CommunityMap: View {
     @State private var position: MapCameraPosition = .automatic
     @ScaledMetric(relativeTo: .body) private var mapHeight: CGFloat = 420
 
-    /// a light grey for a community with no score or no group, edged with a dashed line
-    static let unknownFill = Color(hex: 0xEEF0F4)
-    static let unknownEdge = Color(hex: 0x8D95A3)
+    /// a neutral grey for a community with no score or no group, clearly apart from the lightest teal
+    static let unknownFill = Color(hex: 0xC9CED7)
 
     var body: some View {
         MapReader { proxy in
@@ -23,11 +22,8 @@ struct CommunityMap: View {
                     ForEach(Array(shape.polygons.enumerated()), id: \.offset) { _, rings in
                         if let outer = rings.first {
                             MapPolygon(polygon(outer: outer, holes: Array(rings.dropFirst())))
-                                .foregroundStyle(hex.map { Color(hex: $0, opacity: 0.86) } ?? Self.unknownFill.opacity(0.9))
-                                .stroke(
-                                    hex == nil ? Self.unknownEdge : Color.white,
-                                    style: StrokeStyle(lineWidth: hex == nil ? 1 : 0.8, dash: hex == nil ? [3, 3] : [])
-                                )
+                                .foregroundStyle(hex.map { Color(hex: $0, opacity: 0.86) } ?? Self.unknownFill.opacity(0.75))
+                                .stroke(Color.white, lineWidth: 0.8)
                         }
                     }
                 }
@@ -137,7 +133,7 @@ struct CommunityMapKey: View {
                 AccessHint(
                     "Darker means more of the places you picked are within reach."
                         + (access.mode == .driving && access.unroutedCount > 0
-                            ? " Grey with a dashed edge means the driving routes weren\u{2019}t fully mapped, not that access is low."
+                            ? " Grey means the driving routes weren\u{2019}t fully mapped, not that access is low."
                             : "")
                 )
             } else {
@@ -201,10 +197,6 @@ struct CommunityMapKey: View {
                 } else {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(CommunityMap.unknownFill)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 4)
-                                .strokeBorder(CommunityMap.unknownEdge, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                        }
                 }
             }
             .frame(width: 18, height: 18)
