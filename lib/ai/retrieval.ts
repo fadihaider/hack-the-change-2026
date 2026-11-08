@@ -41,6 +41,12 @@ const STOPWORDS = new Set([
   "if", "so", "then", "than", "just", "also", "very", "really", "keep", "kept",
 ]);
 
+// words that say someone likes something but not what; they rank facts but never anchor a demo exact-fact answer
+const WEAK_WORDS = new Set([
+  "like", "likes", "love", "loves", "enjoy", "enjoys", "favourite", "favorite", "favourites", "favorites", "prefer",
+  "prefers", "preference", "preferences", "want", "wants", "need", "needs", "use", "uses", "day", "time",
+]);
+
 const NUMBER_WORDS: Record<string, string> = {
   one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10",
   eleven: "11", twelve: "12",
@@ -264,7 +270,16 @@ export function selectContext<T extends RankableFact>(input: {
  * question, best first, keeping only those close to the best score
  */
 export function keywordMatches<T extends RankableFact>(question: string, facts: readonly T[], max = 3, names: readonly string[] = []): T[] {
-  const hits = rankFacts(question, facts, names).filter((entry) => entry.lexical > 0);
+  // a generic liking word alone ("favourite", "likes", "prefers") is not enough to call a fact an answer:
+  // "what is her favourite tv show?" must stay Not in profile rather than cite "she likes the radio"
+  const ignore = ignoreSet(names);
+  const anchors = terms(tokenize(question, ignore).filter((token) => !WEAK_WORDS.has(token) && !WEAK_WORDS.has(stem(token))));
+  const anchored = (fact: T) => {
+    const factTerms = terms(tokenize(fact.textExact, ignore).filter((token) => !WEAK_WORDS.has(token) && !WEAK_WORDS.has(stem(token))));
+    for (const term of anchors) if (factTerms.has(term)) return true;
+    return false;
+  };
+  const hits = rankFacts(question, facts, names).filter((entry) => entry.lexical > 0 && anchored(entry.fact));
   if (hits.length === 0) return [];
   const best = hits[0].lexical;
   return hits

@@ -155,3 +155,14 @@ test("the Titan embedder sends dimensions 1024 and normalize, and reduces SDK er
     return true;
   });
 });
+
+test("a generic liking word alone never anchors a demo exact-fact answer", () => {
+  const facts = [
+    { id: "a", category: "preference", textExact: "She likes the radio on in the morning." },
+    { id: "b", category: "communication", textExact: "She prefers instructions written down." },
+    { id: "c", category: "practical", textExact: "Her spare glasses are in the bedroom drawer." },
+  ];
+  assert.deepEqual(keywordMatches("What is her favourite TV show?", facts, 3, ["Rosa", "Mom"]), []);
+  assert.deepEqual(keywordMatches("Does she like music?", facts, 3, ["Rosa", "Mom"]).map((fact) => fact.id), ["a"]);
+  assert.deepEqual(keywordMatches("Where are her spectacles?", facts, 3, ["Rosa", "Mom"]).map((fact) => fact.id), ["c"]);
+});
