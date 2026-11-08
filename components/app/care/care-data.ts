@@ -8,6 +8,7 @@ import {
   sourceLabel,
   type CareFactView,
 } from "@/lib/frontend/live-api.ts";
+import { PASSPORT_SECTIONS, sectionOf, type PassportSection, type PassportSectionId } from "@/lib/frontend/passport.ts";
 
 export type ReviewStep =
   | { kind: "fact"; key: string; factId: string }
@@ -149,4 +150,130 @@ function firstStart(fact: CareFactView): string | null {
   const ms = event?.startsAt ? Date.parse(event.startsAt) : Number.NaN;
   if (!Number.isFinite(ms)) return null;
   return new Date(ms - 6 * 3600000).toISOString().slice(11, 16);
+}
+
+// ---------------------------------------------------------------- care passport (PRD 5)
+
+export type PassportGroup = { section: PassportSection; facts: CareFactView[] };
+
+/** approved facts in the six settled passport sections, in time-of-day order inside each; nothing pending shows here */
+export function passportGroups(facts: CareFactView[]): PassportGroup[] {
+  const bySection = new Map<PassportSectionId, CareFactView[]>();
+  for (const fact of facts) {
+    if (fact.status !== "approved") continue;
+    const id = sectionOf(fact.category);
+    bySection.set(id, [...(bySection.get(id) ?? []), fact]);
+  }
+  return PASSPORT_SECTIONS.filter((section) => section.id !== "open").map((section) => ({
+    section,
+    facts: [...(bySection.get(section.id) ?? [])].sort(
+      (a, b) => (firstStart(a) ?? "~").localeCompare(firstStart(b) ?? "~") || newestFirst(a, b),
+    ),
+  }));
+}
+
+export function isWrittenInstruction(fact: Pick<CareFactView, "category">): boolean {
+  return fact.category === "medical_instruction";
+}
+
+/** the short line for a fact row: the caregiver's label, else a trimmed quote; written instructions are never trimmed */
+export function factSummary(fact: Pick<CareFactView, "category" | "textExact" | "displayText">): string {
+  if (isWrittenInstruction(fact)) return fact.textExact;
+  const label = fact.displayText?.trim();
+  return label ? label : shorten(fact.textExact, 100);
+}
+
+const SOURCE_PHRASE: Record<string, string> = {
+  voice: "a voice note",
+  note: "a typed note",
+  document: "a PDF",
+};
+
+/** "From a voice note, added Nov 8 by you"; an unknown author is left out rather than guessed */
+export function provenanceLine(
+  fact: Pick<CareFactView, "sourceKind" | "sourceAuthor" | "sourceCreatedAt" | "createdAt">,
+): string {
+  const from = fact.sourceKind ? SOURCE_PHRASE[fact.sourceKind] : undefined;
+  const ms = Date.parse(fact.sourceCreatedAt ?? fact.createdAt);
+  const added = Number.isFinite(ms) ? `, added ${formatDate(albertaDateOf(ms))}` : "";
+  const author = authorName(fact.sourceAuthor);
+  return `${from ? `From ${from}` : "Source unknown"}${added}${author ? ` by ${author}` : ""}`;
+}
+
+/** "caregiver" is the signed-in person, so it reads as "you" */
+export function authorName(author: string | null): string | null {
+  const value = author?.trim();
+  if (!value) return null;
+  return value.toLowerCase() === "caregiver" ? "you" : value;
+}
+
+/** "Edited — version 2" once a fact has been edited; null for an original */
+export function versionLabel(fact: Pick<CareFactView, "version">): string | null {
+  return fact.version > 1 ? `Edited — version ${fact.version}` : null;
+}
+
+/** asking the same thing twice saves it twice; list each open question once */
+export function uniqueOpenQuestions<T extends { question: string }>(questions: T[]): T[] {
+  const seen = new Set<string>();
+  return questions.filter((item) => {
+    const key = item.question.trim().toLowerCase().replace(/[\s?.]+$/, "");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export type SourceParts = { before: string; match: string; after: string };
+
+/**
+ * splits the retained source around the fact's span so the sheet can mark it. the span is trusted only when it
+ * points at the fact's own wording; otherwise the first exact match is used, and null means nothing to mark.
+ */
+export function sourceParts(
+  fullText: string,
+  fact: Pick<CareFactView, "spanStart" | "spanEnd" | "textExact">,
+): SourceParts | null {
+  const { spanStart: start, spanEnd: end } = fact;
+  if (
+    start !== null &&
+    end !== null &&
+    Number.isInteger(start) &&
+    Number.isInteger(end) &&
+    start >= 0 &&
+    end > start &&
+    end <= fullText.length &&
+    fullText.slice(start, end) === fact.textExact
+  ) {
+    return { before: fullText.slice(0, start), match: fullText.slice(start, end), after: fullText.slice(end) };
+  }
+  const at = fact.textExact ? fullText.indexOf(fact.textExact) : -1;
+  if (at === -1) return null;
+  const stop = at + fact.textExact.length;
+  return { before: fullText.slice(0, at), match: fullText.slice(at, stop), after: fullText.slice(stop) };
+}
+
+export type OpenItems = {
+  /** each set of notes that disagree, oldest note first */
+  conflicts: CareFactView[][];
+  /** suggested facts still waiting for a check */
+  suggested: number;
+  /** everything still waiting, in review order, for the one-at-a-time review */
+  steps: ReviewStep[];
+};
+
+/** what the open questions & conflicts section lists; suggested facts are counted, never shown as settled */
+export function openItems(facts: CareFactView[]): OpenItems {
+  const steps = pendingSteps(facts);
+  const byId = new Map(facts.map((fact) => [fact.id, fact]));
+  const conflicts: CareFactView[][] = [];
+  let suggested = 0;
+  for (const step of steps) {
+    if (step.kind === "fact") {
+      suggested += 1;
+      continue;
+    }
+    const group = step.factIds.map((id) => byId.get(id)).filter((fact): fact is CareFactView => fact !== undefined);
+    if (group.length > 0) conflicts.push(group);
+  }
+  return { conflicts, suggested, steps };
 }

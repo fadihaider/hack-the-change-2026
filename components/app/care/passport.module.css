@@ -1,0 +1,509 @@
+/* care passport: seven collapsed sections, fact rows with provenance, conflicts and the full-source sheet. only --rr-* tokens. */
+
+.passport {
+  margin-top: 44px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+
+.headerText {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.headerButton {
+  flex: 0 0 auto;
+}
+
+.title {
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  font-weight: 600;
+  color: var(--rr-ink);
+  text-wrap: pretty;
+}
+
+.hint {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.empty {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: var(--rr-radius);
+  background: var(--rr-page);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.emptyAction {
+  margin-top: 16px;
+}
+
+/* ---------------------------------------------------------------- accordions */
+
+.list {
+  margin-top: 16px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+  box-shadow: 0 1px 2px rgb(29 36 51 / 6%);
+  overflow: hidden;
+}
+
+.accordion + .accordion {
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.accordionHeading {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.accordionButton {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 14px 18px;
+  border: 0;
+  background: none;
+  color: var(--rr-ink);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: start;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease;
+}
+
+.accordionButton:focus-visible {
+  outline: 2px solid var(--rr-teal);
+  outline-offset: -2px;
+}
+
+.accordionButton[aria-expanded="true"] {
+  background: var(--rr-teal-tint);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .accordionButton:hover {
+    background: var(--rr-page);
+  }
+  .accordionButton[aria-expanded="true"]:hover {
+    background: var(--rr-teal-tint);
+  }
+}
+
+.accordionTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.count {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--rr-muted);
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  color: var(--rr-muted);
+  transition: transform 160ms ease;
+}
+
+[aria-expanded="true"] > .chevron {
+  transform: rotate(180deg);
+}
+
+.panel {
+  padding: 4px 18px 18px;
+}
+
+.panel[hidden] {
+  display: none;
+}
+
+.panelHint {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.none {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.inlineHelp {
+  margin: 12px 0 8px;
+}
+
+/* ---------------------------------------------------------------- fact rows */
+
+.facts,
+.facts[role="list"] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fact {
+  padding: 14px 0;
+  scroll-margin-top: 80px;
+}
+
+.fact + .fact {
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.fact:focus {
+  outline: none;
+}
+
+/* the fact an ask citation linked to */
+.fact:target {
+  padding-left: 12px;
+  box-shadow: inset 3px 0 0 var(--rr-teal);
+}
+
+.factLabel {
+  margin-bottom: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--rr-teal-ink);
+}
+
+.factText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  overflow-wrap: anywhere;
+}
+
+/* written instructions keep their own line breaks, word for word */
+.factExact {
+  padding: 10px 14px;
+  border-left: 3px solid var(--rr-teal);
+  border-radius: 0 var(--rr-radius-sm) var(--rr-radius-sm) 0;
+  background: var(--rr-page);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.full {
+  margin-top: 2px;
+}
+
+.linkButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--rr-teal-ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+.linkButton .chevron {
+  color: currentColor;
+}
+
+.fullWording {
+  margin: 0 0 4px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--rr-teal);
+  border-radius: 0 var(--rr-radius-sm) var(--rr-radius-sm) 0;
+  background: var(--rr-page);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fullWording[hidden] {
+  display: none;
+}
+
+.meta,
+.meta[role="list"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.meta li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta svg {
+  flex: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.smallButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius-sm);
+  background: var(--rr-surface);
+  color: var(--rr-ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 120ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .smallButton:hover {
+    border-color: var(--rr-teal);
+  }
+}
+
+.editForm {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.editActions {
+  display: grid;
+  gap: 10px;
+}
+
+@media (min-width: 560px) {
+  .editActions {
+    grid-template-columns: repeat(2, max-content);
+  }
+}
+
+/* ---------------------------------------------------------------- open questions & conflicts */
+
+.openGroup {
+  margin-top: 16px;
+}
+
+.openGroup + .openGroup {
+  padding-top: 16px;
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.openTitle {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--rr-muted);
+}
+
+.openText {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+}
+
+.openAction {
+  margin-top: 12px;
+}
+
+.conflicts,
+.conflicts[role="list"],
+.questions,
+.questions[role="list"],
+.conflictOptions,
+.conflictOptions[role="list"] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conflict + .conflict {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.conflictLead {
+  margin-bottom: 10px;
+  font-size: 16px;
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--rr-ink);
+}
+
+.conflictLead:focus {
+  outline: none;
+}
+
+.conflictOptions,
+.conflictOptions[role="list"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 720px) {
+  .conflictOptions,
+  .conflictOptions[role="list"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.conflictOption {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--rr-hairline);
+  border-radius: var(--rr-radius);
+  background: var(--rr-surface);
+}
+
+.conflictOption .meta {
+  margin: 0;
+}
+
+.quote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--rr-warn-ink);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.laterAction {
+  display: flex;
+  margin-top: 8px;
+}
+
+.question {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 10px 0;
+}
+
+.question + .question {
+  border-top: 1px solid var(--rr-hairline);
+}
+
+.questionText {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--rr-ink);
+  overflow-wrap: anywhere;
+}
+
+.questionText svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--rr-muted);
+}
+
+/* ---------------------------------------------------------------- full source sheet */
+
+.sourceStatus {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rr-muted);
+}
+
+.sourceMeta {
+  margin: -8px 0 8px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--rr-muted);
+}
+
+.sourceText {
+  max-height: 55vh;
+  margin-top: 12px;
+  padding: 14px 16px;
+  overflow: auto;
+  border-radius: var(--rr-radius-sm);
+  background: var(--rr-page);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--rr-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sourceMark {
+  padding: 1px 2px;
+  border-bottom: 2px solid var(--rr-warn-ink);
+  border-radius: 3px;
+  background: var(--rr-warn-tint);
+  color: var(--rr-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron,
+  .accordionButton,
+  .smallButton {
+    transition: none;
+  }
+}
