@@ -1,5 +1,7 @@
-// mail adapters (docs/MVP.md RR_MAIL): outbox stores each message locally, gmail sends through lib/google.ts
+// mail adapters (docs/MVP.md RR_MAIL): outbox stores each message locally, gmail sends through lib/google.ts.
+// demo copy (DEMO_EMAIL_TO): every sent message is also emailed to one demo inbox through Gmail SMTP
 import "server-only";
+import nodemailer from "nodemailer";
 import { p, type SqlRunner } from "../db.ts";
 import type { AccountStore } from "../auth/google.ts";
 import { googleAccountLoader } from "../auth/google.ts";
@@ -66,8 +68,70 @@ export function createGmailMailer(accounts: AccountStore, env: NodeJS.ProcessEnv
   };
 }
 
+export interface DemoCopyConfig {
+  /** the demo inbox that gets a copy of every message */
+  to: string;
+  /** the Gmail address that sends the copies */
+  user: string;
+  /** that account's 16-letter app password */
+  pass: string;
+}
+
+type Env = Readonly<Record<string, string | undefined>>;
+
+/** DEMO_EMAIL_TO, DEMO_SMTP_USER and DEMO_SMTP_PASS, or null when any is missing or malformed (no copies) */
+export function demoCopyConfig(env: Env = process.env): DemoCopyConfig | null {
+  const to = env.DEMO_EMAIL_TO?.trim() ?? "";
+  const user = env.DEMO_SMTP_USER?.trim() ?? "";
+  // Google shows app passwords in groups of four with spaces
+  const pass = (env.DEMO_SMTP_PASS ?? "").replace(/\s+/g, "");
+  if (!ADDRESS.test(to) || !ADDRESS.test(user) || pass.length < 16) return null;
+  return { to, user, pass };
+}
+
+export type CopySender = (message: { from: string; to: string; subject: string; text: string }) => Promise<unknown>;
+
+function gmailSmtp(config: DemoCopyConfig): CopySender {
+  const transport = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: { user: config.user, pass: config.pass },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
+  });
+  return (message) => transport.sendMail(message);
+}
+
+/**
+ * the real send first, then a copy to the demo inbox. a failed copy never fails the send: the message already went
+ * to the outbox or Gmail, so it is only logged (without addresses)
+ */
+export function withDemoCopy(inner: MailSender, config: DemoCopyConfig | null, sendCopy?: CopySender): MailSender {
+  if (!config) return inner;
+  const copy = sendCopy ?? gmailSmtp(config);
+  return {
+    async send(message: OutgoingMessage): Promise<{ id: string }> {
+      const result = await inner.send(message);
+      try {
+        await copy({
+          from: `ReliefReady demo <${config.user}>`,
+          to: config.to,
+          subject: message.subject,
+          text: `[ReliefReady demo copy. This message was sent to ${message.to}.]\n\n${message.text}`,
+        });
+      } catch (caught) {
+        console.error("demo email copy failed:", caught instanceof Error ? caught.name : "unknown error");
+      }
+      return result;
+    },
+  };
+}
+
 export function createMailSender(mode: MailMode, deps: { sql: SqlRunner; accounts: AccountStore }): MailSender {
-  return mode === "gmail" ? createGmailMailer(deps.accounts) : createOutboxMailer(deps.sql);
+  const inner = mode === "gmail" ? createGmailMailer(deps.accounts) : createOutboxMailer(deps.sql);
+  return withDemoCopy(inner, demoCopyConfig());
 }
 
 export interface OutboxMessage {
