@@ -47,11 +47,11 @@ struct NearbySection: View {
 
     @ViewBuilder private func places(proxy: ScrollViewProxy) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Places near \(AccessWords.possessive(name)) home")
+            Text("Places near \(Labels.possessive(name)) home")
                 .font(.rrHeadline)
                 .foregroundStyle(Theme.ink)
                 .accessibilityAddTraits(.isHeader)
-            Text("From public Calgary lists. Distances are straight lines from near \(AccessWords.possessive(name)) home, not travel times. Transit isn\u{2019}t routed.")
+            Text("From public Calgary lists. Distances are straight lines from near \(Labels.possessive(name)) home, not travel times. Transit isn\u{2019}t routed.")
                 .font(Fonts.figtree(15, weight: .regular, relativeTo: .subheadline))
                 .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)

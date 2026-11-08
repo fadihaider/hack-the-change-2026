@@ -184,7 +184,7 @@ struct CareAccessView: View {
 
     private var communityTitle: String {
         guard let area = access.shownArea else { return "Choose a community" }
-        return area.id == access.homeId ? "\(area.name) (\(AccessWords.possessive(name)))" : area.name
+        return area.id == access.homeId ? "\(area.name) (\(Labels.possessive(name)))" : area.name
     }
 
     // ---- the map
@@ -269,7 +269,7 @@ struct AccessCommunityPicker: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(area.id == access.homeId ? "\(area.name) (\(AccessWords.possessive(name)))" : area.name)
+                            Text(area.id == access.homeId ? "\(area.name) (\(Labels.possessive(name)))" : area.name)
                                 .font(.rrBody)
                                 .foregroundStyle(Theme.ink)
                             if let row = access.scores?.rows[area.id] {

@@ -44,11 +44,6 @@ nonisolated enum AccessWords {
         NearbyWords.joinWords(words, last: last)
     }
 
-    /// "Rosa’s", or "James’"
-    static func possessive(_ name: String) -> String {
-        name.hasSuffix("s") ? "\(name)\u{2019}" : "\(name)\u{2019}s"
-    }
-
     /// String(number) in js: 20 not 20.0
     static func number(_ value: Double) -> String {
         if value.isFinite, value.rounded() == value, abs(value) < 1e15 { return String(Int(value)) }
@@ -69,7 +64,7 @@ nonisolated enum AccessWords {
         mode == .driving ? "a \(number(threshold))-minute drive" : "\(number(threshold)) km"
     }
 
-    private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    private static let months = AlbertaTime.months
 
     /// "Nov 7, 2026" in Alberta time
     static func fetchedOn(_ iso: String) -> String {
@@ -266,7 +261,7 @@ nonisolated enum AccessWords {
 
     /// the score line VoiceOver reads for a community
     static func rowText(area: String, row: ScoreRow, isHome: Bool, name: String) -> String {
-        let home = isHome ? ", \(possessive(name)) community" : ""
+        let home = isHome ? ", \(Labels.possessive(name)) community" : ""
         let score = row.score.map { "access \(number($0)) out of 100" } ?? "not scored, driving routes incomplete"
         let reach = Int(row.inReach)
         return "\(area)\(home): \(score), \(reach) \(reach == 1 ? "place" : "places") in reach."
@@ -274,7 +269,7 @@ nonisolated enum AccessWords {
 
     /// the group line VoiceOver reads for a community when the map shows groups
     static func groupRowText(area: String, cluster: Int?, isHome: Bool, name: String, groups: [Int: GroupName]) -> String {
-        let home = isHome ? ", \(possessive(name)) community" : ""
+        let home = isHome ? ", \(Labels.possessive(name)) community" : ""
         guard let cluster, cluster >= 0 else { return "\(area)\(home): no group, driving routes incomplete" }
         return "\(area)\(home): \(groups[cluster]?.label ?? "a group")"
     }

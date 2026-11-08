@@ -49,11 +49,6 @@ nonisolated enum CareData {
         return label.prefix(1).uppercased() + label.dropFirst()
     }
 
-    /// "Rosa’s", or "James’"
-    static func possessive(_ name: String) -> String {
-        name.hasSuffix("s") ? "\(name)\u{2019}" : "\(name)\u{2019}s"
-    }
-
     static func plural(_ count: Int, _ one: String, _ many: String) -> String {
         "\(count) \(count == 1 ? one : many)"
     }

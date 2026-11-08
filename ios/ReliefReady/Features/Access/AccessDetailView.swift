@@ -34,7 +34,7 @@ struct AccessDetailView: View {
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("access.detail.title")
                 if isHome {
-                    TonePill("\(AccessWords.possessive(name)) community", tone: .ask)
+                    TonePill("\(Labels.possessive(name)) community", tone: .ask)
                 }
             }
 

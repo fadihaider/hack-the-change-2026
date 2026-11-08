@@ -28,7 +28,7 @@ struct AddNoteView: View {
 
     var body: some View {
         ScreenColumn {
-            QuestionHeader("What do you know about \(CareData.possessive(name)) care?", lead: "Routines, who to call, what the nurse said.")
+            QuestionHeader("What do you know about \(Labels.possessive(name)) care?", lead: "Routines, who to call, what the nurse said.")
             CareTextArea(
                 label: "Write it down",
                 hint: "Add times where you know them. Each thing comes back to you to check before helpers see it.",
@@ -135,7 +135,7 @@ struct AddNoteView: View {
         guard busy == nil else { return }
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty else {
-            error = "Write something about \(CareData.possessive(name)) care first, or tap the example."
+            error = "Write something about \(Labels.possessive(name)) care first, or tap the example."
             fieldFocused = true
             return
         }

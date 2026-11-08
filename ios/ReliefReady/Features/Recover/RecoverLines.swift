@@ -220,20 +220,16 @@ nonisolated enum RecoverLines {
         return (rows + times).joined(separator: "|")
     }
 
-    static func possessive(_ name: String) -> String {
-        name.hasSuffix("s") ? "\(name)\u{2019}" : "\(name)\u{2019}s"
-    }
-
     /// the line under the heading about the care week, from the session's today and the episode dates
     static func weekLine(name: String, today: String, episode: EpisodeSummary) -> String {
         // YYYY-MM-DD strings compare in date order, as the web compares them
         if today < episode.startsOn {
-            return "\(possessive(name)) care week starts \(AlbertaTime.dayLabel(episode.startsOn))."
+            return "\(Labels.possessive(name)) care week starts \(AlbertaTime.dayLabel(episode.startsOn))."
         }
         if today > episode.endsOn {
-            return "\(possessive(name)) care week ended \(AlbertaTime.dayLabel(episode.endsOn))."
+            return "\(Labels.possessive(name)) care week ended \(AlbertaTime.dayLabel(episode.endsOn))."
         }
-        return "\(possessive(name)) care week ends \(AlbertaTime.dayLabel(episode.endsOn))."
+        return "\(Labels.possessive(name)) care week ends \(AlbertaTime.dayLabel(episode.endsOn))."
     }
 
     /// the four heading variants in RecoverScreen.tsx
@@ -241,7 +237,7 @@ nonisolated enum RecoverLines {
         let week = weekLine(name: name, today: today, episode: episode)
         if sorted.total == 0 {
             return RecoverHeading(
-                lead: "Nothing has gone out for \(possessive(name)) care week yet.", question: "Start with what the week affects?"
+                lead: "Nothing has gone out for \(Labels.possessive(name)) care week yet.", question: "Start with what the week affects?"
             )
         }
         if sorted.needsYou.isEmpty && !sorted.waiting.isEmpty {

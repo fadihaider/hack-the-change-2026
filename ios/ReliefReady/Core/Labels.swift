@@ -18,6 +18,11 @@ nonisolated struct ModeLabel: Sendable, Hashable, Identifiable {
 }
 
 nonisolated enum Labels {
+    /// possessive in the web's words modules: "Rosa\u{2019}s", or "James\u{2019}" for a name ending in s
+    static func possessive(_ name: String) -> String {
+        name.hasSuffix("s") ? "\(name)\u{2019}" : "\(name)\u{2019}s"
+    }
+
     /// categoryLabel
     static func category(_ category: String?) -> String {
         guard let category, !category.isEmpty else { return "appointment" }
@@ -203,9 +208,10 @@ nonisolated enum AlbertaTime {
         case time
     }
 
-    private static let weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-    private static let longWeekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-    private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    /// en-CA short and long names, indexed by Calendar weekday - 1 and month - 1; shared by the features' wording
+    static let weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    static let longWeekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
     private static var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)

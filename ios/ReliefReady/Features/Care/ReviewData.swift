@@ -72,7 +72,7 @@ nonisolated enum ReviewData {
     static func consequenceLine(name: String, fact: CareFact) -> String? {
         guard let event = fact.events.first(where: { $0.startsAt != nil }), let startsAt = event.startsAt else { return nil }
         let time = AlbertaTime.format(startsAt, style: .time)
-        let day = "\(CareData.possessive(name)) day"
+        let day = "\(Labels.possessive(name)) day"
         var line: String
         if let rrule = event.rrule {
             let repeatText = Labels.rrule(rrule)

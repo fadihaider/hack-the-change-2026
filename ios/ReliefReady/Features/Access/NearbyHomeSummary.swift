@@ -64,7 +64,7 @@ struct NearbyHomeSummary: View {
 
     @ViewBuilder private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("What\u{2019}s within \(home.shownWindow) of \(community.map { "the centre of \($0)" } ?? "\(AccessWords.possessive(name)) community")?")
+            Text("What\u{2019}s within \(home.shownWindow) of \(community.map { "the centre of \($0)" } ?? "\(Labels.possessive(name)) community")?")
                 .font(.rrHeadline)
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -148,7 +148,7 @@ struct NearbyHomeSummary: View {
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            AccessHint("Counted from a central point in \(data.area.name), not \(AccessWords.possessive(name)) door, \(mode == .driving ? "by car with no traffic" : "in a straight line"). Opening hours, step-free access and whether a place can see \(name) today aren\u{2019}t known, so call ahead. Transit isn\u{2019}t routed, so no transit times are shown.")
+            AccessHint("Counted from a central point in \(data.area.name), not \(Labels.possessive(name)) door, \(mode == .driving ? "by car with no traffic" : "in a straight line"). Opening hours, step-free access and whether a place can see \(name) today aren\u{2019}t known, so call ahead. Transit isn\u{2019}t routed, so no transit times are shown.")
             AccessHint("This summary uses the Calgary access snapshot, a different list from the places above, so the counts can differ.")
 
             Text(accessParts: sourceParts(data))

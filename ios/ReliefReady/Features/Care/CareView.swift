@@ -61,13 +61,13 @@ private struct CareScreen: View {
                     }
                 } else if let error = care.profileError {
                     ScreenColumn {
-                        QuestionHeader("\(CareData.possessive(name)) care details didn\u{2019}t load.")
+                        QuestionHeader("\(Labels.possessive(name)) care details didn\u{2019}t load.")
                         ErrorNote(error) { Task { await care.loadProfile() } }
                         EmergencyHelpInline(name: name)
                     }
                 } else {
                     ScreenColumn {
-                        Text("Loading \(CareData.possessive(name)) care details")
+                        Text("Loading \(Labels.possessive(name)) care details")
                             .font(.rrBody)
                             .foregroundStyle(Theme.muted)
                             .padding(.vertical, 24)
@@ -262,7 +262,7 @@ private struct CareHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("\(CareData.possessive(name)) care")
+                Text("\(Labels.possessive(name)) care")
                     .font(.careTitle)
                     .foregroundStyle(Theme.ink)
                     .tracking(-0.3)
@@ -318,7 +318,7 @@ private struct PendingReviewSection: View {
             Text("\(CareData.plural(count, "suggestion", "suggestions")) to check")
                 .font(.rrHeadline)
                 .accessibilityAddTraits(.isHeader)
-            Text("Not in \(CareData.possessive(name)) passport yet. Helpers only see what you\u{2019}ve said is right.")
+            Text("Not in \(Labels.possessive(name)) passport yet. Helpers only see what you\u{2019}ve said is right.")
                 .font(.rrNote)
                 .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)

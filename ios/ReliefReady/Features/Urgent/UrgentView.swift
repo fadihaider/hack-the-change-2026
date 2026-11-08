@@ -108,7 +108,7 @@ struct UrgentWeekView: View {
             ScreenColumn {
                 QuestionHeader(
                     "No one needs a message.",
-                    lead: "Nothing in your calendar clashes with \(UrgentWords.possessive(flow.care.name)) care week."
+                    lead: "Nothing in your calendar clashes with \(Labels.possessive(flow.care.name)) care week."
                 )
                 HelpNearbyView(address: session.careRecipient?.address)
             }
@@ -279,7 +279,7 @@ struct UrgentWeekView: View {
 
     @ViewBuilder private func stepView(_ c: Commitment, _ status: StepStatus, at: Int) -> some View {
         let fact = UrgentWords.factLine(c, flow.care, appNow: flow.appNow)
-        let whose = UrgentWords.possessive(flow.care.name)
+        let whose = Labels.possessive(flow.care.name)
         VStack(alignment: .leading, spacing: 16) {
             receiptView
             switch status {

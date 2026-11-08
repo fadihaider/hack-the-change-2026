@@ -25,7 +25,7 @@ struct CarePassportView: View {
 
         if isEmpty {
             CareSection(title: "Care passport", identifier: "care.passport") {
-                Text("Nothing is in \(CareData.possessive(name)) passport yet. Start with what a helper would need to know on day one.")
+                Text("Nothing is in \(Labels.possessive(name)) passport yet. Start with what a helper would need to know on day one.")
                     .font(.rrBody)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Tell ReliefReady about \(name)", action: onAdd).buttonStyle(.primary)

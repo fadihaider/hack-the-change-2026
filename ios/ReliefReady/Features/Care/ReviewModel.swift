@@ -128,7 +128,7 @@ final class ReviewModel {
             _ = try await care.api.approveFact(id: fact.id)
             Task { await care.loadProfile() }
             let target = CareData.timeLine(fact) != nil
-                ? "\(CareData.possessive(name)) profile and day" : "\(CareData.possessive(name)) profile"
+                ? "\(Labels.possessive(name)) profile and day" : "\(Labels.possessive(name)) profile"
             record(key, .approved, "Added to \(target).")
         }
     }
@@ -160,7 +160,7 @@ final class ReviewModel {
             Task { await care.loadProfile() }
             record(
                 key, .edited(factId: result.fact.id, text: result.fact.textExact, original: fact.textExact),
-                "Added your wording to \(CareData.possessive(name)) profile. The original wording is kept as an earlier version."
+                "Added your wording to \(Labels.possessive(name)) profile. The original wording is kept as an earlier version."
             )
         }
     }
@@ -170,7 +170,7 @@ final class ReviewModel {
         await run(.reject) { () throws(APIError) in
             _ = try await care.api.rejectFact(id: fact.id)
             Task { await care.loadProfile() }
-            record(key, .rejected(text: fact.textExact), "Rejected. It won\u{2019}t go on \(CareData.possessive(name)) profile.")
+            record(key, .rejected(text: fact.textExact), "Rejected. It won\u{2019}t go on \(Labels.possessive(name)) profile.")
         }
     }
 

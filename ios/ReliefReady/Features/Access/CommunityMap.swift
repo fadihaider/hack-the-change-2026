@@ -161,7 +161,7 @@ struct CommunityMapKey: View {
                             .strokeBorder(Theme.ink, style: StrokeStyle(lineWidth: 2, dash: [4, 2]))
                             .frame(width: 18, height: 14)
                             .accessibilityHidden(true)
-                        Text("\(AccessWords.possessive(name)) community, \(home.name)")
+                        Text("\(Labels.possessive(name)) community, \(home.name)")
                     }
                 }
                 HStack(spacing: 10) {

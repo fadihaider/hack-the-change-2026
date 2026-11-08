@@ -191,8 +191,6 @@ struct AccessExplorerWordsTests {
         #expect(AccessWords.kindWord("Library", count: 2) == "libraries")
         #expect(AccessWords.kindLabel("Social Dev Ctr") == "Social support centre")
         #expect(AccessWords.kindLabel("Ambulatory") == "Ambulatory")
-        #expect(AccessWords.possessive("Rosa") == "Rosa\u{2019}s")
-        #expect(AccessWords.possessive("James") == "James\u{2019}")
         #expect(AccessWords.costText(4.4, mode: .driving) == "4 min")
         #expect(AccessWords.costText(0.4, mode: .driving) == "under 1 min")
         #expect(AccessWords.costText(1.25, mode: .proximity) == "1.2 km" || AccessWords.costText(1.25, mode: .proximity) == "1.3 km")

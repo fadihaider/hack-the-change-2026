@@ -18,6 +18,11 @@ struct LabelsTests {
         #expect(AlbertaTime.format(iso, style: .time) == time)
     }
 
+    @Test func possessive() {
+        #expect(Labels.possessive("Rosa") == "Rosa\u{2019}s")
+        #expect(Labels.possessive("James") == "James\u{2019}")
+    }
+
     @Test func formatAlbertaWithoutATime() {
         #expect(AlbertaTime.format(nil) == "No time set")
         #expect(AlbertaTime.format("nope") == "No time set")

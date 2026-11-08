@@ -171,7 +171,7 @@ final class CareModel {
     nonisolated static func finishedReceipt(_ summary: ReviewSummary, name: String) -> String? {
         let added = summary.approved + summary.kept
         var parts: [String] = []
-        if added > 0 { parts.append("Added \(CareData.plural(added, "thing", "things")) to \(CareData.possessive(name)) profile.") }
+        if added > 0 { parts.append("Added \(CareData.plural(added, "thing", "things")) to \(Labels.possessive(name)) profile.") }
         if summary.skipped > 0 { parts.append("\(CareData.plural(summary.skipped, "thing is", "things are")) waiting for later.") }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }

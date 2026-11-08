@@ -16,8 +16,6 @@ struct UrgentWordsTests {
         #expect(UrgentWords.joinNames(["Jordan"]) == "Jordan")
         #expect(UrgentWords.joinNames(["Jordan", "Sam", "Lucia"]) == "Jordan, Sam and Lucia")
         #expect(UrgentWords.quoted(["hip", "surgery"]) == "\u{201C}hip\u{201D} and \u{201C}surgery\u{201D}")
-        #expect(UrgentWords.possessive("Rosa") == "Rosa\u{2019}s")
-        #expect(UrgentWords.possessive("James") == "James\u{2019}")
     }
 
     @Test func titlesInSentences() throws {

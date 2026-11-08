@@ -76,9 +76,9 @@ nonisolated enum UrgentWords {
 
     // MARK: - times
 
-    private static let longWeekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-    private static let shortWeekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-    private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    private static let longWeekdays = AlbertaTime.longWeekdays
+    private static let shortWeekdays = AlbertaTime.weekdays
+    private static let months = AlbertaTime.months
 
     private static var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
@@ -216,11 +216,6 @@ nonisolated enum UrgentWords {
         text.replacingOccurrences(of: "'", with: "\u{2019}")
     }
 
-    /// "Rosa’s", "James’"
-    static func possessive(_ name: String) -> String {
-        name.hasSuffix("s") ? "\(name)\u{2019}" : "\(name)\u{2019}s"
-    }
-
     /// how a sentence names a commitment: "the food bank volunteer shift", "Rosa’s follow-up appointment"
     static func refTitle(_ c: Commitment, _ care: CareName) -> String {
         if c.forCareRecipient {
@@ -235,7 +230,7 @@ nonisolated enum UrgentWords {
                     )
                 }
             }
-            return curly("\(possessive(care.name)) \(lowerFirst(rest))")
+            return curly("\(Labels.possessive(care.name)) \(lowerFirst(rest))")
         }
         return curly("the \(lowerFirst(c.title))")
     }

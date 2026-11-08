@@ -97,7 +97,7 @@ struct TodayCareView: View {
         CareSection(
             title: isToday || model.date.isEmpty
                 ? "Today\u{2019}s care"
-                : "\(CareData.possessive(name)) care, \(AlbertaTime.dayLabel(model.date, short: true))",
+                : "\(Labels.possessive(name)) care, \(AlbertaTime.dayLabel(model.date, short: true))",
             hint: "Approved times and appointments, in Alberta time.",
             identifier: "care.today"
         ) {
@@ -115,7 +115,7 @@ struct TodayCareView: View {
                 careAnnounce(
                     loaded.items.isEmpty
                         ? "\(AlbertaTime.dayLabel(loaded.date)): nothing planned yet."
-                        : "\(AlbertaTime.dayLabel(loaded.date)): \(CareData.plural(loaded.items.count, "thing", "things")) on \(CareData.possessive(name)) day."
+                        : "\(AlbertaTime.dayLabel(loaded.date)): \(CareData.plural(loaded.items.count, "thing", "things")) on \(Labels.possessive(name)) day."
                 )
             }
         }
@@ -185,7 +185,7 @@ struct TodayCareView: View {
             let listed = model.showFull ? TodayData.chronological(shown.items) : preview.shown
             if shown.items.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Nothing on \(CareData.possessive(name)) day yet.").font(.rrBody).foregroundStyle(Theme.ink)
+                    Text("Nothing on \(Labels.possessive(name)) day yet.").font(.rrBody).foregroundStyle(Theme.ink)
                     if let onVoice, let onNote {
                         TellAboutView(name: name, onVoice: onVoice, onNote: onNote)
                     } else {
@@ -235,7 +235,7 @@ struct TodayCareView: View {
                 }
             }
         } else if model.error == nil {
-            Text("Loading \(CareData.possessive(name)) day").font(.rrBody).foregroundStyle(Theme.muted)
+            Text("Loading \(Labels.possessive(name)) day").font(.rrBody).foregroundStyle(Theme.muted)
         }
     }
 }

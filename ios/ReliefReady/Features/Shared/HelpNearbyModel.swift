@@ -151,7 +151,6 @@ final class HelpNearbyModel {
             let year = Int(match.output.1), let month = Int(match.output.2), let day = Int(match.output.3),
             (1...12).contains(month), (1...31).contains(day)
         else { return nil }
-        let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        return "\(months[month - 1]) \(day), \(year)"
+        return "\(AlbertaTime.months[month - 1]) \(day), \(year)"
     }
 }

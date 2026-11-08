@@ -26,7 +26,7 @@ struct VoiceNoteView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Voice note").font(.careSection).accessibilityAddTraits(.isHeader)
                 Text(
-                    "Say what you know about \(CareData.possessive(name)) care in your own words. You\u{2019}ll check the words before anything is saved."
+                    "Say what you know about \(Labels.possessive(name)) care in your own words. You\u{2019}ll check the words before anything is saved."
                 )
                 .font(.rrBody)
                 .foregroundStyle(Theme.muted)

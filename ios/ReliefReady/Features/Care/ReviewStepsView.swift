@@ -23,11 +23,11 @@ struct ReviewStepsView: View {
                 Button {
                     model.finish()
                 } label: {
-                    Label("\(CareData.possessive(model.name)) care", systemImage: "chevron.left")
+                    Label("\(Labels.possessive(model.name)) care", systemImage: "chevron.left")
                         .labelStyle(.titleAndIcon)
                 }
                 .disabled(model.isWorking)
-                .accessibilityLabel("Back to \(CareData.possessive(model.name)) care")
+                .accessibilityLabel("Back to \(Labels.possessive(model.name)) care")
                 .accessibilityIdentifier("review.close")
             }
         }
@@ -48,7 +48,7 @@ struct ReviewStepsView: View {
     @ViewBuilder private var content: some View {
         if model.steps.isEmpty {
             QuestionHeader("There\u{2019}s nothing left to check.")
-            Button("Back to \(CareData.possessive(model.name)) care") { model.finish() }
+            Button("Back to \(Labels.possessive(model.name)) care") { model.finish() }
                 .buttonStyle(.primary)
                 .accessibilityIdentifier("review.backToCare")
         } else {
@@ -101,7 +101,7 @@ struct ReviewStepsView: View {
         .background(Theme.surface, in: .rect(cornerRadius: Theme.radius))
         .overlay { RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.hairline, lineWidth: 1) }
         ButtonStack {
-            Button("Back to \(CareData.possessive(model.name)) care") { model.finish() }
+            Button("Back to \(Labels.possessive(model.name)) care") { model.finish() }
                 .buttonStyle(.primary)
                 .accessibilityIdentifier("review.backToCare")
             if summary.skipped > 0 && model.firstLeft != nil {
@@ -109,7 +109,7 @@ struct ReviewStepsView: View {
                     .buttonStyle(.secondary)
                     .accessibilityIdentifier("review.checkLeft")
             }
-            NoteText("Only what you approved is on \(CareData.possessive(model.name)) profile. The rest waits for you.")
+            NoteText("Only what you approved is on \(Labels.possessive(model.name)) profile. The rest waits for you.")
         }
     }
 
@@ -125,7 +125,7 @@ struct ReviewStepsView: View {
                 .fixedSize(horizontal: false, vertical: true)
             nextButton
         case .rejected(let text):
-            factQuestion(text, ask: "You rejected this. It stays off \(CareData.possessive(model.name)) profile.")
+            factQuestion(text, ask: "You rejected this. It stays off \(Labels.possessive(model.name)) profile.")
             nextButton
         case .approved where fact != nil:
             factMeta(fact!)
@@ -201,7 +201,7 @@ struct ReviewStepsView: View {
                 NoteText(
                     locked
                         ? "Written care instructions stay word for word. Approve or reject them as written."
-                        : "Only what you approve goes on \(CareData.possessive(model.name)) profile."
+                        : "Only what you approve goes on \(Labels.possessive(model.name)) profile."
                 )
                 finishLater
             }
@@ -220,7 +220,7 @@ struct ReviewStepsView: View {
 
     private func changedText(_ fact: CareFact) -> String {
         switch fact.status {
-        case .approved: "It\u{2019}s already on \(CareData.possessive(model.name)) profile."
+        case .approved: "It\u{2019}s already on \(Labels.possessive(model.name)) profile."
         case .rejected: "It was rejected while you were checking."
         case .superseded: "A newer version replaced it while you were checking."
         case .conflicting: "It now disagrees with another note. Pick one the next time you check."
@@ -295,7 +295,7 @@ struct ReviewStepsView: View {
             if let error = model.error { ErrorNote(error) }
             ButtonStack {
                 NoteText(
-                    "The other \(group.count > 2 ? "notes are" : "note is") set aside, not deleted. Until you pick, neither time is on \(CareData.possessive(model.name)) day."
+                    "The other \(group.count > 2 ? "notes are" : "note is") set aside, not deleted. Until you pick, neither time is on \(Labels.possessive(model.name)) day."
                 )
                 Button("Decide later") { model.skip() }
                     .buttonStyle(.secondary)

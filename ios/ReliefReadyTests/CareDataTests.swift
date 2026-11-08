@@ -94,8 +94,6 @@ struct CareDataTests {
     @Test func shortenCutsAtAWord() {
         #expect(CareData.shorten("short", 10) == "short")
         #expect(CareData.shorten("Her spare glasses are in the top drawer", 20) == "Her spare glasses\u{2026}")
-        #expect(CareData.possessive("Rosa") == "Rosa\u{2019}s")
-        #expect(CareData.possessive("James") == "James\u{2019}")
     }
 
     @Test func earlierVersionsFollowSupersedes() {

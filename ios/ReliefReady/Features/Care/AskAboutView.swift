@@ -90,7 +90,7 @@ struct AskAboutView: View {
                         }
                         .disabled(model.busy)
                         .accessibilityLabel("Your question about \(name)")
-                        .accessibilityHint("Answers come only from \(CareData.possessive(name)) approved passport")
+                        .accessibilityHint("Answers come only from \(Labels.possessive(name)) approved passport")
                         .accessibilityIdentifier("care.ask.field")
                 }
                 .padding(.horizontal, 12)
@@ -107,7 +107,7 @@ struct AskAboutView: View {
                     .accessibilityLabel(model.busy ? "Looking" : "Ask")
                     .accessibilityIdentifier("care.ask.submit")
             }
-            NoteText("Answers come only from \(CareData.possessive(name)) approved passport, never from a guess.", alignment: .leading)
+            NoteText("Answers come only from \(Labels.possessive(name)) approved passport, never from a guess.", alignment: .leading)
             if let error = model.error { ErrorNote(error) }
 
             if let asked = model.asked {
@@ -146,7 +146,7 @@ struct AskAboutView: View {
 
     private func submit() {
         fieldFocused = false
-        careAnnounce("Looking in \(CareData.possessive(name)) approved passport.")
+        careAnnounce("Looking in \(Labels.possessive(name)) approved passport.")
         Task {
             if await model.ask(app.api) { await onChanged() }
             if let asked = model.asked { careAnnounce(AnswerView.leadText(name: name, asked: asked)) }
@@ -165,8 +165,8 @@ private struct AnswerView: View {
     static func leadText(name: String, asked: AskModel.Asked) -> String {
         let result = asked.result
         if result.medicalRedirect { return CareHelp.redirectText(result) }
-        if result.notFound { return "I don\u{2019}t have that in \(CareData.possessive(name)) approved passport." }
-        return result.answer ?? "Here\u{2019}s what \(CareData.possessive(name)) passport says, word for word."
+        if result.notFound { return "I don\u{2019}t have that in \(Labels.possessive(name)) approved passport." }
+        return result.answer ?? "Here\u{2019}s what \(Labels.possessive(name)) passport says, word for word."
     }
 
     var body: some View {
@@ -222,7 +222,7 @@ private struct AnswerView: View {
                     .accessibilityIdentifier("care.ask.saved")
             }
             if result.conflictPending {
-                Text("Open \u{201C}Open questions & conflicts\u{201D} in \(CareData.possessive(name)) passport and keep the note that\u{2019}s right.")
+                Text("Open \u{201C}Open questions & conflicts\u{201D} in \(Labels.possessive(name)) passport and keep the note that\u{2019}s right.")
                     .font(.rrBody)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("care.ask.conflictPending")
@@ -346,7 +346,7 @@ private struct CitationRow: View {
                         Button {
                             onReveal(cited.id)
                         } label: {
-                            Label("Show in \(CareData.possessive(name)) passport", systemImage: "book")
+                            Label("Show in \(Labels.possessive(name)) passport", systemImage: "book")
                         }
                         .buttonStyle(.careSmall)
                         .accessibilityIdentifier("care.ask.showInPassport")

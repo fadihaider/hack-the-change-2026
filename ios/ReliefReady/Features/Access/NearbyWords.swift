@@ -122,7 +122,7 @@ nonisolated enum NearbyWords {
         }
     }
 
-    private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    private static let months = AlbertaTime.months
 
     /// "Nov 7, 2026" for the date part of a fetched-at value; nil when there is none
     static func checkedOn(_ value: String) -> String? {

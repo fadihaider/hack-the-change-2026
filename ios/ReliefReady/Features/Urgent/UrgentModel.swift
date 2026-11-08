@@ -392,7 +392,7 @@ final class UrgentModel {
                 let kept = try await api.decide(DecideInput(commitmentId: c.id, decision: .keep))
                 patchCommitment(c.id, decision: .some(kept.commitment.decision), reopened: false)
             }
-            let whose = UrgentWords.possessive(care.name)
+            let whose = Labels.possessive(care.name)
             say(result.created ? "Added to \(whose) timeline in Care." : "It was already on \(whose) timeline.", .calendar)
             if shouldAdvance { advance(from: here) }
         } catch {
@@ -523,7 +523,7 @@ final class UrgentModel {
             requestsOf(c).filter { $0.id != request.id && Self.reviewable.contains($0.state) && !UrgentWords.isProposal($0) }
         } ?? []
         if fromStep, let nextOne = waiting.first {
-            say("Sent to \(who). \(UrgentWords.possessive(UrgentWords.shortName(nextOne.recipient.name))) message is next.", .send)
+            say("Sent to \(who). \(Labels.possessive(UrgentWords.shortName(nextOne.recipient.name))) message is next.", .send)
             return
         }
         say("Sent to \(who). Waiting for a reply.", .send)

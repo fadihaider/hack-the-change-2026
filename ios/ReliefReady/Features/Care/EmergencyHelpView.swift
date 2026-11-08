@@ -274,7 +274,7 @@ private struct ContactRow: View {
             }
 
             if confirming {
-                Text("Remove \(contact.name) from \(CareData.possessive(name)) contacts? This only changes ReliefReady.")
+                Text("Remove \(contact.name) from \(Labels.possessive(name)) contacts? This only changes ReliefReady.")
                     .font(.rrBody)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 10) {

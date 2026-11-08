@@ -352,13 +352,9 @@ nonisolated enum StartText {
     /// the welcome's muted lead: before, during or after the week
     static func welcomeLead(name: String, today: String, episode: EpisodeSummary) -> String {
         // YYYY-MM-DD strings order like their dates, as in the web's string comparison
-        if today < episode.startsOn { return "\(possessive(name)) care week starts \(AlbertaTime.dayLabel(episode.startsOn))." }
-        if today > episode.endsOn { return "\(possessive(name)) care week ended \(AlbertaTime.dayLabel(episode.endsOn))." }
+        if today < episode.startsOn { return "\(Labels.possessive(name)) care week starts \(AlbertaTime.dayLabel(episode.startsOn))." }
+        if today > episode.endsOn { return "\(Labels.possessive(name)) care week ended \(AlbertaTime.dayLabel(episode.endsOn))." }
         return "You\u{2019}re caring for \(name)."
-    }
-
-    static func possessive(_ name: String) -> String {
-        name.hasSuffix("s") ? "\(name)\u{2019}" : "\(name)\u{2019}s"
     }
 
     static func capitalised(_ text: String) -> String {

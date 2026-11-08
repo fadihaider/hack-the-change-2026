@@ -139,7 +139,7 @@ final class LetterModel: Identifiable {
             if let group = current.defaultDisclosureTier, group != .detailed {
                 return "It mentions \(words). You chose to share more detail with \(name), so it can go as written."
             }
-            return "It mentions \(words). \(UrgentWords.possessive(name)) group is set to hear more detail, so it can go as written."
+            return "It mentions \(words). \(Labels.possessive(name)) group is set to hear more detail, so it can go as written."
         }
         return "It mentions \(words). You chose to send it anyway."
     }
