@@ -551,6 +551,9 @@ const ERROR_TEXT: Record<string, string> = {
     "This fact conflicts with another one. Choose which version to keep first.",
   state_conflict:
     "This item changed elsewhere. Refresh to see its recorded state.",
+  exact_wording_locked:
+    "Written care instructions stay word for word. Add the corrected document or note instead.",
+  not_scheduled: "That item isn’t on this day, so it can’t be marked done here.",
   forbidden: "Only an admin account can move the demo clock.",
   care_recipient_not_found:
     "No care recipient is set up for this account yet.",
@@ -666,6 +669,7 @@ export function formatDate(date: string): string {
 export function categoryLabel(category: string | null): string {
   if (!category) return "appointment";
   if (category === "medical_instruction") return "medical instruction as written";
+  if (category === "practical") return "practical needs and belongings";
   return category.replaceAll("_", " ");
 }
 

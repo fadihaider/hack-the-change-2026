@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { MAX_AUDIO_BYTES, MAX_SPEECH_CHARACTERS, SpeechIntegrationError } from "../elevenlabs.ts";
 
-const categories = ["routine", "preference", "communication", "mobility", "contacts", "logistics", "medical_instruction"] as const;
+const categories = ["routine", "preference", "communication", "mobility", "practical", "contacts", "logistics", "medical_instruction"] as const;
 const boundedText = z.string().min(1).max(20_000).refine((value) => value.trim().length > 0);
 const identifier = z.string().min(1).max(200).refine((value) => value.trim().length > 0);
 const source = z.discriminatedUnion("type", [
