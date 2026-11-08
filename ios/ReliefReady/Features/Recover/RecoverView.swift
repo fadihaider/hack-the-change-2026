@@ -106,7 +106,7 @@ private struct RecoverList: View {
 
                 RecoverGroup(
                     title: "Needs follow-up", hint: "Each one needs a next step from you.", id: "followUp",
-                    isEmpty: sorted.followUp.isEmpty
+                    isEmpty: sorted.followUp.isEmpty, dropdownCount: sorted.followUp.count
                 ) {
                     ForEach(sorted.followUp) { request in
                         RecoverRequestRow(
@@ -156,11 +156,13 @@ private struct RecoverList: View {
                     foot(mail: mail)
                 }
 
-                Rectangle().fill(Theme.hairline).frame(height: 1)
-                    .padding(.top, 24)
-                    .padding(.bottom, 16)
-                    .accessibilityHidden(true)
-                HelpNearbyView(address: session.careRecipient?.address)
+                DropdownSection(
+                    "Help nearby", hint: "Hospitals, pharmacies, transit, time off and support.",
+                    identifier: "recover.helpNearby"
+                ) {
+                    HelpNearbyView(address: session.careRecipient?.address, usesDropdowns: true)
+                }
+                .padding(.top, 24)
             }
             .refreshable { await recover.check(api: model.api) }
             .onChange(of: recover.actionCount) {
@@ -207,10 +209,19 @@ private struct RecoverGroup<Rows: View>: View {
     var hint: String
     var id: String
     var isEmpty: Bool
+    /// set to show the group as a dropdown with this many rows in its header; it starts open
+    var dropdownCount: Int?
     @ViewBuilder var rows: Rows
 
     var body: some View {
-        if !isEmpty {
+        if !isEmpty, let count = dropdownCount {
+            DropdownSection(title, hint: hint, count: count, startsOpen: true, identifier: "recover.group.\(id)") {
+                Card(padding: 0) {
+                    VStack(alignment: .leading, spacing: 0) { rows }
+                }
+            }
+            .padding(.top, 12)
+        } else if !isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(Fonts.figtree(15, weight: .semibold, relativeTo: .subheadline))

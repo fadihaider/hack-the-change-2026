@@ -76,3 +76,11 @@ export function deliveryTime(text: SmsView): { word: string; at: string } | null
   if (text.approvedAt) return { word: "Approved", at: text.approvedAt };
   return null;
 }
+
+/**
+ * an sms: link that opens this phone's Messages app with the number and words filled in, for a demo send.
+ * "?&body=" is the form both iOS and Android read
+ */
+export function messagesLink(phone: string, body: string): string {
+  return `sms:${phone}?&body=${encodeURIComponent(body)}`;
+}

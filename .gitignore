@@ -25,3 +25,6 @@ CLAUDE.md
 ios/build/
 ios/DerivedData/
 .next-*/
+
+# Xcode per-user state
+xcuserdata/

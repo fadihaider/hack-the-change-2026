@@ -5,6 +5,9 @@ import UIKit
 struct SmsSheet: View {
     @Bindable var sms: SmsModel
     var onClose: () -> Void
+    @State private var composing = false
+    @State private var handoffNote: String?
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -73,7 +76,23 @@ struct SmsSheet: View {
                             if let id = result.providerMessageId {
                                 Text("Message ID \(id)").font(.rrNote).foregroundStyle(Theme.muted)
                             }
-                            UrgentButton(title: "Done", kind: .primary, identifier: "sms.done", action: onClose)
+                            if let phone = sms.handoffPhone {
+                                Text("To make it arrive for real, send it from this phone\u{2019}s Messages app.")
+                                    .font(.rrBody).foregroundStyle(Theme.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                UrgentButton(
+                                    title: "Send it from Messages", kind: .primary, systemImage: "message",
+                                    identifier: "sms.handoff"
+                                ) { handOff(phone: phone, body: result.body) }
+                                if let handoffNote {
+                                    Text(handoffNote).font(.rrNote).foregroundStyle(Theme.muted)
+                                        .accessibilityIdentifier("sms.handoffNote")
+                                }
+                            }
+                            UrgentButton(
+                                title: "Done", kind: sms.handoffPhone == nil ? .primary : .secondary, identifier: "sms.done",
+                                action: onClose
+                            )
                         }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("sms.result")
@@ -110,7 +129,39 @@ struct SmsSheet: View {
             }
         }
         .task { await sms.loadRecipients() }
+        .sheet(isPresented: $composing) {
+            if let phone = sms.handoffPhone, let body = sms.result?.body {
+                MessageComposer(phone: phone, body: body) { outcome in
+                    composing = false
+                    switch outcome {
+                    case .sent: handoffNote = "Sent from your Messages app."
+                    case .failed: handoffNote = "Messages couldn\u{2019}t send it. Try again."
+                    case .cancelled: handoffNote = nil
+                    @unknown default: handoffNote = nil
+                    }
+                }
+                .ignoresSafeArea()
+            }
+        }
         .accessibilityIdentifier("screen.sms")
+    }
+
+    /// the Messages sheet on a phone that can text; otherwise the sms: link, which opens Messages where it exists
+    private func handOff(phone: String, body: String) {
+        handoffNote = nil
+        if MessageComposer.canSend {
+            composing = true
+            return
+        }
+        var parts = URLComponents()
+        parts.scheme = "sms"
+        parts.path = phone
+        parts.queryItems = [URLQueryItem(name: "body", value: body)]
+        if let url = parts.url {
+            openURL(url) { opened in
+                if !opened { handoffNote = "This device can\u{2019}t send texts. Use an iPhone with a SIM or iMessage." }
+            }
+        }
     }
 
     /// a field binding where every change to what would be sent needs a fresh approval

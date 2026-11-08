@@ -42,6 +42,29 @@ final class RecoverFlowTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["recover.group.notSent"].waitForExistence(timeout: 5))
         shot(app, "recover-1-list")
 
+        // help nearby and time off and income start closed; open both, then close them again
+        let closed = NSPredicate(format: "value == %@", "Closed")
+        let open = NSPredicate(format: "value == %@", "Open")
+        let helpToggle = app.buttons["recover.helpNearby.toggle"]
+        reveal(helpToggle, in: app)
+        XCTAssertTrue(closed.evaluate(with: helpToggle), "help nearby did not start closed")
+        helpToggle.tap()
+        XCTAssertTrue(waitFor(helpToggle, open, timeout: 5), "help nearby did not open")
+        let workToggle = app.buttons["help.group.work.toggle"]
+        XCTAssertTrue(workToggle.waitForExistence(timeout: 30), "help nearby showed no time off and income")
+        XCTAssertTrue(closed.evaluate(with: workToggle), "time off and income did not start closed")
+        reveal(workToggle, in: app)
+        workToggle.tap()
+        XCTAssertTrue(waitFor(workToggle, open, timeout: 5), "time off and income did not open")
+        shot(app, "recover-1b-help-open")
+        workToggle.tap()
+        XCTAssertTrue(waitFor(workToggle, closed, timeout: 5), "time off and income did not close")
+        // help nearby's header is above; scroll back up to it
+        for _ in 0..<15 where !helpToggle.isHittable { app.swipeDown(velocity: .slow) }
+        helpToggle.tap()
+        XCTAssertTrue(waitFor(helpToggle, closed, timeout: 5), "help nearby did not close")
+        for _ in 0..<12 where !heading.isHittable { app.swipeDown() }
+
         // 2. "Don't send it", then confirm
         let cancel = app.buttons["recover.cancel.\(seeded.cancel)"]
         reveal(cancel, in: app)

@@ -17,6 +17,8 @@ import {
 } from "../lib/sms/provider.ts";
 import { createSmsStore, type NewSms } from "../lib/sms/workflow.ts";
 import { HealthTermsError } from "../lib/store/requestQueue.ts";
+import { smsHandoffPhone } from "../app/api/_lib/sms.ts";
+import type { Runtime } from "../lib/mvp/runtime.ts";
 import { createRequestQueue } from "../lib/store/requestQueue.ts";
 
 let dir: string;
@@ -243,6 +245,24 @@ test("demo sends go to the sms outbox and are reported as simulated, never deliv
   assert.equal(stored.to_phone, PHONE);
   assert.equal(stored.body, text.body);
   assert.equal(await store.refresh(userId, demo), 0);
+});
+
+test("the full number comes back only for the owner's own demo send, so their phone can send it from Messages", async () => {
+  const store = createSmsStore(db);
+  const rt = { stores: { database: db } } as unknown as Runtime;
+  const owner = { id: userId } as Parameters<typeof smsHandoffPhone>[1];
+  const text = await store.createApproved(draft());
+  assert.equal(await smsHandoffPhone(rt, owner, text), null, "not before it is sent");
+  const sent = await store.send({ userId, requestId: text.id, provider: createDemoSmsProvider(db), extraHealthTerms: [], findHealthTerms });
+  assert.equal(await smsHandoffPhone(rt, owner, sent), PHONE);
+  const [other] = await db.query<{ id: string }>(
+    "INSERT INTO app_user (email) VALUES ('handoff-sms@example.test') RETURNING id::text AS id");
+  assert.equal(await smsHandoffPhone(rt, { id: other.id } as typeof owner, sent), null, "never to another owner");
+
+  const live = await store.createApproved(draft());
+  const { provider } = fakeTwilio(() => twilioJson({ sid: SID, status: "queued" }));
+  const real = await store.send({ userId, requestId: live.id, provider, extraHealthTerms: [], findHealthTerms });
+  assert.equal(await smsHandoffPhone(rt, owner, real), null, "never for a real Twilio send");
 });
 
 test("a changed text after approval is held for review instead of sent", async () => {

@@ -34,6 +34,8 @@ final class SmsModel {
     var busy: Busy?
     var error: String?
     var result: SmsView?
+    /// the full number after a demo send, for "Send it from Messages"; nil for real (Twilio) sends
+    var handoffPhone: String?
     private(set) var clientKey = SmsApproveInput.newClientKey()
     /// the server copy approved for this exact key; a retry after a failed send reuses it instead of approving again
     private var approvedText: (key: String, text: SmsView)?
@@ -127,6 +129,7 @@ final class SmsModel {
     func changed() {
         approved = false
         result = nil
+        handoffPhone = nil
         clientKey = SmsApproveInput.newClientKey()
         approvedText = nil
     }
@@ -236,7 +239,9 @@ final class SmsModel {
                 text = saved
             }
             guard let text else { return }
-            let sent = try await api.smsSend(requestId: text.id).text
+            let reply = try await api.smsSend(requestId: text.id)
+            let sent = reply.text
+            handoffPhone = reply.handoffPhone
             result = sent
             onChange(sent)
             AccessibilityNotification.Announcement("\(SmsWords.deliveryLabel(sent.delivery)). \(SmsWords.deliveryNote(sent))").post()

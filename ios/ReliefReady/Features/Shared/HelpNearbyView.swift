@@ -7,13 +7,16 @@ struct HelpNearbyView: View {
     @Environment(AppModel.self) private var model
     /// a typed address; nil uses the care recipient's saved address on the server
     var address: String?
+    /// recover shows this inside its own dropdown: no title here, and time off and income opens and closes
+    var usesDropdowns: Bool
 
-    init(address: String? = nil) {
+    init(address: String? = nil, usesDropdowns: Bool = false) {
         self.address = address
+        self.usesDropdowns = usesDropdowns
     }
 
     var body: some View {
-        HelpNearbySection(api: model.api, address: address, appNow: model.session?.appNow)
+        HelpNearbySection(api: model.api, address: address, appNow: model.session?.appNow, usesDropdowns: usesDropdowns)
             .id(model.config.baseURL.absoluteString)
     }
 }
@@ -24,21 +27,25 @@ struct HelpNearbySection: View {
     @AccessibilityFocusState private var headingFocused: Bool
     private let address: String?
     private let appNow: String?
+    private let usesDropdowns: Bool
 
-    init(api: any UrgentAPI, address: String?, appNow: String?) {
+    init(api: any UrgentAPI, address: String?, appNow: String?, usesDropdowns: Bool = false) {
         self.address = address
         self.appNow = appNow
+        self.usesDropdowns = usesDropdowns
         _help = State(initialValue: HelpNearbyModel(api: api, address: address))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Help nearby")
-                .font(.rrTitle)
-                .foregroundStyle(Theme.ink)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityFocused($headingFocused)
-                .accessibilityIdentifier("help.title")
+            if !usesDropdowns {
+                Text("Help nearby")
+                    .font(.rrTitle)
+                    .foregroundStyle(Theme.ink)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($headingFocused)
+                    .accessibilityIdentifier("help.title")
+            }
             Text(help.leadLine)
                 .font(.rrBody)
                 .foregroundStyle(Theme.muted)
@@ -120,9 +127,19 @@ struct HelpNearbySection: View {
             }
         }
 
-        section("Time off and income", identifier: "help.group.work") {
-            tenureQuestion
-            if !grouped.work.isEmpty { cardList(grouped.work) }
+        if usesDropdowns {
+            DropdownSection(
+                "Time off and income", hint: "Family leave from work and EI benefits.", identifier: "help.group.work"
+            ) {
+                tenureQuestion
+                if !grouped.work.isEmpty { cardList(grouped.work) }
+            }
+            .padding(.top, 8)
+        } else {
+            section("Time off and income", identifier: "help.group.work") {
+                tenureQuestion
+                if !grouped.work.isEmpty { cardList(grouped.work) }
+            }
         }
 
         if !grouped.support.isEmpty {
@@ -336,5 +353,86 @@ struct EmployerNotice: View {
                 AccessibilityNotification.Announcement("Copied the notice.").post()
             }
         }
+    }
+}
+
+/// a titled section that opens and closes on tap, so long lists stay tidy
+struct DropdownSection<Content: View>: View {
+    private let title: String
+    private let hint: String?
+    private let count: Int?
+    private let identifier: String
+    private let content: Content
+    @State private var isOpen: Bool
+
+    init(
+        _ title: String, hint: String? = nil, count: Int? = nil, startsOpen: Bool = false, identifier: String,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.hint = hint
+        self.count = count
+        self.identifier = identifier
+        self.content = content()
+        _isOpen = State(initialValue: startsOpen)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { isOpen.toggle() }
+            } label: {
+                header
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(count.map { "\(title), \($0)" } ?? title)
+            .accessibilityValue(isOpen ? "Open" : "Closed")
+            .accessibilityHint(hint ?? "")
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("\(identifier).toggle")
+
+            if isOpen {
+                VStack(alignment: .leading, spacing: 12) { content }
+                    .transition(.opacity)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(Fonts.figtree(16, weight: .semibold, relativeTo: .headline))
+                    .foregroundStyle(Theme.ink)
+                if let hint {
+                    Text(hint)
+                        .font(.rrNote)
+                        .foregroundStyle(Theme.muted)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let count {
+                Text("\(count)")
+                    .font(.rrNote.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(Theme.tealInk)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 3)
+                    .background(Theme.tealTint, in: .capsule)
+            }
+            Image(systemName: "chevron.down")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.muted)
+                .rotationEffect(.degrees(isOpen ? 180 : 0))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(minHeight: 52)
+        .background(Theme.surface, in: .rect(cornerRadius: Theme.radius))
+        .overlay { RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.hairline, lineWidth: 1) }
+        .contentShape(.rect)
     }
 }

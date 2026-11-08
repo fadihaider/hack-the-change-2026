@@ -49,9 +49,11 @@ nonisolated struct SmsList: Codable, Sendable, Hashable {
     var texts: [SmsView]
 }
 
-/// {text} from POST /api/sms and /api/sms/send
+/// {text} from POST /api/sms; {text, handoffPhone} from /api/sms/send
 nonisolated struct SmsEnvelope: Codable, Sendable, Hashable {
     var text: SmsView
+    /// the full number after a demo send, so this phone's Messages can send it; nil for real (Twilio) sends
+    var handoffPhone: String? = nil
 }
 
 nonisolated enum SmsRecipientKind: String, TolerantEnum {

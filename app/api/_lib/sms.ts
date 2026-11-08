@@ -185,6 +185,22 @@ export async function sendSms(rt: Runtime, user: SessionUser, requestId: string)
   });
 }
 
+const SMS_PHONE = `SELECT recipient_phone FROM request
+  WHERE id = CAST(:id AS uuid) AND user_id = CAST(:user_id AS uuid) AND channel = 'sms'`;
+
+/**
+ * the full number for a simulated text, so the owner's own phone can send it from Messages (sms: link on the web,
+ * the Messages sheet on iOS). only after a demo send, only to the owner; real (twilio) sends never return it
+ */
+export async function smsHandoffPhone(rt: Runtime, user: SessionUser, text: SmsView): Promise<string | null> {
+  if (text.delivery !== "simulated") return null;
+  const [row] = await rt.stores.database.query<{ recipient_phone: string }>(
+    SMS_PHONE,
+    [p.uuid("id", text.id), p.uuid("user_id", user.id)],
+  );
+  return row?.recipient_phone ?? null;
+}
+
 /** the owner's texts for one care week (or all), after asking Twilio about any still on their way */
 export async function listSms(rt: Runtime, user: SessionUser, episodeId: string | null) {
   await rt.smsStore.refresh(user.id, rt.sms).catch(() => 0);
