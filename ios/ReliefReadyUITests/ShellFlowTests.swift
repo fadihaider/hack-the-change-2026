@@ -29,8 +29,14 @@ final class ShellFlowTests: XCTestCase {
         }
         if start.exists || !urgentTab.exists { throw XCTSkip("the demo server at \(server) has no care week") }
 
-        // urgent: the first step, or the summary, once the week's scan is back
-        XCTAssertTrue(element("urgent.progress").waitForExistence(timeout: 120), "the week's steps never loaded")
+        // urgent: the steps, or "No one needs a message.", once the week's scan is back
+        let steps = element("urgent.progress")
+        let clear = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'No one needs a message.'")).firstMatch
+        let scanned = Date().addingTimeInterval(120)
+        while Date() < scanned, !(steps.exists || clear.exists) {
+            _ = steps.waitForExistence(timeout: 1)
+        }
+        XCTAssertTrue(steps.exists || clear.exists, "the week's scan never loaded")
         shot("urgent")
 
         // care, with Near Rosa at its foot
@@ -47,7 +53,7 @@ final class ShellFlowTests: XCTestCase {
         if goUrgent.exists {
             goUrgent.tap()
             assertSelected(urgentTab)
-            XCTAssertTrue(element("urgent.progress").waitForExistence(timeout: 10))
+            XCTAssertTrue(element("screen.urgent").waitForExistence(timeout: 10))
         }
 
         // more, and the screens it pushes, each with its back button
@@ -63,6 +69,35 @@ final class ShellFlowTests: XCTestCase {
             app.navigationBars.buttons.element(boundBy: 0).tap()
             XCTAssertTrue(app.buttons[link].waitForExistence(timeout: 5))
         }
+    }
+
+    /// an appointment Urgent put on the care timeline links back to Urgent from its details. skipped when no day of
+    /// the week has one (UrgentFlowTests adds Rosa's follow-up appointment)
+    @MainActor
+    func testCareAppointmentLinksToUrgent() throws {
+        app = XCUIApplication()
+        app.launchArguments = ["-ServerURL", server, "-StartTab", "care"]
+        app.launch()
+        guard element("care.today").waitForExistence(timeout: 30) else {
+            throw XCTSkip("the demo server at \(server) has no care week")
+        }
+        let details = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'care.today.details.' AND label BEGINSWITH 'Full details'"))
+        let next = app.buttons["care.today.next"]
+        for _ in 0..<7 where !details.firstMatch.exists {
+            guard next.exists, next.isEnabled else { break }
+            if !next.isHittable { app.swipeUp(velocity: .slow) }
+            next.tap()
+            _ = details.firstMatch.waitForExistence(timeout: 5)
+        }
+        guard details.firstMatch.exists else { throw XCTSkip("no appointment on the care timeline this week") }
+        if !details.firstMatch.isHittable { app.swipeUp(velocity: .slow) }
+        details.firstMatch.tap()
+        let link = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'care.today.urgent.'")).firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 5))
+        if !link.isHittable { app.swipeUp(velocity: .slow) }
+        link.tap()
+        assertSelected(app.tabBars.buttons["Urgent"])
+        XCTAssertTrue(element("screen.urgent").waitForExistence(timeout: 10))
     }
 
     private func element(_ identifier: String) -> XCUIElement {

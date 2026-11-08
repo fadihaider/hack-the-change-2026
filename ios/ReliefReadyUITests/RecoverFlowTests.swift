@@ -3,9 +3,11 @@ import XCTest
 /// walks the recover demo against a local demo server on port 3205 (ios/scripts/demo-server.sh --reset 3205):
 /// seeds four requests by api, cancels one and sends one from Recover, accepts one through the Outbox reply link,
 /// sees it under Handled, then moves the clock three days so the unanswered one needs follow-up.
-/// skipped when the server isn't running; needs a freshly reset demo database
+/// skipped when the server isn't running; needs a freshly reset demo database. RECOVER_SERVER
+/// (TEST_RUNNER_RECOVER_SERVER to xcodebuild) points it at another server
 final class RecoverFlowTests: XCTestCase {
-    static let base = URL(string: "http://127.0.0.1:3205")!
+    static let base = ProcessInfo.processInfo.environment["RECOVER_SERVER"].flatMap(URL.init(string:))
+        ?? URL(string: "http://127.0.0.1:3205")!
     private var server: DemoServer!
 
     /// ios/screenshots, next to this folder
@@ -128,6 +130,16 @@ final class RecoverFlowTests: XCTestCase {
         for _ in 0..<10 where !heading.isHittable { app.swipeDown() }
         app.swipeUp(velocity: 300)
         shot(app, "recover-11-follow-up")
+
+        // 7. "Choose what to do in Urgent" switches tabs and reopens that step
+        let toUrgent = app.buttons["recover.urgent.\(seeded.expire)"]
+        reveal(toUrgent, in: app)
+        toUrgent.tap()
+        let urgentTab = app.tabBars.buttons["Urgent"]
+        XCTAssertTrue(waitFor(urgentTab, NSPredicate(format: "isSelected == true"), timeout: 10), "Urgent was not selected")
+        let urgentReceipt = app.descendants(matching: .any)["urgent.receipt"]
+        XCTAssertTrue(urgentReceipt.waitForExistence(timeout: 120), "urgent never opened the linked message")
+        XCTAssertTrue(urgentReceipt.label.contains("Choose what to do now."), urgentReceipt.label)
 
         _ = try await server.post("/api/clock/reset", [:])
     }

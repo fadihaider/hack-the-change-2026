@@ -1,6 +1,7 @@
 import XCTest
 
-/// launches against the local demo server and checks the shell renders
+/// launches against the local demo server and checks the shell renders. SMOKE_SERVER (TEST_RUNNER_SMOKE_SERVER to
+/// xcodebuild) picks the server, default http://127.0.0.1:3200
 final class LaunchSmokeTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -9,7 +10,7 @@ final class LaunchSmokeTests: XCTestCase {
     @MainActor
     func testRootRenders() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-ServerURL", "http://127.0.0.1:3200"]
+        app.launchArguments = ["-ServerURL", ProcessInfo.processInfo.environment["SMOKE_SERVER"] ?? "http://127.0.0.1:3200"]
         app.launch()
 
         // with an episode the tabs show; without one, Start; a down server shows the connection screen
