@@ -19,3 +19,6 @@ CREATE TABLE IF NOT EXISTS care_contact (id uuid PRIMARY KEY DEFAULT gen_random_
 CREATE INDEX IF NOT EXISTS care_contact_recipient ON care_contact (care_recipient_id, created_at);
 -- a timeline occurrence the caregiver marked done: usage_signal kind 'completed', value YYYY-MM-DD, at most one each
 CREATE UNIQUE INDEX IF NOT EXISTS usage_signal_completed_once ON usage_signal (care_event_id, value) WHERE kind = 'completed';
+
+-- nearby resources: GET /api/care-access/nearby looks up the nearest places of each kind around a point
+CREATE INDEX IF NOT EXISTS resource_kind ON resource (kind);
