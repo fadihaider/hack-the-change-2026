@@ -9,7 +9,7 @@ import { INTAKE_SYSTEM_PROMPT, type IntakeOutput } from "./intake.ts";
 import { ModelCallError, type ModelCaller, type StepName } from "./model.ts";
 import { PROFILE_QA_SYSTEM_PROMPT, type ProfileQaOutput } from "./profileQa.ts";
 import { RESOURCE_SYSTEM_PROMPT, type ResourceOutput } from "./resources.ts";
-import { addDays, datesMentioned, isIsoDate, timesMentioned } from "./time.ts";
+import { addDays, datesMentioned, isIsoDate, spokenClockTimes, timesMentioned } from "./time.ts";
 
 export const DEMO_MODEL = "demo";
 
@@ -311,15 +311,25 @@ interface DemoExistingFact {
   time: string | null;
 }
 
-// checked in order; meals and naps first, so "Breakfast at 8:30 with medication." stays a routine
+// checked in order; meals and naps first, so "Breakfast at 8:30 with medication." stays a routine. belongings come
+// before contacts so "her phone is in the drawer" is practical; the loose "is in" rule runs after logistics, so
+// "the appointment is in the afternoon" stays logistics
 const CATEGORY_RULES: [CareCategory, RegExp][] = [
   ["routine", /\b(?:breakfast|lunch|dinner|supper|meals?|naps?|bedtime|wakes? up)\b/i],
-  ["medical_instruction", /\b(?:medications?|medicines?|incisions?|pain|wounds?|dressings?|fever|emergency|dose|mg|lift|stitches)\b/i],
+  [
+    "medical_instruction",
+    /\b(?:medications?|medicines?|pills?|tablets?|inhalers?|insulin|incisions?|pain|wounds?|dressings?|fever|emergency|dose|mg|lift|stitches)\b/i,
+  ],
+  ["practical", /\b(?:glasses|keys?|drawers?|wallet|purse|remote|charger|spare|cupboard|closet|shelf|kept in)\b/i],
   ["contacts", /\b(?:call|phone|text)\b/i],
   ["mobility", /\b(?:walks?|walking|cane|walker|wheelchair|stairs|transfers?)\b/i],
-  ["communication", /\b(?:speak|talk|face|lips|hearing|listen)\b/i],
+  [
+    "communication",
+    /\b(?:speak|speaks|talk|face|lips|hearing|hard of hearing|listen|written down|in writing|write (?:it|things) down|languages?|interpreter|slowly)\b/i,
+  ],
   ["logistics", /\b(?:appointments?|pharmacy|pick ?up|drop ?off|deliver(?:s|y)?|ride|parking)\b/i],
-  ["preference", /\b(?:likes?|prefers?|loves?|enjoys?|dislikes?|favou?rite)\b/i],
+  ["practical", /\b(?:is|are) (?:kept )?in\b/i],
+  ["preference", /\b(?:likes?|prefers?|loves?|enjoys?|dislikes?|favou?rite|radio|music|songs?)\b/i],
 ];
 // greetings, labels and text addressed to a machine are skipped, as the real prompt asks
 const SKIP = /^(?:okay|ok|so|um|hi|hello|hey|thanks|thank you)\b|\b(?:fictional|demo)\b|\b(?:ai|assistant|system note|ignore (?:all|previous))\b/i;
@@ -351,7 +361,7 @@ function demoCare(content: string): CareCompilerOutput {
     // a conflict: an existing fact of the same category about the same thing at a different time
     if (time !== null) {
       for (const fact of existing) {
-        if (fact.category === category && fact.time !== null && fact.time !== time && sharesKeyword(fact.textExact, sentence)) {
+        if (fact.category === category && fact.time !== null && fact.time !== time && sharesTopic(fact.textExact, sentence)) {
           conflicts.push({
             newFactIndex: index,
             existingFactId: fact.id,
@@ -364,9 +374,14 @@ function demoCare(content: string): CareCompilerOutput {
   return { facts, conflicts };
 }
 
-/** the first clock time written in the text as HH:MM, morning reading when am or pm is missing; null when none */
+/**
+ * the first clock time written in the text as HH:MM, digits ("8:30") or words ("at eight", "half past eight"),
+ * morning reading when am or pm is missing; null when none. never a time the guard would not find in the text.
+ */
 function firstTime(text: string): string | null {
   const lower = text.toLowerCase();
+  const mentioned = timesMentioned(text);
+  const candidates: { index: number; time: string }[] = spokenClockTimes(text);
   const match = /(?<![\d:])(\d{1,2})(?::([0-5]\d))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)?(?![\w:])/g;
   for (const found of lower.matchAll(match)) {
     const [, hourText, minutes, meridiem] = found;
@@ -383,12 +398,13 @@ function firstTime(text: string): string | null {
     } else if (hour > 23) {
       continue;
     }
-    const time = `${String(hour).padStart(2, "0")}:${minutes ?? "00"}`;
-    if (timesMentioned(text).has(time)) {
-      return time;
-    }
+    candidates.push({ index: found.index, time: `${String(hour).padStart(2, "0")}:${minutes ?? "00"}` });
   }
-  return /\bnoon\b/.test(lower) ? "12:00" : null;
+  const first = candidates.sort((a, b) => a.index - b.index).find((candidate) => mentioned.has(candidate.time));
+  if (first !== undefined) {
+    return first.time;
+  }
+  return /\b(?:noon|midday)\b/.test(lower) ? "12:00" : null;
 }
 
 /** FREQ=DAILY for "every morning", FREQ=WEEKLY;BYDAY=MO,TH for "Every Monday and Thursday"; otherwise null */
@@ -418,9 +434,22 @@ function stem(word: string): string {
   return word.length > 4 && word.endsWith("s") ? word.slice(0, -1) : word;
 }
 
-function sharesKeyword(a: string, b: string): boolean {
+/** words written capitalized in a text, such as names ("Rosa", "Mom"), lowercased and stemmed like keywords */
+function capitalized(text: string): Set<string> {
+  return new Set((text.match(/\p{Lu}\p{L}*/gu) ?? []).map((word) => stem(word.toLowerCase())));
+}
+
+/**
+ * true when two facts share a topic word. a word capitalized in both that no category rule knows, like the person's
+ * name, is not a topic, so "Rosa has lunch at noon." never conflicts with "Rosa has breakfast at 8:00." just because
+ * both name Rosa, while "Breakfast at 8:30." and "Breakfast at 8:00." still do
+ */
+function sharesTopic(a: string, b: string): boolean {
+  const capitalizedInA = capitalized(a);
+  const isName = (word: string): boolean =>
+    capitalizedInA.has(word) && capitalized(b).has(word) && !CATEGORY_RULES.some(([, pattern]) => pattern.test(word));
   const left = keywords(a);
-  return [...keywords(b)].some((word) => left.has(word));
+  return [...keywords(b)].some((word) => left.has(word) && !isName(word));
 }
 
 // ---------------------------------------------------------------- A5 profile Q&A

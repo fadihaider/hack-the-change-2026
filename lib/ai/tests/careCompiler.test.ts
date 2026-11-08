@@ -9,6 +9,7 @@ import {
   type ExistingFact,
 } from "../careCompiler";
 import { normalizeText } from "../text";
+import { spokenClockTimes, timesMentioned } from "../time";
 import {
   CARE_OUTPUT_DISCHARGE,
   CARE_OUTPUT_VOICE,
@@ -310,7 +311,7 @@ test("A4 matches plain-letter quotes against ligatures, soft hyphens and zero-wi
   assert.deepEqual(result.dropped, []);
 });
 
-test("A4 request schema lists the 7 categories, and one unknown category drops only that fact", async () => {
+test("A4 request schema lists the 8 categories, and one unknown category drops only that fact", async () => {
   const output = {
     facts: [fact("Breakfast at 8:00 am."), fact("Take 2 Tylenol at noon.", { category: "medication" })],
     conflicts: [],
@@ -402,4 +403,41 @@ test("A4 reads a 24-hour time after the day as a time, not a year", () => {
 
 test("A4 prompt asks for quotes that start a sentence and keep their negation", () => {
   assert.match(CARE_COMPILER_SYSTEM_PROMPT, /Start each quote where a sentence or list item starts, and keep words such as "do not"/);
+});
+
+test("practical is a stored category the prompt describes", () => {
+  assert.equal(CARE_CATEGORIES.length, 8);
+  assert.ok(CARE_CATEGORIES.includes("practical"));
+  assert.match(CARE_COMPILER_SYSTEM_PROMPT, /exactly one of these 8 values/);
+  assert.match(CARE_COMPILER_SYSTEM_PROMPT, /practical \(where belongings are kept such as glasses or keys/);
+});
+
+test("spoken clock times are read like digits, and doses or counts never are", () => {
+  assert.deepEqual([...timesMentioned("Rosa usually has breakfast at eight.")].sort(), ["08:00", "20:00"]);
+  assert.deepEqual([...timesMentioned("Breakfast is at eight thirty.")].sort(), ["08:30", "20:30"]);
+  assert.deepEqual([...timesMentioned("Breakfast at half past eight in the morning.")], ["08:30"]);
+  assert.deepEqual([...timesMentioned("Dinner at quarter to six pm.")], ["17:45"]);
+  assert.deepEqual([...timesMentioned("Bed at ten at night.")], ["22:00"]);
+  assert.deepEqual([...timesMentioned("Lunch at midday.")], ["12:00"]);
+  assert.deepEqual([...timesMentioned("She wakes at seven o'clock.")].sort(), ["07:00", "19:00"]);
+  assert.equal(timesMentioned("Take one in the morning and two at night.").size, 0);
+  assert.equal(timesMentioned("At one point she fell.").size, 0);
+  assert.equal(timesMentioned("She walks for eight thirty-minute blocks.").size, 0);
+  assert.equal(timesMentioned("She is eighty five years old.").size, 0);
+  assert.deepEqual(spokenClockTimes("Rosa usually has breakfast at eight."), [{ index: 27, time: "08:00" }]);
+});
+
+test("A4 keeps a model time for a spoken time and builds the same event as for digits", () => {
+  const spoken = guard("Rosa usually has breakfast at eight.", [fact("Rosa usually has breakfast at eight.", { time: "08:00" })], [], []);
+  const digits = guard("Rosa usually has breakfast at 8:00.", [fact("Rosa usually has breakfast at 8:00.", { time: "08:00" })], [], []);
+  assert.equal(spoken.facts[0].time, "08:00");
+  assert.equal(spoken.facts[0].event?.startsAt, digits.facts[0].event?.startsAt);
+  assert.equal(spoken.facts[0].event?.startsAt, `${EPISODE_START}T14:00:00.000Z`);
+  // "usually" does not state a daily repeat, so a model rule is cleared and the event stays one-off
+  const ruled = guard("Rosa usually has breakfast at eight.", [fact("Rosa usually has breakfast at eight.", { time: "08:00", rrule: "FREQ=DAILY" })], [], []);
+  assert.equal(ruled.facts[0].rrule, null);
+  // a time the text does not say is still cleared
+  const invented = guard("Rosa usually has breakfast at eight.", [fact("Rosa usually has breakfast at eight.", { time: "07:30" })], [], []);
+  assert.equal(invented.facts[0].time, null);
+  assert.equal(invented.facts[0].event, null);
 });
