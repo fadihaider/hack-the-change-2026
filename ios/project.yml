@@ -9,6 +9,8 @@ settings:
     DEVELOPMENT_TEAM: 766UTLLLT4
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
@@ -16,10 +18,68 @@ targets:
     type: application
     platform: iOS
     sources: [ReliefReady]
+    info:
+      path: ReliefReady/Info.plist
+      properties:
+        UIAppFonts: [Figtree-Variable.ttf]
+        UIUserInterfaceStyle: Light
+        NSLocalNetworkUsageDescription: ReliefReady connects to the ReliefReady server on your local network.
+        NSAppTransportSecurity:
+          # the dev server is plain http on 127.0.0.1 or a LAN address
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoads: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fadihaider.reliefready
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: ReliefReady
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         TARGETED_DEVICE_FAMILY: "1"
+  ReliefReadyTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ReliefReadyTests
+        excludes: [Fixtures]
+      - path: ReliefReadyTests/Fixtures
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: ReliefReady
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fadihaider.reliefready.tests
+        GENERATE_INFOPLIST_FILE: YES
+        # test suites run off the main actor; suites that touch ui state opt in with @MainActor
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/ReliefReady.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ReliefReady
+        BUNDLE_LOADER: $(TEST_HOST)
+  ReliefReadyUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [ReliefReadyUITests]
+    dependencies:
+      - target: ReliefReady
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fadihaider.reliefready.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        # XCTestCase overrides are nonisolated
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+        TEST_TARGET_NAME: ReliefReady
+schemes:
+  ReliefReady:
+    build:
+      targets:
+        ReliefReady: all
+        ReliefReadyTests: [test]
+        ReliefReadyUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - ReliefReadyTests
+        - ReliefReadyUITests
