@@ -12,7 +12,7 @@ struct ServerURLForm: View {
             Text("Server address")
                 .font(.rrLabel)
                 .foregroundStyle(Theme.ink)
-            TextField("http://192.168.1.157:3107", text: $text)
+            TextField("http://192.168.1.157:3200", text: $text)
                 .font(.rrBody)
                 .keyboardType(.URL)
                 .textContentType(.URL)
@@ -30,7 +30,7 @@ struct ServerURLForm: View {
                 .accessibilityHint("The http address of the ReliefReady server, with its port")
                 .accessibilityIdentifier("serverURLField")
             if invalid {
-                Text("Use an http or https address, for example http://192.168.1.157:3107.")
+                Text("Use an http or https address, for example http://192.168.1.157:3200.")
                     .font(.rrNote)
                     .foregroundStyle(Theme.badInk)
             } else if model.config.isOverridden {

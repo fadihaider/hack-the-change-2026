@@ -9,7 +9,7 @@ final class LaunchSmokeTests: XCTestCase {
     @MainActor
     func testRootRenders() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-ServerURL", "http://127.0.0.1:3107"]
+        app.launchArguments = ["-ServerURL", "http://127.0.0.1:3200"]
         app.launch()
 
         // with an episode the tabs show; without one, Start; a down server shows the connection screen

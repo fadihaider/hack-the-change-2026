@@ -14,7 +14,7 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
-PORT=${1:-3107}
+PORT=${1:-3200}
 DIR=${RR_IOS_PGLITE_DIR:-.data/pglite-ios}
 LOG=/tmp/rr-ios-server-$PORT.log
 HOST=127.0.0.1; [ $LAN = 1 ] && HOST=0.0.0.0

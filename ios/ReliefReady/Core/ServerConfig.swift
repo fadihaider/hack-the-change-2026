@@ -6,8 +6,8 @@ import Observation
 final class ServerConfig {
     nonisolated static let defaultsKey = "ServerURL"
     nonisolated static let launchArgument = "-ServerURL"
-    static let simulatorDefault = URL(string: "http://127.0.0.1:3107")!
-    static let deviceDefault = URL(string: "http://192.168.1.157:3107")!
+    static let simulatorDefault = URL(string: "http://127.0.0.1:3200")!
+    static let deviceDefault = URL(string: "http://192.168.1.157:3200")!
 
     /// the platform default: the mac's loopback on the simulator, the mac's lan address on a phone
     static var platformDefault: URL {

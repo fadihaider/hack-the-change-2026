@@ -2,7 +2,7 @@
 # drives the demo flow against a local server and saves real JSON responses as XCTest fixtures
 # usage: ios/scripts/capture-fixtures.sh [base-url]   (run on a fresh demo database: RR_AI=demo, no Twilio)
 set -u
-BASE=${1:-http://127.0.0.1:3107}
+BASE=${1:-http://127.0.0.1:3200}
 OUT=${0:A:h}/../ReliefReadyTests/Fixtures
 mkdir -p "$OUT"
 get() { curl -s -m 60 "$BASE$2" -o "$OUT/$1.json"; echo "GET  $2 -> $1 ($(head -c 80 "$OUT/$1.json"))"; }
