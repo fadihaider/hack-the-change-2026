@@ -292,6 +292,7 @@ type RequestView = {
 | `GET /api/clock` | No body | `{appNow:string, realNow:string, offsetMilliseconds:number}` |
 | `POST /api/clock/jump` | `{days: number}` (positive integer) | `{appNow:string, realNow:string, offsetMilliseconds:number, expiredRequestIds:string[]}` after audited clock jump and in-process expiry sweep |
 | `POST /api/clock/reset` | `{}` | `{appNow:string, realNow:string, offsetMilliseconds:number}` with the offset back to 0 |
+| `POST /api/demo/reset` | `{}` | `{reset:true}` after clearing the demo run and resetting the clock. Admin and `RR_AUTH=demo` only |
 
 All these routes require an owner session. POSTs require matching Origin; clock
 jump and reset additionally require an admin: the session email in ADMIN_EMAILS,

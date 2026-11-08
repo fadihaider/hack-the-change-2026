@@ -578,6 +578,8 @@ export function createLiveApi(transport: typeof fetch = fetch) {
     clock: () => call("/api/clock", clockSchema),
     jump: (days: number) => call("/api/clock/jump", jumpSchema, { body: { days } }),
     resetClock: () => call("/api/clock/reset", clockSchema, { body: {} }),
+    /** demo only: clears the run (care weeks, requests, outbox, care notes) and the clock */
+    resetDemo: () => call("/api/demo/reset", z.object({ reset: z.literal(true) }), { body: {} }),
   };
 }
 export type LiveApi = ReturnType<typeof createLiveApi>;

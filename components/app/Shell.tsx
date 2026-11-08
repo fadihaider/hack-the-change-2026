@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ExternalLink, FastForward, RotateCcw } from "lucide-react";
+import { ChevronDown, ExternalLink, FastForward, RotateCcw, Trash2 } from "lucide-react";
 import { formatAlberta, liveErrorMessage, modeLabels, type LiveMode } from "@/lib/frontend/live-api.ts";
 import { recipientName, useApis, useSession } from "./session.tsx";
 import { useAnnounce, weekRange } from "./ui.tsx";
@@ -76,7 +76,7 @@ function DemoMenu({ demo }: { demo: boolean }) {
   const { live } = useApis();
   const announce = useAnnounce();
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<"jump" | "reset" | null>(null);
+  const [busy, setBusy] = useState<"jump" | "reset" | "wipe" | null>(null);
   const [status, setStatus] = useState("");
   // null until GET /api/clock answers; true when the demo clock has been moved away from real time
   const [simulated, setSimulated] = useState<boolean | null>(null);
@@ -165,6 +165,21 @@ function DemoMenu({ demo }: { demo: boolean }) {
     }
   }
 
+  // clears the whole run, so ask first; a full page load then starts every screen from the fresh state
+  async function wipe() {
+    if (busy) return;
+    if (!window.confirm("Reset the demo? This deletes the care week, every message and reply, and Rosa's notes and facts.")) return;
+    setBusy("wipe");
+    try {
+      await live.resetDemo();
+      report("The demo was reset. Starting over.");
+      window.location.assign("/");
+    } catch (error) {
+      report(liveErrorMessage(error));
+      setBusy(null);
+    }
+  }
+
   const labels = session ? modeLabels(session.mode, session.providers) : [];
   const timeLabel = simulated === true ? "Simulated time" : simulated === false ? "Real time" : "App time";
 
@@ -235,6 +250,14 @@ function DemoMenu({ demo }: { demo: boolean }) {
                 <button type="button" className={s.menuItem} aria-busy={busy === "reset" || undefined} onClick={reset}>
                   <RotateCcw size={18} aria-hidden="true" />
                   {busy === "reset" ? "Resetting the clock" : "Reset the clock"}
+                </button>
+              </li>
+            )}
+            {admin && session?.mode.auth === "demo" && (
+              <li>
+                <button type="button" className={s.menuItem} aria-busy={busy === "wipe" || undefined} onClick={wipe}>
+                  <Trash2 size={18} aria-hidden="true" />
+                  {busy === "wipe" ? "Resetting the demo" : "Reset the demo"}
                 </button>
               </li>
             )}

@@ -6,7 +6,7 @@ Button and heading names below follow the current design. Care screens are being
 
 ## Before you start
 
-1. Stop the server, run `npm run mvp:reset`, then `npm run dev`. That gives a clean database with the fictional Alex, Rosa and six calendar events.
+1. Start clean. On the deployed demo, open **Demo → Reset the demo** and confirm. It deletes the care week, every message and reply, and Rosa's notes and facts, and puts the clock back. Locally you can also stop the server, run `npm run mvp:reset`, then `npm run dev`.
 2. Open `http://localhost:3000` or `http://127.0.0.1:3000` in a desktop browser. Use one of these two addresses, not a LAN IP: the microphone works only there or on https.
 3. Decide on voice. With `ELEVENLABS_API_KEY` in `.env.local`, the voice note is transcribed live by ElevenLabs Scribe. Without it, Care says voice notes aren't connected and offers a typed note. Use the typed note and say so. Never present typed text as a transcript.
 4. Say which AI mode is running. With the default `RR_AI=demo`, suggestions and answers come from offline keyword rules, and the app labels them as demo rules. Present them that way, not as Claude. With `RR_AI=anthropic` or `RR_AI=bedrock` configured, the same steps call Claude.
@@ -71,7 +71,7 @@ Open **Care**. Rosa's day comes first: today's schedule, the Ask bar and **Emerg
 
 - Open **Recover**. The accepted request is under Handled ("Said yes"). Requests that were sent and not answered are under Waiting.
 - In **Demo**, choose **Move time forward a day** until the 48-hour reply deadline passes (usually three times). Every request still unanswered moves to Needs follow-up with "No reply in time" (verify wording). Each status comes from a record: the outbox entry, a reply-link click or a passed deadline. Email replies are not read.
-- Choose **Reset the clock** when you finish.
+- Choose **Demo → Reset the demo** when you finish, so the next run starts clean.
 
 ## What to say about real and demo
 

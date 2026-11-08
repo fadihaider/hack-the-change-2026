@@ -75,6 +75,7 @@ All JSON unless noted. Errors are `{error:{code}}` with no provider or database 
 | `GET /api/requests`, `GET /api/requests/[id]` | | `{requests}` or `{request}` plus `appNow` (docs/INTEGRATIONS.md) |
 | `POST /api/requests/{edit,approve,cancel,send,refresh}` | per docs/INTEGRATIONS.md | approve needs `If-Match: "<revision>"` |
 | `GET /api/clock`, `POST /api/clock/jump`, `POST /api/clock/reset` | jump `{days}`; reset `{}` | `{appNow, realNow, offsetMilliseconds}`; jump adds `expiredRequestIds`. Jump and reset are admin only |
+| `POST /api/demo/reset` | `{}` | `{reset:true}`. Admin and demo sign-in only. Deletes the run (care weeks, commitments, requests, outbox, texts, and the care recipient's sources, facts, events, questions and contacts) and resets the clock; the user, contacts and care recipient stay |
 | `GET /r/[token]` (page), `POST /api/responses/[token]` | `{}` or `{proposal:{at,note?}}` | the reply page never changes state on GET; the POST records Accept, Decline or Another time |
 | `GET /outbox` (page), `GET /api/outbox` | | demo-outbox messages with their reply links (only when `RR_MAIL=outbox`) |
 | `GET /api/recover`, `POST /api/recover` | POST `{}` | `{groups:{handled,waiting,needsFollowUp,notSent,new}, appNow, expiredRequestIds}`. POST runs the owner's expiry sweep first |
