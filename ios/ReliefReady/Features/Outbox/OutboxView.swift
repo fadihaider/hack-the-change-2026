@@ -89,7 +89,8 @@ struct OutboxView: View {
             let texts = (try? await sms).map(OutboxContent.simulatedTexts) ?? []
             phase = .loaded(outbox, texts: texts)
         } catch {
-            phase = .failed
+            // a cancelled call (the tab went away) leaves the screen as it was; the next visit loads again
+            if (error as? APIError)?.isCancelled != true { phase = .failed }
         }
     }
 }

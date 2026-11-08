@@ -48,7 +48,8 @@ final class RecoverModel {
             loadError = nil
             return next
         } catch {
-            guard mine == sequence else { return nil }
+            // a cancelled call (the tab went away) is not a failure; the next visit asks again
+            guard mine == sequence, !error.isCancelled else { return nil }
             loadError = error.userMessage
             return nil
         }

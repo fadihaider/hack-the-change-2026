@@ -23,6 +23,11 @@ nonisolated struct APIError: Error, Sendable, Hashable {
 
     static let network = APIError(code: "network_error", status: 0)
 
+    /// the caller's task was cancelled (a tab or sheet went away mid-call); never a failure to show
+    static let cancelled = APIError(code: "cancelled", status: 0)
+
+    var isCancelled: Bool { code == Self.cancelled.code }
+
     static func invalidResponse(status: Int = 502) -> APIError {
         APIError(code: "invalid_response", status: status)
     }

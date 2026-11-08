@@ -49,7 +49,7 @@ final class TodayModel {
             error = nil
             return next
         } catch {
-            if mine == seq { self.error = error.userMessage }
+            if mine == seq, !error.isCancelled { self.error = error.userMessage }
             return nil
         }
     }

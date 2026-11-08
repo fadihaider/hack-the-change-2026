@@ -468,6 +468,10 @@ nonisolated final class APIClient: Sendable {
         do {
             (data, response) = try await urlSession.data(for: urlRequest)
         } catch {
+            // swiftui cancels a view's .task when its tab goes away; that is not a network failure
+            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                throw APIError.cancelled
+            }
             throw APIError.network
         }
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse() }

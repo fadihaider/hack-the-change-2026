@@ -67,7 +67,7 @@ final class CareModel {
             }
             return next
         } catch {
-            if mine == seq { profileError = error.userMessage }
+            if mine == seq, !error.isCancelled { profileError = error.userMessage }
             return nil
         }
     }

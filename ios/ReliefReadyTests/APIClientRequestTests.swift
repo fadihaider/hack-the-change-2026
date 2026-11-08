@@ -378,6 +378,23 @@ struct APIClientRequestTests {
         await #expect(throws: APIError(code: "invalid_response", status: 404)) { _ = try await client.transcribe(audio: Data([1])) }
     }
 
+    @Test func aCancelledCallIsNotANetworkFailure() async {
+        let (client, _) = StubProtocol.client(reply: StubProtocol.Reply(body: Data("{}".utf8)))
+        // a tab going away cancels its .task; the call must say so rather than report network_error
+        let task = Task { () async -> APIError? in
+            do throws(APIError) {
+                _ = try await client.clock()
+                return nil
+            } catch {
+                return error
+            }
+        }
+        task.cancel()
+        let error = await task.value
+        #expect(error?.isCancelled == true)
+        #expect(error != APIError.network)
+    }
+
     @Test func ttsReturnsTheBytes() async throws {
         let audio = Data([0x49, 0x44, 0x33])
         let (client, _) = StubProtocol.client(reply: StubProtocol.Reply(headers: ["Content-Type": "audio/mpeg"], body: audio))
